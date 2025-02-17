@@ -44,14 +44,6 @@
         <li><a href="#installation">Installation</a></li>
       </ul>
     </li>
-    <li><a href="#usage">Usage</a></li>
-    <!--
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-    <li><a href="#contact">Contact</a></li>
-    <li><a href="#acknowledgments">Acknowledgments</a></li>
-    -->
   </ol>
 </details>
 
@@ -60,7 +52,7 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-[![Product Name Screen Shot][product-screenshot]](https://example.com)
+[![Product Name Screen Shot][product-screenshot]]
 
 some more description...
 
@@ -72,36 +64,21 @@ some more description...
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-
-
 <!-- GETTING STARTED -->
 ## Getting Started
 
-### required packages
-- [GCC](https://gcc.gnu.org/), [Clang](https://clangd.llvm.org/) or [MSVC](https://visualstudio.microsoft.com/vs/features/cplusplus/)
+### Prerequisites
+- a c++23 compiler ([GCC](https://gcc.gnu.org/), [Clang](https://clangd.llvm.org/) or [MSVC](https://visualstudio.microsoft.com/vs/features/cplusplus/))
 - [Cmake](https://cmake.org/download/)
-##### Ubuntu(24.04)
-```sh
-> sudo apt-get cmake
-```
-##### Windows
-```sh
-> winget install kitware.cmake
-```
+- [VulkanSDK](https://vulkan.lunarg.com/doc/view/latest/linux/getting_started_ubuntu.html)
+- [GLFW](https://www.glfw.org/)
+
 ### Installation
-1. Clone the repository
 ```sh
 > git clone https://github.com/GruncornTheLesser/Arawn.git
-```
-2. build with Cmake
-```sh
-> mkdir build
-> cd build
-> cmake ..
-```
-3. build with make
-```sh
-> make
+> cd Arawn
+> cmake . -B build
+> cmake --build build
 ```
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -134,4 +111,4 @@ some more description...
 [GLM]: https://img.shields.io/badge/GLM-fb7e13?style=for-the-badge&logo=GLM&logoColor=White&logoSize=auto&logoWidth=auto
 [product-screenshot]: images/screenshot.png
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/othneildrew
+[linkedin-url]: https://www.linkedin.com/in/michael-p-wilkinson/

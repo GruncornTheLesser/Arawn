@@ -1,49 +1,48 @@
-// https://graphicscompendium.com/gamedev/15-pbr
+https://graphicscompendium.com/gamedev/15-pbr
 
-// Lighting Models
-/* LAMBERTIAN requires (diffuse, normal)
-FORMULA:
-    I = max(dot(N, L), 0); where I = light intensity, N = normal, L = light direction
-*/
+Lighting Models
+LAMBERTIAN requires (diffuse, normal)
+    describes the diffuse light component
+    FORMULA:
+        Id = Kd * max(NdotL, 0);
+    WHERE:
+        Kd = material.diffuse;
+        N = normal;
+        L = light.direction;
 
-/* PHONG requires (diffuse, normal, shininess, specular)
+BLINN_PHONG requires (diffuse, normal, shininess, specular)
     uses an approximation of the material roughness, and uses "shininess" and "specular"
-FORMULA:   
-    Id = Kd * max(dot(N, L), 0) * Lc;
-WHERE
-    Kd = material.diffuse, 
-    N = normal, 
-    L = light direction, 
-    Lc = light colour 
-- Is = Ks * pow(max(dot(R, V), 0), a) * Lc; 
-    where:
-        Is = specular, 
-        Ks = material.specular, 
-        R = reflection vector, 
-        V = camera direction, 
-        a = shininess, 
-        Lc = light.diffuse
-    BLINN_PHONG (diffuse, normal, shininess, specular) 
+    FORMULA:   
+        Id = Kd * max(dot(NdotL), 0);
+        Is = Ks * pow(max(RdotV, 0), Ke);
+    WHERE
+        Kd = material.diffuse;
+        Ks = material.specular;
+        Ke = material.shininess; // shininess exponent
+        N = normal;
+        L = light.direction;
+        V = camera direction; // view
+        H = normalize(L + V);
+        R = reflect(L, N); // phong
+        R = normalize(L + N); // blinn phong
 
-*/
-
-/* OREN_NAYERS requires(diffuse, normal, roughness)
-    the magic numbers where found experimentally to approximate 
+OREN_NAYERS requires(diffuse, normal, roughness)
+    micro facet model
+    the magic numbers where found experimentally
     has no reflectivity, only works for matte materials
-FORMULA:
-    Kd * (A + B * max(dot(N, L), 0) * sin(a) * sin(b))
-WHERE:
-    N = normal,
-    L = light direction,
-    a = arcos(dot(N, L)),
-    b = arcos(dot(N, V))
-    r = material.roughness,
-    r2 = r * r,
-    A = 1 - r2 / (r2 + 0.33) / 2,
-    B = 0.45 * r2 / (r2 + 0.09),
-*/
+    FORMULA:
+        Kd * (A + B * max(dot(N, L), 0) * sin(a) * sin(b))
+    WHERE:
+        N = normal;
+        L = light.direction;
+        a = arcos(dot(N, L));
+        b = arcos(dot(N, V));
+        r = material.roughness;
+        r2 = r * r;
+        A = 1 - r2 / (r2 + 0.33) / 2;
+        B = 0.45 * r2 / (r2 + 0.09);
 
-/* COOK_TORRENCE requires(diffuse, normal, metallic, roughness)
+COOK_TORRENCE requires(diffuse, normal, metallic, roughness)
     microfacet model, approximates surfaces as a collection of small faces.
     - 3 pluggable functions:
     - D() is the normal Distribution function -> models fraction of facets reflecting light
@@ -52,70 +51,58 @@ WHERE:
     - F() Fresnel function, accounting for the fresnel effect. rays with high angles of incident reflect more specularity
     
     The blinn phong can actually be described by this:
-    - sh = sqrt(1 / (r + 1)) // shininess as a function of roughness 
-    - D_blinn = (HdotN / PI / roughness^4)^(2 / roughness^2 - 2)
+    because: sh = sqrt(1 / (r + 1)) // shininess as a function of roughness 
+    => D() = (HdotN / PI / roughness^4)^(2 / roughness^2 - 2)
 
-Formula:
-    s = D * G * F / 4 / NdotL / NdotV
-where:
-    float DistGGX(vec3 NdotH, float r) { // GGX microfacet distribution
-        r2 = r * r;
-        r4 = r2 * r2;
-        NdotH2 = NdotH * NdotH;
-        nom = r4;
-        denom = (NdotH * (r4 - 1) + 1);
-        denom PI * denom * denom;
-        return nom / denom;
-    }
-    float GeomSchlickGGX(float NdotV, float r) { // GGX distribution
-        r = r + 1;
-        k = (r * r) / 8;
-        nom = NdotV;
-        denom = NdotV * (1 - k) + k;
-        return nom / denom;
-    }
-    float GeomSmith(float NdotV, float NdotL, float r) { // Smith visibility
-        return GeomSchlickGGX(NdotV, r) * GeomSchlickGGX(NdotL, r);
-    }
-    float FresSchlick(float cosTheta) { // Schlick's Fresnel approximation
-        return f0 + (1.0 - f0) * pow((1.0 + EPSILON) - cosTheta, 5.0);
-    }
+    FORMULA:
+        s = D * G * F / 4 / NdotL / NdotV
+    WHERE:
+        float DistGGX(vec3 NdotH, float r) { // GGX microfacet distribution
+            r2 = r * r;
+            r4 = r2 * r2;
+            NdotH2 = NdotH * NdotH;
+            nom = r4;
+            denom = (NdotH * (r4 - 1) + 1);
+            denom PI * denom * denom;
+            return nom / denom;
+        }
+        float GeomSchlickGGX(float NdotV, float r) { // GGX distribution
+            r = r + 1;
+            k = (r * r) / 8;
+            nom = NdotV;
+            denom = NdotV * (1 - k) + k;
+            return nom / denom;
+        }
+        float GeomSmith(float NdotV, float NdotL, float r) { // Smith visibility
+            return GeomSchlickGGX(NdotV, r) * GeomSchlickGGX(NdotL, r);
+        }
+        float FresSchlick(float cosTheta) { // Schlick's Fresnel approximation
+            return f0 + (1.0 - f0) * pow((1.0 + EPSILON) - cosTheta, 5.0);
+        }
 
-    d = material diffuse
-    r = material roughness
-    m = material metallic
-    Lc = get_light_colour();
-    Li = get_light_intensity();
-    
-    N = normal
-    V = view direction
-    L = light direction
-    R = reflect(-V, N);
-    H = normalize(L + V) // halfway vector
-    
-    f0 = mix(0.04, 0.9, m);
-    NdotL = max(dot(N, L), 0.0)
-    NdotV = max(dot(N, V), 0.0)
-    NdotH = max(dot(N, H), 0.0)
-    LdotH = max(dot(L, H), 0.0)
-    
-    F = FresSchlick(HdotV, f0);
-    G = GeomSmith(NdotV, NdotL, r);
-    D = DistGGX(NdotH, r);
-    
-    reflection = texture(env_map, R).rgb * F;
-    specular = D * G * F / 4 / max(NdotL * NdotV, EPSILON);
-    diffuse = d * NdotL * (1 - F) * (1 - m);
-    return (diffuse + specular) * Lc * Li + reflection;
-
-*/
-
-/* COOK_TORRENCE with environment reflections
-FORMULA:
-    
-    d = Kd * NdotL * diffuse / PI + reflection + specular;
-WHERE:
-    V = view direction
-    N = normal
-    F = F() function of Cook Torrence
-*/
+        d = material diffuse;
+        r = material roughness;
+        m = material metallic;
+        Lc = get_light_colour();
+        Li = get_light_intensity();
+        
+        N = normal;
+        V = view direction;
+        L = light direction;
+        R = reflect(-V, N);
+        H = normalize(L + V); // halfway vector
+        
+        f0 = mix(0.04, 0.9, m);
+        NdotL = max(dot(N, L), 0.0);
+        NdotV = max(dot(N, V), 0.0);
+        NdotH = max(dot(N, H), 0.0);
+        LdotH = max(dot(L, H), 0.0);
+        
+        F = FresSchlick(HdotV, f0);
+        G = GeomSmith(NdotV, NdotL, r);
+        D = DistGGX(NdotH, r);
+        
+        refl = texture(env_map, R).rgb * F;
+        specular = D * G * F / 4 / max(NdotL * NdotV, EPSILON);
+        diffuse = d * NdotL * (1 - F) * (1 - m);
+        return (diffuse + specular) * Lc * Li + refl;

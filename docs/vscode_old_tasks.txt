@@ -1,4 +1,6 @@
-       
+{
+    "version": "2.0.0",
+    "tasks": [
         {
             "label": "compile c++",
             "type": "shell",
@@ -42,3 +44,5 @@
                 "fi'", "\\;"
             ]
         }
+    ]
+}
