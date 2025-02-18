@@ -1,26 +1,26 @@
-
 #define VK_IMPLEMENTATION
 #include "engine.h"
 
-Engine engine{ "ARAWN", "ARAWN-vulkan" };
+/*
+1. init glfw
+2. init vulkan instance
+3. select GPU
+4. init vulkan device
+5. get queues
+6. init command pools
+7. init descriptor pools
+*/
+
+const Engine engine{ "ARAWN", "ARAWN-vulkan" };
 
 Engine::Engine(const char* app_name, const char* engine_name) {
-    std::vector<const char*> inst_layers = {
-    "VK_LAYER_KHRONOS_validation"
-    };
-    std::vector<const char*> device_layers = {
-        "VK_LAYER_KHRONOS_validation"
-    };
-    std::vector<const char*> inst_extensions {
-        VK_KHR_SURFACE_EXTENSION_NAME
-    };
-    std::vector<const char*> device_extensions {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME
-    };
+    std::vector<const char*> inst_layers =     { "VK_LAYER_KHRONOS_validation"   };
+    std::vector<const char*> device_layers =   { "VK_LAYER_KHRONOS_validation"   };
+    std::vector<const char*> inst_extensions   { VK_KHR_SURFACE_EXTENSION_NAME   };
+    std::vector<const char*> device_extensions { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
-    
     { // init glfw
-        assert(glfwInit() == GLFW_TRUE);
+        GLFW_ASSERT(glfwInit() == GLFW_TRUE);
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     }
 
@@ -117,36 +117,36 @@ Engine::Engine(const char* app_name, const char* engine_name) {
         std::vector<VkQueueFamilyProperties> prop(family_count);
         vkGetPhysicalDeviceQueueFamilyProperties(gpu, &family_count, prop.data());
     
-        graphic_family = family_count;
-        compute_family = family_count;
-        present_family = family_count;
+        graphics.family = family_count;
+        compute.family = family_count;
+        present.family = family_count;
 
         { // find graphics queue
             for (uint32_t i = 0; i < family_count; ++i) {
                 if (prop[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                    graphic_family = i;
+                    graphics.family = i;
                     --prop[i].queueCount;
                     break;
                 }
             }
             
-            assert(graphic_family != family_count); // no graphics, should be impossible
+            assert(graphics.family != family_count); // no graphics, should be impossible
         }
 
         { // find compute queue
-            if (prop[graphic_family].queueFlags & VK_QUEUE_COMPUTE_BIT) // queue sharing
-                compute_family = graphic_family;
+            if (prop[graphics.family].queueFlags & VK_QUEUE_COMPUTE_BIT) // queue sharing
+                compute.family = graphics.family;
 
             for (uint32_t i = 0; i < family_count; ++i) {
-                if (i == graphic_family) continue;
+                if (i == graphics.family) continue;
                 if (prop[i].queueCount > 0 && prop[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
-                    compute_family = i;
+                    compute.family = i;
                     --prop[i].queueCount;
                     break;
                 }
             }
 
-            assert(compute_family != family_count); // no compute
+            assert(compute.family != family_count); // no compute
         }
         
         VkSurfaceKHR surface;
@@ -154,6 +154,7 @@ Engine::Engine(const char* app_name, const char* engine_name) {
         { // create dummy window and surface
             glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE); // hide window
             window = glfwCreateWindow(640, 480, "", NULL, NULL);
+            GLFW_ASSERT(window != NULL);
 
             assert(window != nullptr);
             
@@ -162,21 +163,21 @@ Engine::Engine(const char* app_name, const char* engine_name) {
 
         { // find present queue
             VkBool32 support = VK_FALSE;
-            if (vkGetPhysicalDeviceSurfaceSupportKHR(gpu, graphic_family, surface, &support) == VK_SUCCESS && support == VK_TRUE)
-                present_family = graphic_family;
+            if (vkGetPhysicalDeviceSurfaceSupportKHR(gpu, graphics.family, surface, &support) == VK_SUCCESS && support == VK_TRUE)
+                present.family = graphics.family;
             
-            else if (vkGetPhysicalDeviceSurfaceSupportKHR(gpu, compute_family, surface, &support) == VK_SUCCESS && support == VK_TRUE)
-                present_family = compute_family;
+            else if (vkGetPhysicalDeviceSurfaceSupportKHR(gpu, compute.family, surface, &support) == VK_SUCCESS && support == VK_TRUE)
+                present.family = compute.family;
             
             for (uint32_t i = 0; i < family_count; ++i) {
                 if (prop[i].queueCount > 0 && vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &support) == VK_SUCCESS && support == VK_TRUE) {
-                    present_family = i;
+                    present.family = i;
                     --prop[i].queueCount;
                     break;
                 }
             }
 
-            assert(present_family != family_count);
+            assert(present.family != family_count);
         }
 
         { // destroy dummy window and surface
@@ -185,11 +186,20 @@ Engine::Engine(const char* app_name, const char* engine_name) {
         }
     }
 
-    { // init device
-        // get unique queues
-        uint32_t family_set[3];
-        uint32_t family_set_count = get_queue_family_set(family_set);
+    { // get queue family set
+        uint32_t i = 0;
+        family_set_data[i] = graphics.family;
+
+        if (graphics.family != compute.family)
+            family_set_data[++i] = compute.family;
         
+        if (graphics.family != present.family && compute.family != present.family) 
+            family_set_data[++i] = present.family;
+        
+        family_set_count = ++i;
+    }
+    
+    { // init device
         float priority = 1.0f; // priority
         std::vector<VkDeviceQueueCreateInfo> queues;
         {
@@ -198,7 +208,7 @@ Engine::Engine(const char* app_name, const char* engine_name) {
             info.pQueuePriorities = &priority;
             
             for (uint32_t i = 0; i < family_set_count; ++i) {
-                info.queueFamilyIndex = family_set[i];
+                info.queueFamilyIndex = family_set_data[i];
                 info.queueCount = 1;
                 queues.push_back(info);
             }
@@ -213,34 +223,72 @@ Engine::Engine(const char* app_name, const char* engine_name) {
         info.enabledLayerCount = static_cast<uint32_t>(device_layers.size());
         info.ppEnabledLayerNames = device_layers.data();
         VK_ASSERT(vkCreateDevice(gpu, &info, NULL, &device));
-        
-        vkGetDeviceQueue(device, graphic_family, 0, &graphic_queue);
-        vkGetDeviceQueue(device, compute_family, 0, &compute_queue);
-        vkGetDeviceQueue(device, present_family, 0, &present_queue);
+    }
+
+    { // get queues
+        vkGetDeviceQueue(device, graphics.family, 0, &graphics.queue);
+        vkGetDeviceQueue(device, compute.family, 0, &compute.queue);
+        vkGetDeviceQueue(device, present.family, 0, &present.queue);
+    }
+
+    { // init command pools
+        VkCommandPool cmd_pools[3];
+        VkCommandPoolCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        info.pNext = nullptr;
+        info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        for (uint32_t i = 0; i < family_set_count; ++i) {
+            info.queueFamilyIndex = family_set_data[i];
+            vkCreateCommandPool(device, &info, nullptr, cmd_pools + i);
+        }
+
+        // get command pool from queue family 
+        uint32_t i = 0;
+        graphics.pool = cmd_pools[i];
+
+        if (compute.family != graphics.family) ++i;
+        compute.pool = cmd_pools[i];
+
+        if (present.family != graphics.family && 
+            present.family != compute.family) ++i;
+        present.pool = cmd_pools[i];
+    }
+
+    { // init descriptor pools
+        VkDescriptorPoolSize pool_sizes[3] = {
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 256 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 256 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 256 }, // for textures
+        };
+
+        VkDescriptorPoolCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        info.poolSizeCount = 3;
+        info.pPoolSizes = pool_sizes;
+        info.maxSets = 256;
+
+        VK_ASSERT(vkCreateDescriptorPool(device, &info, nullptr, &descriptor_pool));
     }
 }
 
 Engine::~Engine() {
-    if (instance == VK_NULL_HANDLE) return;
-    
+    vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
+
+    vkDestroyCommandPool(device, graphics.pool, nullptr);
+
+    if (compute.family != graphics.family)
+        vkDestroyCommandPool(device, compute.pool, nullptr);
+
+    if (present.family != graphics.family && present.family != compute.family) 
+        vkDestroyCommandPool(device, present.pool, nullptr);
+
     vkDestroyDevice(device, nullptr);
+
     vkDestroyInstance(instance, nullptr);
+
     glfwTerminate();
 }
 
-uint32_t Engine::get_queue_family_set(uint32_t* family_set) const {
-    if (family_set == nullptr) {
-        return 1 + (graphic_family != compute_family) + (graphic_family != present_family && compute_family != present_family);
-    }
-
-    uint32_t count = 1;
-    family_set[0] = graphic_family;
-
-    if (graphic_family != compute_family)
-        family_set[count++] = compute_family; 
-    
-    if (graphic_family != present_family && compute_family != present_family) 
-        family_set[count++] = present_family;
-
-    return count;
+void log_error(std::string_view msg, std::source_location loc) {
+    std::cout << loc.file_name() << ":" << loc.line() << " - " << msg;
 }
