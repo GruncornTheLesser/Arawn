@@ -249,9 +249,9 @@ Engine::Engine(const char* app_name, const char* engine_name) {
         if (compute.family != graphics.family) ++i;
         compute.pool = cmd_pools[i];
 
-        if (present.family != graphics.family && 
-            present.family != compute.family) ++i;
-        present.pool = cmd_pools[i];
+        //if (present.family != graphics.family && 
+        //    present.family != compute.family) ++i;
+        //present.pool = cmd_pools[i];
     }
 
     { // init descriptor pools
@@ -279,8 +279,8 @@ Engine::~Engine() {
     if (compute.family != graphics.family)
         vkDestroyCommandPool(device, compute.pool, nullptr);
 
-    if (present.family != graphics.family && present.family != compute.family) 
-        vkDestroyCommandPool(device, present.pool, nullptr);
+    //if (present.family != graphics.family && present.family != compute.family) 
+    //    vkDestroyCommandPool(device, present.pool, nullptr);
 
     vkDestroyDevice(device, nullptr);
 

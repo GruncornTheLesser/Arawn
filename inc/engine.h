@@ -20,8 +20,12 @@ public:
     struct {
         uint32_t family;
         VK_TYPE(VkQueue) queue;
+    } present;
+    struct {
+        uint32_t family;
+        VK_TYPE(VkQueue) queue;
         VK_TYPE(VkCommandPool) pool;
-    } graphics, compute, present;
+    } graphics, compute;
 };
 
 extern const Engine engine;
