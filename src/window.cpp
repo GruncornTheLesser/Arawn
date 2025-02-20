@@ -33,7 +33,14 @@ auto Window::closed() const -> bool {
     return glfwWindowShouldClose(window);
 }
 
-auto Window::get_size() const -> std::pair<uint32_t, uint32_t> {
+auto Window::minimized() const -> bool {
+    int x, y;
+    glfwGetWindowSize(window, &x, &y);
+    return x == 0 || y == 0;
+}
+
+
+auto Window::get_resolution() const -> std::pair<uint32_t, uint32_t> {
     int x, y;
     glfwGetWindowSize(window, &x, &y);
     return { x, y };

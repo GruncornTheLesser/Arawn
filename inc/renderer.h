@@ -2,19 +2,22 @@
 #include "vulkan.h"
 #include "window.h"
 #include <vector>
+#include <span>
+#include <filesystem>
 
 enum class SyncMode { DOUBLE=2, TRIPLE=3 }; 
-enum class VsyncMode { OFF, ON };
-enum class AntiAlias { 
-    NONE, 
-    FXAA_2, FXAA_4, FXAA_8, FXAA_16, 
-    MSAA_2, MSAA_4, MSAA_8, MSAA_16,
+enum class VsyncMode { OFF, ON }; // ADAPTIVE
+enum class AntiAlias { NONE, MSAA_2, MSAA_4, MSAA_8, MSAA_16 }; // FXAA_2, FXAA_4, FXAA_8, FXAA_16, 
+
+class Pass {
+public:
+    virtual std::span<VK_TYPE(VkSemaphore)> submit(uint32_t frame_index) const = 0;
+    virtual VK_TYPE(VkCommandBuffer) get_cmd_buffer() const = 0;
 };
 
 class Renderer {
 public:
     struct Settings {
-        struct { uint32_t x, y; } resolution;
         VsyncMode vsync_mode;               // present mode
         AntiAlias anti_alias_mode;          // anti-alias mode
         SyncMode sync_mode;                 // double/triple buffering
@@ -22,7 +25,6 @@ public:
     Renderer(const Window& wnd, const Settings& settings);
 
     Renderer(const Window& wnd, 
-        uint32_t width, uint32_t height,
         AntiAlias anti_alias=AntiAlias::NONE, 
         VsyncMode vsync_mode=VsyncMode::OFF, 
         SyncMode sync_mode=SyncMode::DOUBLE);
@@ -34,10 +36,6 @@ public:
     Renderer& operator=(const Renderer&) = delete;
 
     // updates the swapchain
-    void set_resolution(uint32_t width, uint32_t height);
-    std::pair<uint32_t, uint32_t> get_resolution() const;
-    std::vector<std::pair<uint32_t, uint32_t>> enum_resolutions() const;
-
     void set_vsync_mode(VsyncMode mode);
     VsyncMode get_vsync_mode() const;
     std::vector<VsyncMode> enum_vsync_modes() const;
@@ -49,44 +47,78 @@ public:
     // updates the present pass
     void set_anti_alias(AntiAlias mode);
     AntiAlias get_anti_alias() const;
-    std::vector<AntiAlias> enum_ant_alias() const;
-    
+    std::vector<AntiAlias> enum_anti_alias() const;
+
+    //void set_depth_prepass_enabled(bool value);
+    //bool get_depth_prepass_enabled() const;
+
     void draw();
 
 private:
+    static inline auto get_frame_count(SyncMode mode) -> uint32_t;
+    static inline auto get_surface_data(VK_TYPE(VkSurfaceKHR) surface) -> std::pair<VK_TYPE(VkFormat), VK_TYPE(VkColorSpaceKHR)>;
+    static inline auto get_present_mode(VK_TYPE(VkSurfaceKHR) surface, VsyncMode vsync_mode) -> VK_TYPE(VkPresentModeKHR);
+    static inline auto get_sample_count(AntiAlias anti_alias) -> VK_TYPE(VkSampleCountFlagBits);
+    // TODO: move to engine
+    static inline auto get_depth_format() -> VK_TYPE(VkFormat);
+    static inline auto get_memory_index(uint32_t type_bits, VK_TYPE(VkMemoryPropertyFlags) flags) -> uint32_t;
+
+    static inline auto create_shader_module(std::filesystem::path fp) -> VK_TYPE(VkShaderModule);
+
+
+    void init_resolution();
+
+    void init_descriptors();
+    void destroy_descriptors();
+
+    void init_present_commands();
+    void destroy_present_commands();
+
+    void init_swapchain(VK_TYPE(VkFormat) format, VK_TYPE(VkColorSpaceKHR) colour_space, VK_TYPE(VkPresentModeKHR) present_mode, VK_TYPE(VkSwapchainKHR) old_swapchain=nullptr);
+    void destroy_swapchain();
+
+    void init_present_framebuffer(VK_TYPE(VkFormat) depth_format, VK_TYPE(VkFormat) colour_format, VK_TYPE(VkSampleCountFlagBits) msaa_sample);
+    void destroy_present_framebuffer();
+
+    void recreate_swapchain();
+private:
     const Window& window;
-    
-    struct { uint32_t x, y; } resolution;
+    struct { uint32_t x, y; 
+        auto& operator=(std::pair<uint32_t, uint32_t> val) { x = val.first; y = val.second; return *this; }
+    } resolution;
     VsyncMode vsync_mode;
     AntiAlias anti_alias;
     uint32_t frame_count; // double/triple buffering
-    uint32_t frame_index; // current frame index
 
     VK_TYPE(VkSurfaceKHR) surface;
     VK_TYPE(VkSwapchainKHR) swapchain;
     VK_TYPE(VkImageView)* swapchain_views;
     
-    VK_TYPE(VkCommandBuffer) graphics_cmd_buffer[MAX_FRAMES_IN_FLIGHT];
-    VK_TYPE(VkCommandBuffer) compute_cmd_buffer[MAX_FRAMES_IN_FLIGHT];
-    VK_TYPE(VkSemaphore)     image_available[MAX_FRAMES_IN_FLIGHT];
-    VK_TYPE(VkSemaphore)     render_finished[MAX_FRAMES_IN_FLIGHT];
-    VK_TYPE(VkFence)         in_flight[MAX_FRAMES_IN_FLIGHT];
+    // 1 unique cmd_buffer per operation in parallel
+    VK_TYPE(VkDescriptorSetLayout) set_layout;
+    
 
-    VK_TYPE(VkDescriptorSetLayout) layout; // layout for all 
-
+    uint32_t frame_index; // current frame index
     struct {
+        VK_TYPE(VkCommandBuffer) cmd_buffers[MAX_FRAMES_IN_FLIGHT];
+        VK_TYPE(VkSemaphore)     finished[MAX_FRAMES_IN_FLIGHT];
+        VK_TYPE(VkSemaphore)     image_available[MAX_FRAMES_IN_FLIGHT];
+        VK_TYPE(VkFence)         in_flight[MAX_FRAMES_IN_FLIGHT];
+
+        VK_TYPE(VkRenderPass) renderpass;
+        VK_TYPE(VkFramebuffer)* framebuffers;
         struct {
             VK_TYPE(VkImage) image;
             VK_TYPE(VkImageView) view;
             VK_TYPE(VkDeviceMemory) memory;
-        } attachment;
-        
+        } colour_attachment, depth_attachment;
+
         VK_TYPE(VkPipeline) pipeline;
         VK_TYPE(VkPipelineLayout) layout;
-        VK_TYPE(VkRenderPass) renderpass;
-        VK_TYPE(VkFramebuffer)* framebuffers;
+    
     } present_pass;
 };
+
 
 
 /*

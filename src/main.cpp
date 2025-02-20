@@ -15,7 +15,7 @@ TODOLIST:
 
 int main() {
     Window window(800u, 600u, DisplayMode::WINDOWED);
-    Renderer renderer(window, 800, 600);
+    Renderer renderer(window, AntiAlias::NONE, VsyncMode::OFF, SyncMode::DOUBLE);
     while (!window.closed()) { 
         renderer.draw();
     }

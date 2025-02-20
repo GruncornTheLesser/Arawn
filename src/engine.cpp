@@ -1,6 +1,8 @@
 #define VK_IMPLEMENTATION
 #include "engine.h"
-
+#include <vector>
+#include <algorithm>
+#include <cstring>
 /*
 1. init glfw
 2. init vulkan instance
@@ -112,7 +114,7 @@ Engine::Engine(const char* app_name, const char* engine_name) {
 
     { // select queues
         uint32_t family_count;
-        vkGetPhysicalDeviceQueueFamilyProperties(gpu, &family_count, NULL);
+        vkGetPhysicalDeviceQueueFamilyProperties(gpu, &family_count, nullptr);
         
         std::vector<VkQueueFamilyProperties> prop(family_count);
         vkGetPhysicalDeviceQueueFamilyProperties(gpu, &family_count, prop.data());
@@ -130,7 +132,7 @@ Engine::Engine(const char* app_name, const char* engine_name) {
                 }
             }
             
-            assert(graphics.family != family_count); // no graphics, should be impossible
+            if (graphics.family == family_count) throw std::exception(); // no graphics, should be impossible
         }
 
         { // find compute queue
@@ -146,17 +148,15 @@ Engine::Engine(const char* app_name, const char* engine_name) {
                 }
             }
 
-            assert(compute.family != family_count); // no compute
+            if (compute.family == family_count) throw std::exception();
         }
         
         VkSurfaceKHR surface;
         GLFWwindow* window;
         { // create dummy window and surface
             glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE); // hide window
-            window = glfwCreateWindow(640, 480, "", NULL, NULL);
-            GLFW_ASSERT(window != NULL);
-
-            assert(window != nullptr);
+            window = glfwCreateWindow(640, 480, "", nullptr, nullptr);
+            GLFW_ASSERT(window != nullptr);
             
             VK_ASSERT(glfwCreateWindowSurface(instance, window, nullptr, &surface));
         }
@@ -177,7 +177,7 @@ Engine::Engine(const char* app_name, const char* engine_name) {
                 }
             }
 
-            assert(present.family != family_count);
+            if (present.family == family_count) throw std::exception();
         }
 
         { // destroy dummy window and surface
@@ -222,7 +222,7 @@ Engine::Engine(const char* app_name, const char* engine_name) {
         info.ppEnabledExtensionNames = device_extensions.data();
         info.enabledLayerCount = static_cast<uint32_t>(device_layers.size());
         info.ppEnabledLayerNames = device_layers.data();
-        VK_ASSERT(vkCreateDevice(gpu, &info, NULL, &device));
+        VK_ASSERT(vkCreateDevice(gpu, &info, nullptr, &device));
     }
 
     { // get queues
@@ -290,5 +290,5 @@ Engine::~Engine() {
 }
 
 void log_error(std::string_view msg, std::source_location loc) {
-    std::cout << loc.file_name() << ":" << loc.line() << " - " << msg;
+    std::cout << loc.file_name() << ":" << loc.line() << " - " << msg.data();
 }

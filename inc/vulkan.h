@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 #ifdef VK_IMPLEMENTATION
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.h> // for now 
 #include <vulkan/vk_enum_string_helper.h>
 
 #define GLFW_INCLUDE_VULKAN
