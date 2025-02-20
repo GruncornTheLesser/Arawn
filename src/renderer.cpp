@@ -6,7 +6,7 @@
 #include <fstream>
 
 auto init_pipeline_layout(VkDescriptorSetLayout set_layout) -> VkPipelineLayout; 
-auto init_pipeline(VkRenderPass renderpass, VkPipelineLayout layout, VkShaderModule vert, VkShaderModule frag) -> VkPipeline;
+auto init_pipeline(VkRenderPass renderpass, VkPipelineLayout layout, VkSampleCountFlagBits msaa_sample, VkShaderModule vert, VkShaderModule frag) -> VkPipeline;
 
 
 Renderer::Renderer(const Window& window, AntiAlias alias_mode, VsyncMode vsync_mode, SyncMode sync_mode) 
@@ -29,7 +29,7 @@ Renderer::Renderer(const Window& window, AntiAlias alias_mode, VsyncMode vsync_m
     auto frag = create_shader_module("res/import/shaders/def.frag.spv");
     
     present_pass.layout = init_pipeline_layout(set_layout);
-    present_pass.pipeline = init_pipeline(present_pass.renderpass, present_pass.layout, vert, frag);
+    present_pass.pipeline = init_pipeline(present_pass.renderpass, present_pass.layout, sample_count, vert, frag);
     
     vkDestroyShaderModule(engine.device, vert, nullptr);
     vkDestroyShaderModule(engine.device, frag, nullptr);
@@ -164,9 +164,10 @@ void Renderer::draw() {
         }
 
         { // begin renderpass
-            VkClearValue clear_value[2];
+            VkClearValue clear_value[3];
             clear_value[0].depthStencil = { 1.0f, 0 };
             clear_value[1].color = {{ 0.58f, 0, 0.84, 0 }};
+            clear_value[2].color = {{ 0.58f, 0, 0.84, 0 }};
 
             VkRenderPassBeginInfo info{};
             info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -175,7 +176,7 @@ void Renderer::draw() {
             info.framebuffer = present_pass.framebuffers[image_index];
             info.renderArea.offset = { 0, 0 };
             info.renderArea.extent = { resolution.x, resolution.y };
-            info.clearValueCount = 2;
+            info.clearValueCount = anti_alias == AntiAlias::NONE ? 2 : 3;
             info.pClearValues = clear_value;
             
             vkCmdBeginRenderPass(cmd_buffer, &info, VK_SUBPASS_CONTENTS_INLINE);
@@ -534,7 +535,7 @@ void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_f
         // swapchain image attachment -> if msaa enabled used as colour attachment, else used as resolve attachment
         attachments[1].flags = 0;
         attachments[1].format = colour_format;
-        attachments[1].samples = VK_SAMPLE_COUNT_1_BIT; // always 1
+        attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
         attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -783,7 +784,7 @@ auto init_pipeline_layout(VkDescriptorSetLayout set_layout)
     return pipeline_layout;
 }
 
-auto init_pipeline(VkRenderPass renderpass, VkPipelineLayout layout, VkShaderModule vert, VkShaderModule frag)
+auto init_pipeline(VkRenderPass renderpass, VkPipelineLayout layout, VkSampleCountFlagBits msaa_sample, VkShaderModule vert, VkShaderModule frag)
  -> VkPipeline {
     VkPipelineShaderStageCreateInfo shader_stages[2];
     shader_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -830,7 +831,7 @@ auto init_pipeline(VkRenderPass renderpass, VkPipelineLayout layout, VkShaderMod
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; // TODO: msaa sample count
+    multisampling.rasterizationSamples = msaa_sample;
 
     VkPipelineDepthStencilStateCreateInfo depth_stencil{};
     depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
