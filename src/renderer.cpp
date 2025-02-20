@@ -165,8 +165,8 @@ void Renderer::draw() {
 
         { // begin renderpass
             VkClearValue clear_value[2];
-            clear_value[0].color = {{ 0, 1, 0, 0 }};
-            clear_value[1].depthStencil = { 1.0f, 0 };
+            clear_value[0].depthStencil = { 1.0f, 0 };
+            clear_value[1].color = {{ 0.58f, 0, 0.84, 0 }};
 
             VkRenderPassBeginInfo info{};
             info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -824,7 +824,7 @@ auto init_pipeline(VkRenderPass renderpass, VkPipelineLayout layout, VkShaderMod
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE; // COUNTER_
     rasterizer.depthBiasEnable = VK_FALSE;
 
     VkPipelineMultisampleStateCreateInfo multisampling{};
@@ -843,7 +843,7 @@ auto init_pipeline(VkRenderPass renderpass, VkPipelineLayout layout, VkShaderMod
     VkPipelineColorBlendAttachmentState colour_attachment{};
     colour_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     colour_attachment.blendEnable = VK_FALSE;
-
+    
     VkPipelineColorBlendStateCreateInfo colour_blending{};
     colour_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colour_blending.logicOpEnable = VK_FALSE;
