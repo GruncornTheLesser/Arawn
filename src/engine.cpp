@@ -13,8 +13,6 @@
 7. init descriptor pools
 */
 
-const Engine engine{ "ARAWN", "ARAWN-vulkan" };
-
 Engine::Engine(const char* app_name, const char* engine_name) {
     std::vector<const char*> inst_layers =     { "VK_LAYER_KHRONOS_validation"   };
     std::vector<const char*> device_layers =   { "VK_LAYER_KHRONOS_validation"   };
@@ -29,7 +27,7 @@ Engine::Engine(const char* app_name, const char* engine_name) {
     { // check instance layer support
         uint32_t count;
         vkEnumerateInstanceLayerProperties(&count, nullptr);
-
+        
         std::vector<VkLayerProperties> available(count);
         vkEnumerateInstanceLayerProperties(&count, available.data());
         
@@ -269,6 +267,13 @@ Engine::Engine(const char* app_name, const char* engine_name) {
 
         VK_ASSERT(vkCreateDescriptorPool(device, &info, nullptr, &descriptor_pool));
     }
+    
+    { // select formats
+        VkFormat depth_formats[3]  = { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT }; 
+        format.attachment.depth = select_image_format({ depth_formats, 3 }, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+        // ...
+    
+    }
 }
 
 Engine::~Engine() {
@@ -289,6 +294,40 @@ Engine::~Engine() {
     glfwTerminate();
 }
 
+VkFormat Engine::select_buffer_format(std::span<VkFormat> formats, VkFormatFeatureFlags features) const {
+    VkFormatProperties properties;
+    for (VkFormat format : formats) {
+        vkGetPhysicalDeviceFormatProperties(engine.gpu, format, &properties);
+        if ((properties.bufferFeatures & features) != 0) 
+            return format;
+    }
+    throw std::runtime_error("no specified format supported");
+}
+
+VkFormat Engine::select_image_format(std::span<VkFormat> formats, VkFormatFeatureFlags features) const {
+    VkFormatProperties properties;
+   for (VkFormat format : formats) {
+        vkGetPhysicalDeviceFormatProperties(engine.gpu, format, &properties);
+        if ((properties.optimalTilingFeatures & features) != 0) 
+            return format;
+    }
+    throw std::runtime_error("no specified format supported");
+}
+
+uint32_t Engine::get_memory_index(uint32_t type_bits, VkMemoryPropertyFlags flags) const {
+    VkPhysicalDeviceMemoryProperties properties;
+    vkGetPhysicalDeviceMemoryProperties(engine.gpu, &properties);
+
+    for (uint32_t i = 0; i < properties.memoryTypeCount; ++i) {
+        if ((type_bits & (1 << i)) && (properties.memoryTypes[i].propertyFlags & flags) == flags) {
+            return i;
+        }
+    }
+
+    throw std::exception();
+}
+
 void log_error(std::string_view msg, std::source_location loc) {
     std::cout << loc.file_name() << ":" << loc.line() << " - " << msg.data();
 }
+

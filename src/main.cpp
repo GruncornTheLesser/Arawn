@@ -1,23 +1,32 @@
+
+#include "engine.h"
 #include "window.h"
 #include "renderer.h"
+#include <entt/entt.hpp>
+#include <iostream>
+
 
 /*
 TODOLIST:
- * add signals to window, eg resize
  * connect signals to renderer eg resize -> recreate swapchain
  * materials
  * lights
  * forward renderer
  * deferred renderer
- * add imgui
+ * add gui
  * settings menu
+ * scene loading - https://casual-effects.com/data/
+ * performance metrics
 */
 
-int main() {
-    Window window(800u, 600u, DisplayMode::WINDOWED);
-    Renderer renderer(window, AntiAlias::NONE, VsyncMode::OFF, SyncMode::DOUBLE);
-    while (!window.closed()) { 
-        renderer.draw();
-    }
-}
+const Engine engine{ "ARAWN", "ARAWN-vulkan" };
 
+int main() {
+    Window window(640, 400);
+    window.on<Mouse::Event>().attach([](auto& event) { 
+        std::cout << event.x << ", " << event.y << std::endl;
+    });
+
+    Renderer renderer(window, AntiAlias::MSAA_4, VsyncMode::ON, SyncMode::DOUBLE);
+    while (!window.closed()) renderer.draw();
+}

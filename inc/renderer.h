@@ -55,18 +55,11 @@ public:
     void draw();
 
 private:
-    static inline auto get_frame_count(SyncMode mode) -> uint32_t;
-    static inline auto get_surface_data(VK_TYPE(VkSurfaceKHR) surface) -> std::pair<VK_TYPE(VkFormat), VK_TYPE(VkColorSpaceKHR)>;
-    static inline auto get_present_mode(VK_TYPE(VkSurfaceKHR) surface, VsyncMode vsync_mode) -> VK_TYPE(VkPresentModeKHR);
     static inline auto get_sample_count(AntiAlias anti_alias) -> VK_TYPE(VkSampleCountFlagBits);
-    // TODO: move to engine
-    static inline auto get_depth_format() -> VK_TYPE(VkFormat);
-    static inline auto get_memory_index(uint32_t type_bits, VK_TYPE(VkMemoryPropertyFlags) flags) -> uint32_t;
+    static inline auto get_surface_data(VK_TYPE(VkSurfaceKHR) surface, VsyncMode vsync_mode)
+     -> std::tuple<VK_TYPE(VkFormat), VK_TYPE(VkColorSpaceKHR), VK_ENUM(VkPresentModeKHR)>;
 
     static inline auto create_shader_module(std::filesystem::path fp) -> VK_TYPE(VkShaderModule);
-
-
-    void init_resolution();
 
     void init_descriptors();
     void destroy_descriptors();
@@ -94,7 +87,6 @@ private:
     VK_TYPE(VkSwapchainKHR) swapchain;
     VK_TYPE(VkImageView)* swapchain_views;
     
-    // 1 unique cmd_buffer per operation in parallel
     VK_TYPE(VkDescriptorSetLayout) set_layout;
     
 
@@ -122,6 +114,7 @@ private:
 
 
 /*
+cmd_buffer -> 1 unique cmd_buffer per operation in parallel
 semaphore -> signals for GPU to GPU, across multiple queues
 fence -> signals for GPU to CPU, 
 */

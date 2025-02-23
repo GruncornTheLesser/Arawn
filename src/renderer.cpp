@@ -8,22 +8,19 @@
 auto init_pipeline_layout(VkDescriptorSetLayout set_layout) -> VkPipelineLayout; 
 auto init_pipeline(VkRenderPass renderpass, VkPipelineLayout layout, VkSampleCountFlagBits msaa_sample, VkShaderModule vert, VkShaderModule frag) -> VkPipeline;
 
-
 Renderer::Renderer(const Window& window, AntiAlias alias_mode, VsyncMode vsync_mode, SyncMode sync_mode) 
- : window(window), anti_alias(alias_mode), vsync_mode(vsync_mode), frame_count(get_frame_count(sync_mode)), frame_index(0) 
+ : window(window), anti_alias(alias_mode), vsync_mode(vsync_mode), frame_count(static_cast<uint32_t>(sync_mode)), frame_index(0) 
 {
     // get window surface
     VK_ASSERT(glfwCreateWindowSurface(engine.instance, window.window, nullptr, &surface));
-    auto [colour_format, colour_space] = get_surface_data(surface);
-    auto depth_format = get_depth_format();
-    auto present_mode = get_present_mode(surface, vsync_mode);
+    auto [colour_format, colour_space, present_mode] = get_surface_data(surface, vsync_mode);
     auto sample_count = get_sample_count(anti_alias);
     resolution = window.get_resolution();
 
     init_swapchain(colour_format, colour_space, present_mode, nullptr);
-    init_present_framebuffer(depth_format, colour_format, sample_count);
+    init_present_framebuffer(engine.format.attachment.depth, colour_format, sample_count);
     init_present_commands();
-    //init_descriptors();
+    init_descriptors();
 
     auto vert = create_shader_module("res/import/shaders/def.vert.spv");
     auto frag = create_shader_module("res/import/shaders/def.frag.spv");
@@ -250,66 +247,52 @@ void Renderer::draw() {
     frame_index = (frame_index + 1) % frame_count; // get next frame data set
 }
 
-auto Renderer::get_frame_count(SyncMode mode)
- -> uint32_t {
-    return static_cast<uint32_t>(mode);
-}
-
-auto Renderer::get_surface_data(VK_TYPE(VkSurfaceKHR) surface)
- -> std::pair<VK_TYPE(VkFormat), VK_TYPE(VkColorSpaceKHR)> {
+auto Renderer::get_surface_data(VkSurfaceKHR surface, VsyncMode vsync_mode)
+ -> std::tuple<VkFormat, VkColorSpaceKHR, VkPresentModeKHR> {
     VkFormat format;
     VkColorSpaceKHR colour_space;
-    
-    uint32_t count;
-    VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(engine.gpu, surface, &count, nullptr));
-    std::vector<VkSurfaceFormatKHR> supported(count);
-    VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(engine.gpu, surface, &count, supported.data()));
+    VkPresentModeKHR present_mode;
 
-    for (VkSurfaceFormatKHR& surface_format : supported) {
-        switch (surface_format.format) {
-            case(VK_FORMAT_R8G8B8A8_SRGB): break;
-            case(VK_FORMAT_B8G8R8A8_SRGB): break;
-            case(VK_FORMAT_R8G8B8A8_UNORM): break;
-            case(VK_FORMAT_B8G8R8A8_UNORM): break;
-            default: continue;
+    { // get format
+        uint32_t count;
+        VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(engine.gpu, surface, &count, nullptr));
+        std::vector<VkSurfaceFormatKHR> supported(count);
+        VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(engine.gpu, surface, &count, supported.data()));
+
+        for (VkSurfaceFormatKHR& surface_format : supported) {
+            switch (surface_format.format) {
+                case(VK_FORMAT_R8G8B8A8_SRGB): break;
+                case(VK_FORMAT_B8G8R8A8_SRGB): break;
+                case(VK_FORMAT_R8G8B8A8_UNORM): break;
+                case(VK_FORMAT_B8G8R8A8_UNORM): break;
+                default: continue;
+            }
+            format = surface_format.format;
+            colour_space = surface_format.colorSpace;
         }
-        format = surface_format.format;
-        colour_space = surface_format.colorSpace;
     }
+    { 
+        uint32_t count;
+        VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, nullptr));
+        std::vector<VkPresentModeKHR> supported(count);
+        VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, supported.data()));
 
-    return { format, colour_space };
-}
-
-auto Renderer::get_present_mode(VK_TYPE(VkSurfaceKHR) surface, VsyncMode vsync_mode)
- -> VK_TYPE(VkPresentModeKHR) {
-    /*  https://registry.khronos.org/vulkan/specs/latest/man/html/VkPresentModeKHR.html
-    vsync off
-    VK_PRESENT_MODE_IMMEDIATE_KHR - standard vsync off
-    VK_PRESENT_MODE_FIFO_RELAXED_KHR - vsync off, will skip a swapchain image if a new image available
-    vsync on
-    VK_PRESENT_MODE_FIFO_KHR - standard vsync on
-    VK_PRESENT_MODE_MAILBOX_KHR - vsync on, will skip a swapchain image if a new image available
-    */
-
-    uint32_t count;
-    VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, nullptr));
-    std::vector<VkPresentModeKHR> supported(count);
-    VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, supported.data()));
-        
-    bool frame_skip_support;
-
-    switch (vsync_mode) {
-    case VsyncMode::OFF:
-        frame_skip_support = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_FIFO_RELAXED_KHR) != supported.end(); 
-        return frame_skip_support ? VK_PRESENT_MODE_FIFO_RELAXED_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
-    case VsyncMode::ON:
-        frame_skip_support = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_MAILBOX_KHR) != supported.end();
-        return frame_skip_support ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
+        bool frame_skip_support; // frame skip allows the swapchain to present the most recently created image
+        switch (vsync_mode) {
+        case VsyncMode::OFF:
+            frame_skip_support = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_FIFO_RELAXED_KHR) != supported.end();
+            present_mode = frame_skip_support ? VK_PRESENT_MODE_FIFO_RELAXED_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
+            break;
+        case VsyncMode::ON:
+            frame_skip_support = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_MAILBOX_KHR) != supported.end();
+            present_mode = frame_skip_support ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
+        }
     }
+    return { format, colour_space, present_mode };
 }
 
 auto Renderer::get_sample_count(AntiAlias anti_alias)
- -> VK_TYPE(VkSampleCountFlagBits) {
+ -> VkSampleCountFlagBits {
     switch (anti_alias) {
         case AntiAlias::NONE:    return VK_SAMPLE_COUNT_1_BIT;
         // FXAA is implemented in a post processor shader 
@@ -323,36 +306,6 @@ auto Renderer::get_sample_count(AntiAlias anti_alias)
         case AntiAlias::MSAA_8:  return VK_SAMPLE_COUNT_8_BIT;
         case AntiAlias::MSAA_16: return VK_SAMPLE_COUNT_16_BIT;
     }
-}
-
-auto Renderer::get_depth_format() -> VK_TYPE(VkFormat) {
-    VkFormatProperties properties;
-    vkGetPhysicalDeviceFormatProperties(engine.gpu, VK_FORMAT_D32_SFLOAT, &properties);
-    if ((properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0) 
-        return VK_FORMAT_D32_SFLOAT;
-
-    vkGetPhysicalDeviceFormatProperties(engine.gpu, VK_FORMAT_D32_SFLOAT_S8_UINT, &properties);
-    if ((properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0) 
-        return VK_FORMAT_D32_SFLOAT_S8_UINT;
-
-    vkGetPhysicalDeviceFormatProperties(engine.gpu, VK_FORMAT_D24_UNORM_S8_UINT, &properties);
-    if ((properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0) 
-        return VK_FORMAT_D24_UNORM_S8_UINT;
-
-    throw std::exception();
-}
-
-auto Renderer::get_memory_index(uint32_t type_bits, VK_TYPE(VkMemoryPropertyFlags) flags) -> uint32_t {
-    VkPhysicalDeviceMemoryProperties properties;
-    vkGetPhysicalDeviceMemoryProperties(engine.gpu, &properties);
-
-    for (uint32_t i = 0; i < properties.memoryTypeCount; ++i) {
-        if ((type_bits & (1 << i)) && (properties.memoryTypes[i].propertyFlags & flags) == flags) {
-            return i;
-        }
-    }
-
-    throw std::exception();
 }
 
 auto Renderer::create_shader_module(std::filesystem::path fp) -> VkShaderModule {
@@ -492,14 +445,12 @@ void Renderer::recreate_swapchain() {
     destroy_present_framebuffer();
     destroy_swapchain();
     
-    auto [colour_format, colour_space] = get_surface_data(surface);
-    auto depth_format = get_depth_format();
-    auto present_mode = get_present_mode(surface, vsync_mode);
+    auto [colour_format, colour_space, present_mode] = get_surface_data(surface, vsync_mode);
     auto sample_count = get_sample_count(anti_alias);
     resolution = window.get_resolution();
 
     init_swapchain(colour_format, colour_space, present_mode, nullptr);
-    init_present_framebuffer(depth_format, colour_format, sample_count);
+    init_present_framebuffer(engine.format.attachment.depth, colour_format, sample_count);
 }
 
 void Renderer::destroy_swapchain() {
@@ -590,6 +541,8 @@ void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_f
         dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         dependencies[0].dependencyFlags = 0;
         
+
+        
         VkRenderPassCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
         info.pNext = nullptr;
@@ -625,11 +578,11 @@ void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_f
         { // init memory
             VkMemoryRequirements requirements;
             vkGetImageMemoryRequirements(engine.device, present_pass.depth_attachment.image, &requirements);
-
+            uint32_t memory_index = engine.get_memory_index(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             VkMemoryAllocateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
             info.pNext = nullptr;
-            info.memoryTypeIndex = get_memory_index(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            info.memoryTypeIndex = memory_index;
             info.allocationSize = requirements.size;
 
             VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &present_pass.depth_attachment.memory));
@@ -680,11 +633,11 @@ void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_f
         { // init memory
             VkMemoryRequirements requirements;
             vkGetImageMemoryRequirements(engine.device, present_pass.colour_attachment.image, &requirements);
-
+            uint32_t memory_index = engine.get_memory_index(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             VkMemoryAllocateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
             info.pNext = nullptr;
-            info.memoryTypeIndex = get_memory_index(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            info.memoryTypeIndex = memory_index;
             info.allocationSize = requirements.size;
 
             VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &present_pass.colour_attachment.memory));
