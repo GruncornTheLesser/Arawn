@@ -258,19 +258,18 @@ void Window::set_display_mode(DisplayMode display_mode) {
     case DisplayMode::FULLSCREEN: {
         int width, height;
         glfwGetWindowSize(window, &width, &height);
-        glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_FALSE);
-        glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);
         glfwSetWindowMonitor(window, nullptr, 0, 0, width, height, GLFW_DONT_CARE);
         
+        glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);
+        glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_FALSE);
         break;
     }
     case DisplayMode::WINDOWED: {
         int width, height;
         glfwGetWindowSize(window, &width, &height);
-        glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_TRUE);
-        glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE);
         glfwSetWindowMonitor(window, nullptr, 50, 50, width, height, GLFW_DONT_CARE);
-        glfwSetWindowPos(window, 10, 10);
+        glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE);
+        glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_TRUE);
         break;
     }
     }
