@@ -1,10 +1,11 @@
 #pragma once
 #include "vulkan.h"
+#include "dispatcher.h"
+#include <glm/glm.hpp>
 #include <utility>
 #include <vector>
-#include "dispatcher.h"
 
-enum class DisplayMode { WINDOWED, FULLSCREEN }; // EXCLUSIVE
+enum class DisplayMode { WINDOWED=0, FULLSCREEN=1, EXCLUSIVE=2 };
 
 struct Key {
     enum Code : uint8_t {
@@ -28,12 +29,13 @@ struct Key {
         BACKSLASH='\\',     // 92
         RIGHT_BRACKET=']',  // 93
         GRAVE_ACCENT='`',   // 96
+        PLUS=EQUAL,
+        UNDERSCORE=MINUS
     };
     enum State { UP=0, DOWN=128 };
     struct Event {
         Event(uint32_t flags) : flags(flags) { }
     
-        bool operator==(uint8_t val) { return val == flags; }
         bool operator==(Code val) const { return (code_mask & flags) == val; }
         bool operator==(State val) const { return (state_mask & flags) == val; }
         
@@ -53,6 +55,9 @@ struct Mouse {
     struct Event { 
         Event(uint32_t flags, int x, int y) : flags(flags), x(x), y(y) { }
 
+        bool operator==(Code val) const { return (code_mask & flags) == val; }
+        bool operator==(State val) const { return (state_mask & flags) == val; }
+
         Code code() { return static_cast<Code>(flags & code_mask); }
         State state() { return static_cast<State>(flags & state_mask); }
 
@@ -64,14 +69,12 @@ struct Mouse {
     };
 };
 
-struct ResizeEvent { uint32_t width, height; };
-
 class Window : public Dispatcher<Key::Event, Mouse::Event> 
 {
     friend class Renderer;
 public:
     struct Settings { struct { uint32_t x, y; } resolution; DisplayMode display_mode; };
-    Window(uint32_t width = 640, uint32_t height = 400, const char* title ="", DisplayMode display = DisplayMode::WINDOWED);
+    Window(uint32_t width = 640, uint32_t height = 400, DisplayMode display = DisplayMode::WINDOWED);
     ~Window();
     
     Window(Window&&);
@@ -81,15 +84,14 @@ public:
     Window& operator=(const Window&) = delete;
     
     void set_title(const char* title);
-    void get_title() const;
     
     void set_resolution(uint32_t width, uint32_t height);
-    auto get_resolution() const -> std::pair<uint32_t, uint32_t>;
-    auto enum_resolutions() const -> std::vector<std::pair<uint32_t, uint32_t>>;
+    auto get_resolution() const -> glm::uvec2;
+    auto enum_resolutions(float ratio, float precision=0.2f) const -> std::vector<glm::uvec2>;
 
     void set_display_mode(DisplayMode mode);
-    auto get_display_mode() -> DisplayMode;
-    auto enum_display_modes() -> std::vector<DisplayMode>;
+    auto get_display_mode() const -> DisplayMode;
+    auto enum_display_modes() const -> std::vector<DisplayMode>;
 
     // attributes
     auto closed() const -> bool;
@@ -101,11 +103,8 @@ private:
     static void mouse_move_callback(VK_TYPE(GLFWwindow*) glfwWindow, double xpos, double ypos);
     static void mouse_scroll_callback(VK_TYPE(GLFWwindow*) glfwWindow, double xoffset, double yoffset);
     static void mouse_button_callback(VK_TYPE(GLFWwindow*) glfwWindow, int button, int action, int mods);
-    static void window_resize_callback(VK_TYPE(GLFWwindow*) glfwWindow, int width, int height);
-
-    VK_TYPE(GLFWmonitor*) monitor = nullptr;
+protected:
     VK_TYPE(GLFWwindow*) window = nullptr;
-
 };
 
 

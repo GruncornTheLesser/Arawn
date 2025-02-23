@@ -12,7 +12,7 @@ struct Listener {
 template<typename ... event_Ts>
 class Dispatcher : public Dispatcher<event_Ts>... {
 public:
-    template<typename event_T> Dispatcher<event_T>& on() { return  *this; }
+    template<typename event_T> Dispatcher<event_T>& on() { return *this; }
 };
 
 template<typename event_T>
@@ -42,7 +42,7 @@ public:
         auto end = std::remove_if(data.begin(), data.begin() + active, [&](const auto& listener) { 
             return listener.handle == handle; 
         });
-        active = end - data.begin(); // should only remove 1 but this feels more safe
+        active = end - data.begin(); // should only have to remove 1 but this feels safer
     }
     void clear() { 
         active = 0;
@@ -50,9 +50,9 @@ public:
     }
 
     void invoke(event_T event) { 
-        auto end = std::remove_if(data.begin(), data.begin() + active, [&](const auto& listener) { 
+        auto end = std::remove_if(data.begin(), data.begin() + active, [&](const auto& listener) {
             listener.callback(event);
-            return listener.once; 
+            return listener.once;
         });
         std::for_each(end, data.begin() + active, [&](auto& listener) { 
             listener.callback = nullptr;

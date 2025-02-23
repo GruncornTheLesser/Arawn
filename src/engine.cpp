@@ -3,6 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+
 /*
 1. init glfw
 2. init vulkan instance
@@ -13,7 +14,7 @@
 7. init descriptor pools
 */
 
-Engine::Engine(const char* app_name, const char* engine_name) {
+Engine::Engine(const char* app_name, const char* engine_name, const char* device_name) {
     std::vector<const char*> inst_layers =     { "VK_LAYER_KHRONOS_validation"   };
     std::vector<const char*> device_layers =   { "VK_LAYER_KHRONOS_validation"   };
     std::vector<const char*> inst_extensions   { VK_KHR_SURFACE_EXTENSION_NAME   };
@@ -75,8 +76,20 @@ Engine::Engine(const char* app_name, const char* engine_name) {
 
         std::vector<VkPhysicalDevice> devices(count);
         vkEnumeratePhysicalDevices(instance, &count, devices.data());
-
-        gpu = devices[1]; // 0=intel, 1=nvidia
+        
+        uint32_t index = 0;
+        if (engine_name != nullptr) {
+            for (uint32_t i = 0; i < count; ++i) {
+                VkPhysicalDeviceProperties properties;
+                vkGetPhysicalDeviceProperties(devices[i], &properties);
+                
+                if (strcmp(device_name, properties.deviceName) == 0) {
+                    index = i;
+                    break;
+                }
+            }
+        }
+        gpu = devices[index]; // 0=intel, 1=nvidia
     }
 
     { // check device layer support

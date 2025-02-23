@@ -7,7 +7,7 @@
 
 enum class SyncMode { DOUBLE=2, TRIPLE=3 }; 
 enum class VsyncMode { OFF, ON }; // ADAPTIVE
-enum class AntiAlias { NONE, MSAA_2, MSAA_4, MSAA_8, MSAA_16 }; // FXAA_2, FXAA_4, FXAA_8, FXAA_16, 
+enum class AntiAlias { NONE = 1, MSAA_2 = 2, MSAA_4 = 4, MSAA_8 = 8, MSAA_16 = 16 }; // FXAA_2, FXAA_4, FXAA_8, FXAA_16, 
 
 class Pass {
 public:
@@ -15,19 +15,21 @@ public:
     virtual VK_TYPE(VkCommandBuffer) get_cmd_buffer() const = 0;
 };
 
-class Renderer {
+class Renderer : public Window {
 public:
-    struct Settings {
+    struct Settings : Window::Settings {
         VsyncMode vsync_mode;               // present mode
         AntiAlias anti_alias_mode;          // anti-alias mode
         SyncMode sync_mode;                 // double/triple buffering
     };
     Renderer(const Window& wnd, const Settings& settings);
 
-    Renderer(const Window& wnd, 
-        AntiAlias anti_alias=AntiAlias::NONE, 
+    Renderer(uint32_t width=800, uint32_t height=600,
+        DisplayMode display_mode=DisplayMode::WINDOWED,
         VsyncMode vsync_mode=VsyncMode::OFF, 
-        SyncMode sync_mode=SyncMode::DOUBLE);
+        SyncMode sync_mode=SyncMode::DOUBLE,
+        AntiAlias anti_alias=AntiAlias::NONE
+    );
     
     ~Renderer();
     Renderer(Renderer&&);
@@ -35,7 +37,7 @@ public:
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
 
-    // updates the swapchain
+    // attributes
     void set_vsync_mode(VsyncMode mode);
     VsyncMode get_vsync_mode() const;
     std::vector<VsyncMode> enum_vsync_modes() const;
@@ -44,15 +46,16 @@ public:
     SyncMode get_sync_mode() const;
     std::vector<SyncMode> enum_sync_modes() const;
     
-    // updates the present pass
     void set_anti_alias(AntiAlias mode);
     AntiAlias get_anti_alias() const;
     std::vector<AntiAlias> enum_anti_alias() const;
 
     //void set_depth_prepass_enabled(bool value);
     //bool get_depth_prepass_enabled() const;
-
+    
     void draw();
+
+    void recreate_swapchain();
 
 private:
     static inline auto get_sample_count(AntiAlias anti_alias) -> VK_TYPE(VkSampleCountFlagBits);
@@ -67,26 +70,16 @@ private:
     void init_present_commands();
     void destroy_present_commands();
 
-    void init_swapchain(VK_TYPE(VkFormat) format, VK_TYPE(VkColorSpaceKHR) colour_space, VK_TYPE(VkPresentModeKHR) present_mode, VK_TYPE(VkSwapchainKHR) old_swapchain=nullptr);
-    void destroy_swapchain();
-
-    void init_present_framebuffer(VK_TYPE(VkFormat) depth_format, VK_TYPE(VkFormat) colour_format, VK_TYPE(VkSampleCountFlagBits) msaa_sample);
-    void destroy_present_framebuffer();
-
-    void recreate_swapchain();
 private:
-    const Window& window;
-    struct { uint32_t x, y; 
-        auto& operator=(std::pair<uint32_t, uint32_t> val) { x = val.first; y = val.second; return *this; }
-    } resolution;
     VsyncMode vsync_mode;
     AntiAlias anti_alias;
     uint32_t frame_count; // double/triple buffering
 
     VK_TYPE(VkSurfaceKHR) surface;
     VK_TYPE(VkSwapchainKHR) swapchain;
-    VK_TYPE(VkImageView)* swapchain_views;
-    
+    VK_TYPE(VkImageView)* swapchain_views;  // array of image views
+    glm::uvec2 swapchain_extent;
+
     VK_TYPE(VkDescriptorSetLayout) set_layout;
     
 
@@ -98,12 +91,12 @@ private:
         VK_TYPE(VkFence)         in_flight[MAX_FRAMES_IN_FLIGHT];
 
         VK_TYPE(VkRenderPass) renderpass;
-        VK_TYPE(VkFramebuffer)* framebuffers;
+        VK_TYPE(VkFramebuffer)* framebuffers; // array of framebuffers
         struct {
             VK_TYPE(VkImage) image;
             VK_TYPE(VkImageView) view;
             VK_TYPE(VkDeviceMemory) memory;
-        } colour_attachment, depth_attachment;
+        } resolve_attachment, depth_attachment;
 
         VK_TYPE(VkPipeline) pipeline;
         VK_TYPE(VkPipelineLayout) layout;

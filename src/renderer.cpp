@@ -8,49 +8,125 @@
 auto init_pipeline_layout(VkDescriptorSetLayout set_layout) -> VkPipelineLayout; 
 auto init_pipeline(VkRenderPass renderpass, VkPipelineLayout layout, VkSampleCountFlagBits msaa_sample, VkShaderModule vert, VkShaderModule frag) -> VkPipeline;
 
-Renderer::Renderer(const Window& window, AntiAlias alias_mode, VsyncMode vsync_mode, SyncMode sync_mode) 
- : window(window), anti_alias(alias_mode), vsync_mode(vsync_mode), frame_count(static_cast<uint32_t>(sync_mode)), frame_index(0) 
-{
-    // get window surface
-    VK_ASSERT(glfwCreateWindowSurface(engine.instance, window.window, nullptr, &surface));
-    auto [colour_format, colour_space, present_mode] = get_surface_data(surface, vsync_mode);
-    auto sample_count = get_sample_count(anti_alias);
-    resolution = window.get_resolution();
+Renderer::Renderer(uint32_t width, uint32_t height, DisplayMode display_mode, VsyncMode vsync_mode, SyncMode sync_mode, AntiAlias alias_mode) 
+ : Window(width, height, display_mode), vsync_mode(vsync_mode), frame_count(static_cast<uint32_t>(sync_mode)), anti_alias(alias_mode), frame_index(0)
+{    
+    { // init cmd buffers
+        VkCommandBufferAllocateInfo cmd_buffer_info{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, frame_count };
+        VK_ASSERT(vkAllocateCommandBuffers(engine.device, &cmd_buffer_info, present_pass.cmd_buffers));
+        
+        VkSemaphoreCreateInfo semaphore_info{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
+        VkFenceCreateInfo fence_info{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
+        for (uint32_t i = 0; i < frame_count; ++i) {
+            VK_ASSERT(vkCreateSemaphore(engine.device, &semaphore_info, nullptr, &present_pass.finished[i]));
+            VK_ASSERT(vkCreateSemaphore(engine.device, &semaphore_info, nullptr, &present_pass.image_available[i]));
+            VK_ASSERT(vkCreateFence(engine.device, &fence_info, nullptr, &present_pass.in_flight[i]));
+        }
+    }
 
-    init_swapchain(colour_format, colour_space, present_mode, nullptr);
-    init_present_framebuffer(engine.format.attachment.depth, colour_format, sample_count);
-    init_present_commands();
-    init_descriptors();
+    // create surface
+    VK_ASSERT(glfwCreateWindowSurface(engine.instance, window, nullptr, &surface));
+
+    swapchain = nullptr;
+    recreate_swapchain();
+
+    { // init descriptor set layout
+        VkDescriptorSetLayoutBinding bindings[3];
+        bindings[0].binding = 0; // lights
+        bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[0].descriptorCount = 1;
+        bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+        bindings[0].pImmutableSamplers = nullptr;
+
+        bindings[1].binding = 1; // materials
+        bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[1].descriptorCount = 1;
+        bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        bindings[1].pImmutableSamplers = nullptr;
+
+        bindings[2].binding = 2; // materials images
+        bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        bindings[2].descriptorCount = 1;
+        bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        bindings[2].pImmutableSamplers = nullptr;
+
+        VkDescriptorSetLayoutCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        info.pNext = nullptr;
+        info.flags = 0;
+        info.bindingCount = 3;
+        info.pBindings = bindings;
+
+        VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &set_layout));
+    }
 
     auto vert = create_shader_module("res/import/shaders/def.vert.spv");
     auto frag = create_shader_module("res/import/shaders/def.frag.spv");
     
     present_pass.layout = init_pipeline_layout(set_layout);
-    present_pass.pipeline = init_pipeline(present_pass.renderpass, present_pass.layout, sample_count, vert, frag);
+    present_pass.pipeline = init_pipeline(present_pass.renderpass, present_pass.layout, static_cast<VkSampleCountFlagBits>(anti_alias), vert, frag);
     
     vkDestroyShaderModule(engine.device, vert, nullptr);
     vkDestroyShaderModule(engine.device, frag, nullptr);
 }
 
 Renderer::~Renderer() {
-    // destroy present pass attachment
     vkDeviceWaitIdle(engine.device);
 
     vkDestroyPipeline(engine.device, present_pass.pipeline, nullptr);
     vkDestroyPipelineLayout(engine.device, present_pass.layout, nullptr);
     
-    //destroy_descriptors();
-    destroy_present_commands();
-    destroy_present_framebuffer();
-    destroy_swapchain();
-
     vkDestroyDescriptorSetLayout(engine.device, set_layout, nullptr);
+
+    vkFreeCommandBuffers(engine.device, engine.graphics.pool, frame_count, present_pass.cmd_buffers);
+    for (uint32_t i = 0; i < frame_count; ++i) {
+        vkDestroySemaphore(engine.device, present_pass.finished[i], nullptr);
+        vkDestroySemaphore(engine.device, present_pass.image_available[i], nullptr);
+        vkDestroyFence(engine.device, present_pass.in_flight[i], nullptr);
+    }
+
+    bool old_msaa_enabled = present_pass.resolve_attachment.image != nullptr;
+    
+    uint32_t image_count;
+    vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, nullptr);
+
+    for (uint32_t i = 0; i < image_count; ++i)
+        vkDestroyFramebuffer(engine.device, present_pass.framebuffers[i], nullptr);
+    std::allocator<VkFramebuffer>().deallocate(present_pass.framebuffers, image_count);
+
+    // destroy depth attachment
+    vkDestroyImageView(engine.device, present_pass.depth_attachment.view, nullptr);
+    vkFreeMemory(engine.device, present_pass.depth_attachment.memory, nullptr);
+    vkDestroyImage(engine.device, present_pass.depth_attachment.image, nullptr);
+    
+    if (old_msaa_enabled) { // destroy resolve attachment
+        vkDestroyImageView(engine.device, present_pass.resolve_attachment.view, nullptr);
+        vkFreeMemory(engine.device, present_pass.resolve_attachment.memory, nullptr);
+        vkDestroyImage(engine.device, present_pass.resolve_attachment.image, nullptr);
+    }
+    
+    vkDestroyRenderPass(engine.device, present_pass.renderpass, nullptr);
+    
+    for (uint32_t i = 0; i < image_count; ++i) 
+        vkDestroyImageView(engine.device, swapchain_views[i], nullptr);
+    std::allocator<VkImageView>().deallocate(swapchain_views, image_count);
+    
+    vkDestroySwapchainKHR(engine.device, swapchain, nullptr);
  
     vkDestroySurfaceKHR(engine.instance, surface, nullptr);
 }
 
+//void Renderer::set_resolution(uint32_t width, uint32_t height) {
+//    
+//}
+
+//glm::uvec2 Renderer::get_resolution() const {
+//    
+//}
+
 void Renderer::set_vsync_mode(VsyncMode mode) { 
-    // TODO:
+    vsync_mode = mode;
+    recreate_swapchain();
 }
 
 VsyncMode Renderer::get_vsync_mode() const {
@@ -77,7 +153,8 @@ std::vector<VsyncMode> Renderer::enum_vsync_modes() const {
 }
 
 void Renderer::set_sync_mode(SyncMode mode) {
-    // TODO:
+    frame_count = static_cast<uint32_t>(mode);
+    recreate_swapchain();
 }
 
 SyncMode Renderer::get_sync_mode() const {
@@ -98,7 +175,10 @@ std::vector<SyncMode> Renderer::enum_sync_modes() const {
 }
 
 void Renderer::set_anti_alias(AntiAlias mode) {
-    // TODO: recreate present pipeline
+    anti_alias = mode;
+    recreate_swapchain();
+    throw std::exception();
+    // TODO: recreate pipeline
 }
 
 AntiAlias Renderer::get_anti_alias() const {
@@ -172,7 +252,7 @@ void Renderer::draw() {
             info.renderPass = present_pass.renderpass;
             info.framebuffer = present_pass.framebuffers[image_index];
             info.renderArea.offset = { 0, 0 };
-            info.renderArea.extent = { resolution.x, resolution.y };
+            info.renderArea.extent = { swapchain_extent.x, swapchain_extent.y };
             info.clearValueCount = anti_alias == AntiAlias::NONE ? 2 : 3;
             info.pClearValues = clear_value;
             
@@ -185,8 +265,8 @@ void Renderer::draw() {
                 VkViewport viewport{};
                 viewport.x = 0.0f;
                 viewport.y = 0.0f;
-                viewport.width = (float) resolution.x;
-                viewport.height = (float) resolution.y;
+                viewport.width = (float) swapchain_extent.x;
+                viewport.height = (float) swapchain_extent.y;
                 viewport.minDepth = 0.0f;
                 viewport.maxDepth = 1.0f;
                 vkCmdSetViewport(cmd_buffer, 0, 1, &viewport);
@@ -194,7 +274,7 @@ void Renderer::draw() {
             { // set scissors 
                 VkRect2D scissor{ };
                 scissor.offset = {0, 0};
-                scissor.extent = { resolution.x , resolution.y };
+                scissor.extent = { swapchain_extent.x , swapchain_extent.y };
                 vkCmdSetScissor(cmd_buffer, 0, 1, &scissor);
             }
             vkCmdDraw(cmd_buffer, 3, 1, 0, 0);
@@ -247,67 +327,6 @@ void Renderer::draw() {
     frame_index = (frame_index + 1) % frame_count; // get next frame data set
 }
 
-auto Renderer::get_surface_data(VkSurfaceKHR surface, VsyncMode vsync_mode)
- -> std::tuple<VkFormat, VkColorSpaceKHR, VkPresentModeKHR> {
-    VkFormat format;
-    VkColorSpaceKHR colour_space;
-    VkPresentModeKHR present_mode;
-
-    { // get format
-        uint32_t count;
-        VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(engine.gpu, surface, &count, nullptr));
-        std::vector<VkSurfaceFormatKHR> supported(count);
-        VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(engine.gpu, surface, &count, supported.data()));
-
-        for (VkSurfaceFormatKHR& surface_format : supported) {
-            switch (surface_format.format) {
-                case(VK_FORMAT_R8G8B8A8_SRGB): break;
-                case(VK_FORMAT_B8G8R8A8_SRGB): break;
-                case(VK_FORMAT_R8G8B8A8_UNORM): break;
-                case(VK_FORMAT_B8G8R8A8_UNORM): break;
-                default: continue;
-            }
-            format = surface_format.format;
-            colour_space = surface_format.colorSpace;
-        }
-    }
-    { 
-        uint32_t count;
-        VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, nullptr));
-        std::vector<VkPresentModeKHR> supported(count);
-        VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, supported.data()));
-
-        bool frame_skip_support; // frame skip allows the swapchain to present the most recently created image
-        switch (vsync_mode) {
-        case VsyncMode::OFF:
-            frame_skip_support = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_FIFO_RELAXED_KHR) != supported.end();
-            present_mode = frame_skip_support ? VK_PRESENT_MODE_FIFO_RELAXED_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
-            break;
-        case VsyncMode::ON:
-            frame_skip_support = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_MAILBOX_KHR) != supported.end();
-            present_mode = frame_skip_support ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
-        }
-    }
-    return { format, colour_space, present_mode };
-}
-
-auto Renderer::get_sample_count(AntiAlias anti_alias)
- -> VkSampleCountFlagBits {
-    switch (anti_alias) {
-        case AntiAlias::NONE:    return VK_SAMPLE_COUNT_1_BIT;
-        // FXAA is implemented in a post processor shader 
-        // case AntiAlias::FXAA_2:  return VK_SAMPLE_COUNT_1_BIT;
-        // case AntiAlias::FXAA_4:  return VK_SAMPLE_COUNT_1_BIT;
-        // case AntiAlias::FXAA_8:  return VK_SAMPLE_COUNT_1_BIT;
-        // case AntiAlias::FXAA_16: return VK_SAMPLE_COUNT_1_BIT;
-        // MSAA is implemented in a the renderer sampling
-        case AntiAlias::MSAA_2:  return VK_SAMPLE_COUNT_2_BIT;
-        case AntiAlias::MSAA_4:  return VK_SAMPLE_COUNT_4_BIT;
-        case AntiAlias::MSAA_8:  return VK_SAMPLE_COUNT_8_BIT;
-        case AntiAlias::MSAA_16: return VK_SAMPLE_COUNT_16_BIT;
-    }
-}
-
 auto Renderer::create_shader_module(std::filesystem::path fp) -> VkShaderModule {
     std::ifstream file(fp, std::ios::ate | std::ios::binary);
     if (!file.is_open()) throw std::runtime_error("could not open file");
@@ -327,63 +346,71 @@ auto Renderer::create_shader_module(std::filesystem::path fp) -> VkShaderModule 
     return shader;
 }
 
-void Renderer::init_descriptors() { // init descriptor layouts
-    VkDescriptorSetLayoutBinding bindings[3];
-    bindings[0].binding = 0; // lights
-    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[0].descriptorCount = 1;
-    bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-    bindings[0].pImmutableSamplers = nullptr;
-
-    bindings[1].binding = 1; // materials
-    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[1].descriptorCount = 1;
-    bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    bindings[1].pImmutableSamplers = nullptr;
-
-    bindings[2].binding = 2; // materials images
-    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    bindings[2].descriptorCount = 1;
-    bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    bindings[2].pImmutableSamplers = nullptr;
-
-    VkDescriptorSetLayoutCreateInfo info{};
-    info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    info.pNext = nullptr;
-    info.flags = 0;
-    info.bindingCount = 3;
-    info.pBindings = bindings;
-
-    VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &set_layout));
-}
-
-void Renderer::destroy_descriptors() {
-    vkDestroyDescriptorSetLayout(engine.device, set_layout, nullptr);
-}
-
-void Renderer::init_present_commands() {
-    VkCommandBufferAllocateInfo cmd_buffer_info{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, frame_count };
-    VK_ASSERT(vkAllocateCommandBuffers(engine.device, &cmd_buffer_info, present_pass.cmd_buffers));
+void Renderer::recreate_swapchain() {
+    while (minimized()) { glfwWaitEvents(); }
     
-    VkSemaphoreCreateInfo semaphore_info{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
-    VkFenceCreateInfo fence_info{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
-    for (uint32_t i = 0; i < frame_count; ++i) {
-        VK_ASSERT(vkCreateSemaphore(engine.device, &semaphore_info, nullptr, &present_pass.finished[i]));
-        VK_ASSERT(vkCreateSemaphore(engine.device, &semaphore_info, nullptr, &present_pass.image_available[i]));
-        VK_ASSERT(vkCreateFence(engine.device, &fence_info, nullptr, &present_pass.in_flight[i]));
-    }
-}
+    VkSwapchainKHR old_swapchain = swapchain;   
+    VkPresentModeKHR present_mode;
+    VkFormat colour_format;
+    VkColorSpaceKHR colour_space;
+    VkFormat depth_format = engine.format.attachment.depth;
+    VkSampleCountFlagBits sample_count = static_cast<VkSampleCountFlagBits>(anti_alias);
 
-void Renderer::destroy_present_commands() {
-    vkFreeCommandBuffers(engine.device, engine.graphics.pool, frame_count, present_pass.cmd_buffers);
-    for (uint32_t i = 0; i < frame_count; ++i) {
-        vkDestroySemaphore(engine.device, present_pass.finished[i], nullptr);
-        vkDestroySemaphore(engine.device, present_pass.image_available[i], nullptr);
-        vkDestroyFence(engine.device, present_pass.in_flight[i], nullptr);
-    }
-}
+    { // get swapchain extent
+        VkSurfaceCapabilitiesKHR capabilities;
+        VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(engine.gpu, surface, &capabilities));
 
-void Renderer::init_swapchain(VkFormat format, VkColorSpaceKHR colour_space, VkPresentModeKHR present_mode, VkSwapchainKHR old_swapchain) {
+        if (capabilities.currentExtent.width == 0xffffffff) {
+            swapchain_extent = get_resolution();
+        } 
+        else {
+            swapchain_extent = glm::clamp(
+                glm::uvec2(capabilities.currentExtent.width, capabilities.currentExtent.height), 
+                glm::uvec2(capabilities.minImageExtent.width, capabilities.minImageExtent.height), 
+                glm::uvec2(capabilities.maxImageExtent.width, capabilities.maxImageExtent.height));
+        }
+    }
+
+    { // get surface supported present mode
+        uint32_t count;
+        VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, nullptr));
+        std::vector<VkPresentModeKHR> supported(count);
+        VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, supported.data()));
+
+        bool frame_skip_support; // frame skip allows the swapchain to present the most recently created image
+        switch (vsync_mode) {
+        case VsyncMode::OFF:
+            frame_skip_support = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_FIFO_RELAXED_KHR) != supported.end();
+            present_mode = frame_skip_support ? VK_PRESENT_MODE_FIFO_RELAXED_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
+            break;
+        case VsyncMode::ON:
+            frame_skip_support = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_MAILBOX_KHR) != supported.end();
+            present_mode = frame_skip_support ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
+        }
+    }
+
+    { // get surface colour format
+        uint32_t count;
+        VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(engine.gpu, surface, &count, nullptr));
+        std::vector<VkSurfaceFormatKHR> supported(count);
+        VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(engine.gpu, surface, &count, supported.data()));
+
+        for (VkSurfaceFormatKHR& surface_format : supported) {
+            switch (surface_format.format) {
+                case(VK_FORMAT_R8G8B8A8_SRGB): break;
+                case(VK_FORMAT_B8G8R8A8_SRGB): break;
+                case(VK_FORMAT_R8G8B8A8_UNORM): break;
+                case(VK_FORMAT_B8G8R8A8_UNORM): break;
+                default: continue;
+            }
+            colour_format = surface_format.format;
+            colour_space = surface_format.colorSpace;
+        }
+    }
+
+    bool msaa_enabled = sample_count != VK_SAMPLE_COUNT_1_BIT;
+    uint32_t attachment_count = msaa_enabled ? 3 : 2;
+
     { // init swapchain
         VkSwapchainCreateInfoKHR info{};
         info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -391,9 +418,9 @@ void Renderer::init_swapchain(VkFormat format, VkColorSpaceKHR colour_space, VkP
         info.flags = 0;
         info.surface = surface;
         info.minImageCount = frame_count;
-        info.imageFormat = format;
+        info.imageFormat = colour_format;
         info.imageColorSpace = colour_space;
-        info.imageExtent = { resolution.x, resolution.y };
+        info.imageExtent = { swapchain_extent.x, swapchain_extent.y };
         info.imageArrayLayers = 1;                                  // 1 unless VR
         info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;      // present is copy operation from render image
         info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;          // images only accessed by present queue
@@ -408,17 +435,50 @@ void Renderer::init_swapchain(VkFormat format, VkColorSpaceKHR colour_space, VkP
         VK_ASSERT(vkCreateSwapchainKHR(engine.device, &info, nullptr, &swapchain));
     }
 
-    uint32_t image_count;
-    VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, nullptr));
-    std::vector<VkImage> images(image_count);
-    VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, images.data()));
+    if (old_swapchain != nullptr) {
+        VK_ASSERT(vkDeviceWaitIdle(engine.device));
+
+        bool old_msaa_enabled = present_pass.resolve_attachment.image != nullptr;
     
-    swapchain_views = std::allocator<VkImageView>().allocate(image_count);
-    {
+        uint32_t image_count;
+        VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, old_swapchain, &image_count, nullptr));
+
+        for (uint32_t i = 0; i < image_count; ++i)
+            vkDestroyFramebuffer(engine.device, present_pass.framebuffers[i], nullptr);
+        std::allocator<VkFramebuffer>().deallocate(present_pass.framebuffers, image_count);
+
+        // destroy depth attachment
+        vkDestroyImageView(engine.device, present_pass.depth_attachment.view, nullptr);
+        vkFreeMemory(engine.device, present_pass.depth_attachment.memory, nullptr);
+        vkDestroyImage(engine.device, present_pass.depth_attachment.image, nullptr);
+        
+        if (old_msaa_enabled) { // destroy resolve attachment
+            vkDestroyImageView(engine.device, present_pass.resolve_attachment.view, nullptr);
+            vkFreeMemory(engine.device, present_pass.resolve_attachment.memory, nullptr);
+            vkDestroyImage(engine.device, present_pass.resolve_attachment.image, nullptr);
+        }
+        
+        vkDestroyRenderPass(engine.device, present_pass.renderpass, nullptr);
+        
+        for (uint32_t i = 0; i < image_count; ++i) 
+            vkDestroyImageView(engine.device, swapchain_views[i], nullptr);
+        std::allocator<VkImageView>().deallocate(swapchain_views, image_count);
+        
+        vkDestroySwapchainKHR(engine.device, old_swapchain, nullptr);
+    }
+
+    { // init swapchain views
+        uint32_t image_count;
+        VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, nullptr));
+        std::vector<VkImage> images(image_count);
+        VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, images.data()));
+        
+        swapchain_views = std::allocator<VkImageView>().allocate(image_count);
+
         VkImageViewCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        info.format = format;
+        info.format = colour_format;
         // swizzling -> not needed
         info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
         info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -436,40 +496,7 @@ void Renderer::init_swapchain(VkFormat format, VkColorSpaceKHR colour_space, VkP
             VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &swapchain_views[i]));
         }
     }
-}
 
-void Renderer::recreate_swapchain() {
-    while (window.minimized()) { glfwWaitEvents(); }
-    VK_ASSERT(vkDeviceWaitIdle(engine.device));
-
-    destroy_present_framebuffer();
-    destroy_swapchain();
-    
-    auto [colour_format, colour_space, present_mode] = get_surface_data(surface, vsync_mode);
-    auto sample_count = get_sample_count(anti_alias);
-    resolution = window.get_resolution();
-
-    init_swapchain(colour_format, colour_space, present_mode, nullptr);
-    init_present_framebuffer(engine.format.attachment.depth, colour_format, sample_count);
-}
-
-void Renderer::destroy_swapchain() {
-    uint32_t image_count;
-    VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, nullptr));
-    
-    for (uint32_t i = 0; i < image_count; ++i) 
-        vkDestroyImageView(engine.device, swapchain_views[i], nullptr);
-    std::allocator<VkImageView>().deallocate(swapchain_views, image_count);
-    
-    vkDestroySwapchainKHR(engine.device, swapchain, nullptr);
-}
-
-void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_format, VkSampleCountFlagBits sample_count) {
-    // TODO: for a depth prepass, the depth attachment must be passed as an input attachment/not at all?
-    bool msaa_enabled = sample_count != VK_SAMPLE_COUNT_1_BIT;
-    bool depth_prepass_enabled = false;
-    uint32_t attachment_count = msaa_enabled ? 3 : 2;
-    
     { // init renderpass
         VkAttachmentDescription attachments[3];
         // depth attachment
@@ -562,7 +589,7 @@ void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_f
             VkImageCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             info.imageType = VK_IMAGE_TYPE_2D;
-            info.extent = { resolution.x, resolution.y, 1 };
+            info.extent = { swapchain_extent.x, swapchain_extent.y, 1 };
             info.mipLevels = 1;
             info.arrayLayers = 1;
             info.format = depth_format;
@@ -612,12 +639,13 @@ void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_f
         }
     }
 
-    if (msaa_enabled) { // init colour attachment
+    // init colour attachment
+    if (msaa_enabled) { 
         { // init image
             VkImageCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             info.imageType = VK_IMAGE_TYPE_2D;
-            info.extent = { resolution.x, resolution.y, 1 };
+            info.extent = { swapchain_extent.x, swapchain_extent.y, 1 };
             info.mipLevels = 1;
             info.arrayLayers = 1;
             info.format = colour_format;
@@ -627,12 +655,12 @@ void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_f
             info.samples = sample_count;
             info.sharingMode = engine.graphics.family == engine.present.family ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
 
-            VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &present_pass.colour_attachment.image));
+            VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &present_pass.resolve_attachment.image));
         }
 
         { // init memory
             VkMemoryRequirements requirements;
-            vkGetImageMemoryRequirements(engine.device, present_pass.colour_attachment.image, &requirements);
+            vkGetImageMemoryRequirements(engine.device, present_pass.resolve_attachment.image, &requirements);
             uint32_t memory_index = engine.get_memory_index(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             VkMemoryAllocateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -640,17 +668,17 @@ void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_f
             info.memoryTypeIndex = memory_index;
             info.allocationSize = requirements.size;
 
-            VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &present_pass.colour_attachment.memory));
+            VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &present_pass.resolve_attachment.memory));
         }
         
-        VK_ASSERT(vkBindImageMemory(engine.device, present_pass.colour_attachment.image, present_pass.colour_attachment.memory, 0));
+        VK_ASSERT(vkBindImageMemory(engine.device, present_pass.resolve_attachment.image, present_pass.resolve_attachment.memory, 0));
 
         { // init view
             VkImageViewCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             info.pNext = nullptr;
             info.flags = 0;
-            info.image = present_pass.colour_attachment.image;
+            info.image = present_pass.resolve_attachment.image;
             info.viewType = VK_IMAGE_VIEW_TYPE_2D;
             info.format = colour_format;
             info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -663,12 +691,12 @@ void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_f
             info.subresourceRange.baseArrayLayer = 0;
             info.subresourceRange.layerCount = 1;
 
-            VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &present_pass.colour_attachment.view));
+            VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &present_pass.resolve_attachment.view));
         }
     } else {
-        present_pass.colour_attachment.image = nullptr;
-        present_pass.colour_attachment.memory = nullptr;
-        present_pass.colour_attachment.view = nullptr;
+        present_pass.resolve_attachment.image = nullptr;
+        present_pass.resolve_attachment.memory = nullptr;
+        present_pass.resolve_attachment.view = nullptr;
     }
 
     { // init framebuffers
@@ -677,7 +705,7 @@ void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_f
         
         present_pass.framebuffers = std::allocator<VkFramebuffer>().allocate(image_count);
         
-        VkImageView attachments[3] { present_pass.depth_attachment.view, nullptr, present_pass.colour_attachment.view };
+        VkImageView attachments[3] { present_pass.depth_attachment.view, nullptr, present_pass.resolve_attachment.view };
         //                                                                  ^ swapchain image view
 
         VkFramebufferCreateInfo info{};
@@ -687,8 +715,8 @@ void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_f
         info.renderPass = present_pass.renderpass;
         info.attachmentCount = attachment_count;
         info.pAttachments = attachments;
-        info.width = resolution.x;
-        info.height = resolution.y;
+        info.width = swapchain_extent.x;
+        info.height = swapchain_extent.y;
         info.layers = 1;
 
         for (uint32_t i = 0; i < image_count; ++i) {
@@ -696,29 +724,6 @@ void Renderer::init_present_framebuffer(VkFormat depth_format, VkFormat colour_f
             VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &present_pass.framebuffers[i]));
         }
     }
-}
-
-void Renderer::destroy_present_framebuffer() {
-    bool msaa_enabled = present_pass.colour_attachment.image != nullptr;
-    
-    uint32_t image_count;
-    VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, nullptr));
-
-    for (uint32_t i = 0; i < image_count; ++i)
-        vkDestroyFramebuffer(engine.device, present_pass.framebuffers[i], nullptr);
-    std::allocator<VkFramebuffer>().deallocate(present_pass.framebuffers, image_count);
-
-    vkDestroyImageView(engine.device, present_pass.depth_attachment.view, nullptr);
-    vkFreeMemory(engine.device, present_pass.depth_attachment.memory, nullptr);
-    vkDestroyImage(engine.device, present_pass.depth_attachment.image, nullptr);
-
-    if (msaa_enabled) {
-        vkDestroyImageView(engine.device, present_pass.colour_attachment.view, nullptr);
-        vkFreeMemory(engine.device, present_pass.colour_attachment.memory, nullptr);
-        vkDestroyImage(engine.device, present_pass.colour_attachment.image, nullptr);
-    }
-    
-    vkDestroyRenderPass(engine.device, present_pass.renderpass, nullptr);
 }
 
 auto init_pipeline_layout(VkDescriptorSetLayout set_layout)
@@ -794,16 +799,16 @@ auto init_pipeline(VkRenderPass renderpass, VkPipelineLayout layout, VkSampleCou
     depth_stencil.depthBoundsTestEnable = VK_FALSE;
     depth_stencil.stencilTestEnable = VK_FALSE;
 
-    VkPipelineColorBlendAttachmentState colour_attachment{};
-    colour_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colour_attachment.blendEnable = VK_FALSE;
+    VkPipelineColorBlendAttachmentState resolve_attachment{};
+    resolve_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    resolve_attachment.blendEnable = VK_FALSE;
     
     VkPipelineColorBlendStateCreateInfo colour_blending{};
     colour_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colour_blending.logicOpEnable = VK_FALSE;
     colour_blending.logicOp = VK_LOGIC_OP_COPY;
     colour_blending.attachmentCount = 1;
-    colour_blending.pAttachments = &colour_attachment;
+    colour_blending.pAttachments = &resolve_attachment;
     colour_blending.blendConstants[0] = 0.0f;
     colour_blending.blendConstants[1] = 0.0f;
     colour_blending.blendConstants[2] = 0.0f;

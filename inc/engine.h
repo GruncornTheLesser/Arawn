@@ -3,7 +3,7 @@
 #include <span>
 class Engine {    
 public:
-    Engine(const char* app_name="", const char* engine_name="");
+    Engine(const char* app_name="", const char* engine_name="", const char* device_name=nullptr);
     ~Engine();
     Engine(Engine&&) = delete;
     Engine& operator=(Engine&&) = delete;
