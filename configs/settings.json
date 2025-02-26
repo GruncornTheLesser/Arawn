@@ -2,7 +2,7 @@
     "device" : "NVIDIA GeForce RTX 3060 Laptop GPU",
     "resolution" : [ 800, 600 ],
     "aspect ratio" : "16:9",
-    "display mode" : "windowed",
+    "display mode" : "exclusive",
     "sync mode" : "double",
     "vsync mode" : "off",
     "anti alias" : "msaa2"

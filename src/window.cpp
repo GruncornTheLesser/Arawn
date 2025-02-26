@@ -35,39 +35,18 @@ Window::Window()
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
-    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-    const GLFWvidmode* vid_mode = select_vid_mode(monitor, settings.resolution.x, settings.resolution.y); // resolution must match monitor video mode
+    //glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     
-    switch (settings.display_mode) {
-    case DisplayMode::EXCLUSIVE: {
-        window = glfwCreateWindow(vid_mode->width, vid_mode->height, "", monitor, nullptr);
-        break;
-    }
-    case DisplayMode::FULLSCREEN: {
-        glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
-        glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);
-        window = glfwCreateWindow(vid_mode->width, vid_mode->height, "", nullptr, nullptr);
-        break;
-    }
-    case DisplayMode::WINDOWED: {
-        glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
-        glfwWindowHint(GLFW_FLOATING, GLFW_FALSE);
-        window = glfwCreateWindow(vid_mode->width, vid_mode->height, "", nullptr, nullptr);
-        break;
-    }
+    window = glfwCreateWindow(settings.resolution.x, settings.resolution.y, "", nullptr, nullptr);
     
-    }
-    
-    glfwFocusWindow(window);
-    GLFW_ASSERT(window);
-
     glfwSetWindowUserPointer(window, this);
 	glfwSetKeyCallback(window, key_callback);
 	//glfwSetCharCallback(window, char_callback);
 	glfwSetScrollCallback(window, mouse_scroll_callback);
 	glfwSetCursorPosCallback(window, mouse_move_callback);
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
+
+    set_display_mode(settings.display_mode);
 }
 
 Window::~Window() {
