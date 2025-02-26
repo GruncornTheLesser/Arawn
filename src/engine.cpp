@@ -3,7 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
-
+#include "settings.h"
 /*
 1. init glfw
 2. init vulkan instance
@@ -14,7 +14,7 @@
 7. init descriptor pools
 */
 
-Engine::Engine(const char* app_name, const char* engine_name, const char* device_name) {
+Engine::Engine() {
     std::vector<const char*> inst_layers =     { "VK_LAYER_KHRONOS_validation"   };
     std::vector<const char*> device_layers =   { "VK_LAYER_KHRONOS_validation"   };
     std::vector<const char*> inst_extensions   { VK_KHR_SURFACE_EXTENSION_NAME   };
@@ -51,9 +51,9 @@ Engine::Engine(const char* app_name, const char* engine_name, const char* device
         VkApplicationInfo app_info {};
         app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         app_info.apiVersion = VK_API_VERSION_1_0;     
-        app_info.pApplicationName = app_name;
+        app_info.pApplicationName = "Arawn";
         app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-        app_info.pEngineName = engine_name;
+        app_info.pEngineName = "Arawn-engine";
         app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 
         VkInstanceCreateInfo inst_info {};
@@ -78,12 +78,12 @@ Engine::Engine(const char* app_name, const char* engine_name, const char* device
         vkEnumeratePhysicalDevices(instance, &count, devices.data());
         
         uint32_t index = 0;
-        if (engine_name != nullptr) {
+        if (settings.device != "") {
             for (uint32_t i = 0; i < count; ++i) {
                 VkPhysicalDeviceProperties properties;
                 vkGetPhysicalDeviceProperties(devices[i], &properties);
                 
-                if (strcmp(device_name, properties.deviceName) == 0) {
+                if (strcmp(settings.device.c_str(), properties.deviceName) == 0) {
                     index = i;
                     break;
                 }
@@ -284,8 +284,6 @@ Engine::Engine(const char* app_name, const char* engine_name, const char* device
     { // select formats
         VkFormat depth_formats[3]  = { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT }; 
         format.attachment.depth = select_image_format({ depth_formats, 3 }, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
-        // ...
-    
     }
 }
 
@@ -341,6 +339,7 @@ uint32_t Engine::get_memory_index(uint32_t type_bits, VkMemoryPropertyFlags flag
 }
 
 void log_error(std::string_view msg, std::source_location loc) {
+    // I dont know if I've ever seen this function work...
     std::cout << loc.file_name() << ":" << loc.line() << " - " << msg.data();
 }
 

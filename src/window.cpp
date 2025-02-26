@@ -2,7 +2,11 @@
 #include "window.h"
 #include <algorithm>
 
-
+void key_callback(VK_TYPE(GLFWwindow*) glfwWindow, int key, int scancode, int action, int mods);
+void char_callback(VK_TYPE(GLFWwindow*) glfwWindow, unsigned int codepoint);
+void mouse_move_callback(VK_TYPE(GLFWwindow*) glfwWindow, double xpos, double ypos);
+void mouse_scroll_callback(VK_TYPE(GLFWwindow*) glfwWindow, double xoffset, double yoffset);
+void mouse_button_callback(VK_TYPE(GLFWwindow*) glfwWindow, int button, int action, int mods);
 
 const GLFWvidmode* select_vid_mode(GLFWmonitor* monitor, int width, int height) {
     int count;
@@ -26,16 +30,16 @@ const GLFWvidmode* select_vid_mode(GLFWmonitor* monitor, int width, int height) 
     return min;
 }
 
-Window::Window(uint32_t width, uint32_t height, DisplayMode display_mode)
+Window::Window()
 {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-    const GLFWvidmode* vid_mode = select_vid_mode(monitor, width, height); // resolution must match monitor video mode
+    const GLFWvidmode* vid_mode = select_vid_mode(monitor, settings.resolution.x, settings.resolution.y); // resolution must match monitor video mode
     
-    switch (display_mode) {
+    switch (settings.display_mode) {
     case DisplayMode::EXCLUSIVE: {
         window = glfwCreateWindow(vid_mode->width, vid_mode->height, "", monitor, nullptr);
         break;
@@ -71,6 +75,7 @@ Window::~Window() {
         glfwDestroyWindow(window);
 }
 
+/*
 Window::Window(Window&& other) {
     window = other.window;
     other.window = nullptr;
@@ -87,13 +92,14 @@ Window& Window::operator=(Window&& other) {
     }
     return *this;
 }
+*/
 
 void Window::set_title(const char* title) {
     glfwSetWindowTitle(window, title);
 }
 
-void Window::set_resolution(uint32_t width, uint32_t height) {
-    glfwSetWindowSize(window, width, height);
+void Window::set_resolution(glm::uvec2 res) {
+    glfwSetWindowSize(window, res.x, res.y);
 }
 
 auto Window::get_resolution() const -> glm::uvec2 {
@@ -113,11 +119,11 @@ auto Window::enum_resolutions(float ratio, float precision) const -> std::vector
     for (int i = 0; i < count; ++i)
         resolutions[i] = { video_modes[i].width, video_modes[i].height }; 
     
-    std::vector<glm::uvec2>::iterator end = resolutions.end();
+    auto end = resolutions.end();
     end = std::remove_if(resolutions.begin(), end, [=](auto& res) { return std::abs(((float)res.x / res.y) - ratio) > precision; });
     std::sort(resolutions.begin(), end, [](auto& lhs, auto& rhs) { if (lhs.x != rhs.x) return lhs.x < rhs.x; else return lhs.y < rhs.y; });
     end = std::unique(resolutions.begin(), end);
-    end = std::remove_if(resolutions.begin(), end, [](auto& res) { return res.x < 800 || res.y < 600; });
+    end = std::remove_if(resolutions.begin(), end, [](auto& res) { return res.x < 800 || res.y < 600; }); // min size
     resolutions.erase(end, resolutions.end());
     return resolutions;
 }
@@ -177,26 +183,26 @@ auto Window::minimized() const -> bool {
 
 
 
-void Window::key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) { 
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) { 
 	auto& wnd = *static_cast<Window*>(glfwGetWindowUserPointer(window));
     wnd.template on<Key::Event>().invoke({ key, action });
 }
 
-void Window::mouse_scroll_callback(GLFWwindow* window, double xoffset, double yoffset) { 
+void mouse_scroll_callback(GLFWwindow* window, double xoffset, double yoffset) { 
 	double x, y;
     auto& wnd = *static_cast<Window*>(glfwGetWindowUserPointer(window));
 	glfwGetCursorPos(window, &x, &y);
     wnd.template on<Mouse::Event>().invoke({ Mouse::SCROLL, yoffset > 0 ? Mouse::UP : Mouse::DOWN, static_cast<int>(x), static_cast<int>(y) });
 }
 
-void Window::mouse_move_callback(GLFWwindow* window, double xpos, double ypos) { 
+void mouse_move_callback(GLFWwindow* window, double xpos, double ypos) { 
 	double x, y;
     auto& wnd = *static_cast<Window*>(glfwGetWindowUserPointer(window));
 	glfwGetCursorPos(window, &x, &y);
     wnd.template on<Mouse::Event>().invoke({ 0, 0, static_cast<int>(x), static_cast<int>(y) });
 }
 
-void Window::mouse_button_callback(GLFWwindow* window, int button, int action, int mods) { 
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) { 
 	double x, y;
     auto& wnd = *static_cast<Window*>(glfwGetWindowUserPointer(window));
 	glfwGetCursorPos(window, &x, &y);

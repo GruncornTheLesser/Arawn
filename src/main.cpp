@@ -1,55 +1,48 @@
-
 #include "engine.h"
 #include "window.h"
-#include "renderer.h"
-#include <entt/entt.hpp>
-#include <iostream>
+#include "swapchain.h"
 
 
 /*
 TODOLIST:
- * connect signals to renderer eg resize -> recreate swapchain
  * materials
  * lights
- * forward renderer
- * deferred renderer
+ * forward Swapchain
+ * deferred Swapchain
  * add gui
  * settings menu
  * scene loading - https://casual-effects.com/data/
  * performance metrics
 */
 
-const Engine engine{ "Arawn", "Arawn-vulkan", "NVIDIA GeForce RTX 3060 Laptop GPU" };
+
+Settings    settings("configs/settings.json");
+Engine      engine;
+Window      window;
+Swapchain   swapchain;
 
 int main() {
-    Renderer app(1280, 960, DisplayMode::WINDOWED, VsyncMode::ON, SyncMode::DOUBLE, AntiAlias::MSAA_4);
 
-    // log app position
-    //app.on<Mouse::Event>().attach([&](const Mouse::Event& event) { 
-    //    std::cout << event.x << ", " << event.y << std::endl;
-    //});
-    
+
     // toggle fullscreen hotkey
-    app.on(KeyDown{ Key::F }) += [&](const Key::Event& event) { 
-        app.set_display_mode(static_cast<DisplayMode>((static_cast<uint32_t>(app.get_display_mode()) + 1) % 3));
+    window.on(KeyDown{ Key::F }) += [&](auto& event) {
+        window.set_display_mode(static_cast<DisplayMode>((static_cast<uint32_t>(window.get_display_mode()) + 1) % 3));
     };
     
     // switch resolution
     size_t index = 0;
-    auto resolutions = app.enum_resolutions(16.0f / 9.0f);
+    auto resolutions = window.enum_resolutions(4.0f / 3.0f);
     
-    app.on(KeyDown{ Key::PLUS }) += [&](const Key::Event& event) {
+    window.on(KeyDown{ Key::PLUS }) += [&](auto& event) { // increase resolution
         if (index == resolutions.size() - 1) return;
-        glm::uvec2 res = resolutions[++index];
-        app.set_resolution(res.x, res.y);
+        window.set_resolution(resolutions[++index]);
     };
 
-    app.on(KeyDown{ Key::MINUS }) += [&](const Key::Event& event) {
+    window.on(KeyDown{ Key::MINUS }) += [&](auto& event) { // decrease resolution
         if(index == 0) return;
-        glm::uvec2 res = resolutions[--index];
-        app.set_resolution(res.x, res.y);
+        window.set_resolution(resolutions[--index]);
     };
     
     
-    while (!app.closed()) app.draw();
+    while (!window.closed()) swapchain.draw();
 }

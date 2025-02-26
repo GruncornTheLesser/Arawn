@@ -1,6 +1,6 @@
 #define VK_IMPLEMENTATION
 #include "engine.h"
-#include "renderer.h"
+#include "swapchain.h"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -8,24 +8,10 @@
 auto init_pipeline_layout(VkDescriptorSetLayout set_layout) -> VkPipelineLayout; 
 auto init_pipeline(VkRenderPass renderpass, VkPipelineLayout layout, VkSampleCountFlagBits msaa_sample, VkShaderModule vert, VkShaderModule frag) -> VkPipeline;
 
-Renderer::Renderer(uint32_t width, uint32_t height, DisplayMode display_mode, VsyncMode vsync_mode, SyncMode sync_mode, AntiAlias alias_mode) 
- : Window(width, height, display_mode), vsync_mode(vsync_mode), frame_count(static_cast<uint32_t>(sync_mode)), anti_alias(alias_mode), frame_index(0)
-{    
-    { // init cmd buffers
-        VkCommandBufferAllocateInfo cmd_buffer_info{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, frame_count };
-        VK_ASSERT(vkAllocateCommandBuffers(engine.device, &cmd_buffer_info, present_pass.cmd_buffers));
-        
-        VkSemaphoreCreateInfo semaphore_info{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
-        VkFenceCreateInfo fence_info{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
-        for (uint32_t i = 0; i < frame_count; ++i) {
-            VK_ASSERT(vkCreateSemaphore(engine.device, &semaphore_info, nullptr, &present_pass.finished[i]));
-            VK_ASSERT(vkCreateSemaphore(engine.device, &semaphore_info, nullptr, &present_pass.image_available[i]));
-            VK_ASSERT(vkCreateFence(engine.device, &fence_info, nullptr, &present_pass.in_flight[i]));
-        }
-    }
-
+Swapchain::Swapchain()
+{
     // create surface
-    VK_ASSERT(glfwCreateWindowSurface(engine.instance, window, nullptr, &surface));
+    VK_ASSERT(glfwCreateWindowSurface(engine.instance, window.window, nullptr, &surface));
 
     swapchain = nullptr;
     recreate_swapchain();
@@ -63,18 +49,18 @@ Renderer::Renderer(uint32_t width, uint32_t height, DisplayMode display_mode, Vs
     auto vert = create_shader_module("res/import/shaders/def.vert.spv");
     auto frag = create_shader_module("res/import/shaders/def.frag.spv");
     
-    present_pass.layout = init_pipeline_layout(set_layout);
-    present_pass.pipeline = init_pipeline(present_pass.renderpass, present_pass.layout, static_cast<VkSampleCountFlagBits>(anti_alias), vert, frag);
+    layout = init_pipeline_layout(set_layout);
+    pipeline = init_pipeline(renderpass, layout, static_cast<VkSampleCountFlagBits>(settings.anti_alias), vert, frag);
     
     vkDestroyShaderModule(engine.device, vert, nullptr);
     vkDestroyShaderModule(engine.device, frag, nullptr);
 }
 
-Renderer::~Renderer() {
+Swapchain::~Swapchain() {
     vkDeviceWaitIdle(engine.device);
 
-    vkDestroyPipeline(engine.device, present_pass.pipeline, nullptr);
-    vkDestroyPipelineLayout(engine.device, present_pass.layout, nullptr);
+    vkDestroyPipeline(engine.device, pipeline, nullptr);
+    vkDestroyPipelineLayout(engine.device, layout, nullptr);
     
     vkDestroyDescriptorSetLayout(engine.device, set_layout, nullptr);
 
@@ -105,7 +91,7 @@ Renderer::~Renderer() {
         vkDestroyImage(engine.device, present_pass.resolve_attachment.image, nullptr);
     }
     
-    vkDestroyRenderPass(engine.device, present_pass.renderpass, nullptr);
+    vkDestroyRenderPass(engine.device, renderpass, nullptr);
     
     for (uint32_t i = 0; i < image_count; ++i) 
         vkDestroyImageView(engine.device, swapchain_views[i], nullptr);
@@ -116,24 +102,12 @@ Renderer::~Renderer() {
     vkDestroySurfaceKHR(engine.instance, surface, nullptr);
 }
 
-//void Renderer::set_resolution(uint32_t width, uint32_t height) {
-//    
-//}
-
-//glm::uvec2 Renderer::get_resolution() const {
-//    
-//}
-
-void Renderer::set_vsync_mode(VsyncMode mode) { 
-    vsync_mode = mode;
+void Swapchain::set_vsync_mode(VsyncMode mode) { 
+    settings.vsync_mode = mode;
     recreate_swapchain();
 }
 
-VsyncMode Renderer::get_vsync_mode() const {
-    return vsync_mode;
-}
-
-std::vector<VsyncMode> Renderer::enum_vsync_modes() const {
+std::vector<VsyncMode> Swapchain::enum_vsync_modes() const {
     std::vector<VsyncMode> vsync_modes;
 
     vsync_modes.push_back(VsyncMode::ON); // guaranteed to be supported VK_PRESENT_MODE_FIFO_KHR
@@ -152,17 +126,12 @@ std::vector<VsyncMode> Renderer::enum_vsync_modes() const {
     return vsync_modes;   
 }
 
-void Renderer::set_sync_mode(SyncMode mode) {
+void Swapchain::set_sync_mode(SyncMode mode) {
     frame_count = static_cast<uint32_t>(mode);
     recreate_swapchain();
 }
 
-SyncMode Renderer::get_sync_mode() const {
-    if (frame_count == 2) return SyncMode::DOUBLE;
-    else                  return SyncMode::TRIPLE;
-}
-
-std::vector<SyncMode> Renderer::enum_sync_modes() const {
+std::vector<SyncMode> Swapchain::enum_sync_modes() const {
     std::vector<SyncMode> sync_modes;
     sync_modes.push_back(SyncMode::DOUBLE);
     
@@ -174,18 +143,13 @@ std::vector<SyncMode> Renderer::enum_sync_modes() const {
     return sync_modes;
 }
 
-void Renderer::set_anti_alias(AntiAlias mode) {
-    anti_alias = mode;
+void Swapchain::set_anti_alias(AntiAlias mode) {
+    settings.anti_alias = mode;
     recreate_swapchain();
     throw std::exception();
-    // TODO: recreate pipeline
 }
 
-AntiAlias Renderer::get_anti_alias() const {
-    return anti_alias;
-}
-
-std::vector<AntiAlias> Renderer::enum_anti_alias() const {
+std::vector<AntiAlias> Swapchain::enum_anti_alias() const {
     std::vector<AntiAlias> anti_alias_modes = { AntiAlias::NONE }; // AntiAlias::FXAA_2, AntiAlias::FXAA_4, AntiAlias::FXAA_8, AntiAlias::FXAA_16
     
     VkPhysicalDeviceProperties properties;
@@ -206,7 +170,7 @@ std::vector<AntiAlias> Renderer::enum_anti_alias() const {
     return anti_alias_modes;
 }
 
-void Renderer::draw() {
+void Swapchain::draw() {
     const uint64_t timeout = 1000000000;
     
     uint32_t image_index;
@@ -217,7 +181,7 @@ void Renderer::draw() {
         VK_ASSERT(vkWaitForFences(engine.device, 1, &in_flight, true, timeout));
         
         VkResult res = vkAcquireNextImageKHR(engine.device, swapchain, timeout, image_available, nullptr, &image_index);
-    
+
         if (res == VK_ERROR_OUT_OF_DATE_KHR) {
             recreate_swapchain();
             return;
@@ -249,24 +213,24 @@ void Renderer::draw() {
             VkRenderPassBeginInfo info{};
             info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
             info.pNext = nullptr;
-            info.renderPass = present_pass.renderpass;
+            info.renderPass = renderpass;
             info.framebuffer = present_pass.framebuffers[image_index];
             info.renderArea.offset = { 0, 0 };
-            info.renderArea.extent = { swapchain_extent.x, swapchain_extent.y };
-            info.clearValueCount = anti_alias == AntiAlias::NONE ? 2 : 3;
+            info.renderArea.extent = { settings.resolution.x, settings.resolution.y };
+            info.clearValueCount = settings.anti_alias == AntiAlias::NONE ? 2 : 3;
             info.pClearValues = clear_value;
             
             vkCmdBeginRenderPass(cmd_buffer, &info, VK_SUBPASS_CONTENTS_INLINE);
         }
         
         { // draw
-            vkCmdBindPipeline(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, present_pass.pipeline);
+            vkCmdBindPipeline(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
             { // set viewport
                 VkViewport viewport{};
                 viewport.x = 0.0f;
                 viewport.y = 0.0f;
-                viewport.width = (float) swapchain_extent.x;
-                viewport.height = (float) swapchain_extent.y;
+                viewport.width = (float) settings.resolution.x;
+                viewport.height = (float) settings.resolution.y;
                 viewport.minDepth = 0.0f;
                 viewport.maxDepth = 1.0f;
                 vkCmdSetViewport(cmd_buffer, 0, 1, &viewport);
@@ -274,7 +238,7 @@ void Renderer::draw() {
             { // set scissors 
                 VkRect2D scissor{ };
                 scissor.offset = {0, 0};
-                scissor.extent = { swapchain_extent.x , swapchain_extent.y };
+                scissor.extent = { settings.resolution.x , settings.resolution.y };
                 vkCmdSetScissor(cmd_buffer, 0, 1, &scissor);
             }
             vkCmdDraw(cmd_buffer, 3, 1, 0, 0);
@@ -327,58 +291,53 @@ void Renderer::draw() {
     frame_index = (frame_index + 1) % frame_count; // get next frame data set
 }
 
-auto Renderer::create_shader_module(std::filesystem::path fp) -> VkShaderModule {
-    std::ifstream file(fp, std::ios::ate | std::ios::binary);
-    if (!file.is_open()) throw std::runtime_error("could not open file");
-
-    std::vector<char> buffer(static_cast<std::size_t>(file.tellg()));
-    file.seekg(0);
-    file.read(buffer.data(), buffer.size());
-    file.close();
-
-    VkShaderModuleCreateInfo info {};
-    info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    info.pCode = reinterpret_cast<uint32_t*>(buffer.data());
-    info.codeSize = buffer.size();
-
-    VkShaderModule shader;
-    VK_ASSERT(vkCreateShaderModule(engine.device, &info, NULL, &shader));
-    return shader;
-}
-
-void Renderer::recreate_swapchain() {
-    while (minimized()) { glfwWaitEvents(); }
+void Swapchain::recreate_swapchain() {
+    while (window.minimized()) { glfwWaitEvents(); }
     
     VkSwapchainKHR old_swapchain = swapchain;   
     VkPresentModeKHR present_mode;
     VkFormat colour_format;
     VkColorSpaceKHR colour_space;
     VkFormat depth_format = engine.format.attachment.depth;
-    VkSampleCountFlagBits sample_count = static_cast<VkSampleCountFlagBits>(anti_alias);
-
+    VkSampleCountFlagBits sample_count = static_cast<VkSampleCountFlagBits>(settings.anti_alias);
+    
+    VkSurfaceCapabilitiesKHR capabilities;
+    VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(engine.gpu, surface, &capabilities));
     { // get swapchain extent
-        VkSurfaceCapabilitiesKHR capabilities;
-        VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(engine.gpu, surface, &capabilities));
-
         if (capabilities.currentExtent.width == 0xffffffff) {
-            swapchain_extent = get_resolution();
+            settings.resolution = window.get_resolution();
         } 
         else {
-            swapchain_extent = glm::clamp(
+            settings.resolution = glm::clamp(
                 glm::uvec2(capabilities.currentExtent.width, capabilities.currentExtent.height), 
                 glm::uvec2(capabilities.minImageExtent.width, capabilities.minImageExtent.height), 
                 glm::uvec2(capabilities.maxImageExtent.width, capabilities.maxImageExtent.height));
         }
     }
 
-    { // get surface supported present mode
+    
+    if (capabilities.minImageCount > frame_count) { // init additional cmd buffers if necessary
+        VkCommandBufferAllocateInfo cmd_buffer_info{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, capabilities.minImageCount - frame_count };
+        VK_ASSERT(vkAllocateCommandBuffers(engine.device, &cmd_buffer_info, present_pass.cmd_buffers + frame_count));
+        
+        VkSemaphoreCreateInfo semaphore_info{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
+        VkFenceCreateInfo fence_info{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
+        for (uint32_t i = frame_count; i < capabilities.minImageCount; ++i) {
+            VK_ASSERT(vkCreateSemaphore(engine.device, &semaphore_info, nullptr, &present_pass.finished[i]));
+            VK_ASSERT(vkCreateSemaphore(engine.device, &semaphore_info, nullptr, &present_pass.image_available[i]));
+            VK_ASSERT(vkCreateFence(engine.device, &fence_info, nullptr, &present_pass.in_flight[i]));
+        }
+        frame_count = capabilities.minImageCount;
+    }
+
+    { // get present mode
         uint32_t count;
         VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, nullptr));
         std::vector<VkPresentModeKHR> supported(count);
         VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, supported.data()));
 
         bool frame_skip_support; // frame skip allows the swapchain to present the most recently created image
-        switch (vsync_mode) {
+        switch (settings.vsync_mode) {
         case VsyncMode::OFF:
             frame_skip_support = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_FIFO_RELAXED_KHR) != supported.end();
             present_mode = frame_skip_support ? VK_PRESENT_MODE_FIFO_RELAXED_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
@@ -386,6 +345,7 @@ void Renderer::recreate_swapchain() {
         case VsyncMode::ON:
             frame_skip_support = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_MAILBOX_KHR) != supported.end();
             present_mode = frame_skip_support ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
+            break;
         }
     }
 
@@ -420,7 +380,7 @@ void Renderer::recreate_swapchain() {
         info.minImageCount = frame_count;
         info.imageFormat = colour_format;
         info.imageColorSpace = colour_space;
-        info.imageExtent = { swapchain_extent.x, swapchain_extent.y };
+        info.imageExtent = { settings.resolution.x, settings.resolution.y };
         info.imageArrayLayers = 1;                                  // 1 unless VR
         info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;      // present is copy operation from render image
         info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;          // images only accessed by present queue
@@ -435,6 +395,7 @@ void Renderer::recreate_swapchain() {
         VK_ASSERT(vkCreateSwapchainKHR(engine.device, &info, nullptr, &swapchain));
     }
 
+    // destroy old swapchain
     if (old_swapchain != nullptr) {
         VK_ASSERT(vkDeviceWaitIdle(engine.device));
 
@@ -458,7 +419,7 @@ void Renderer::recreate_swapchain() {
             vkDestroyImage(engine.device, present_pass.resolve_attachment.image, nullptr);
         }
         
-        vkDestroyRenderPass(engine.device, present_pass.renderpass, nullptr);
+        vkDestroyRenderPass(engine.device, renderpass, nullptr);
         
         for (uint32_t i = 0; i < image_count; ++i) 
             vkDestroyImageView(engine.device, swapchain_views[i], nullptr);
@@ -581,7 +542,7 @@ void Renderer::recreate_swapchain() {
         info.dependencyCount = 1;
         info.pDependencies = dependencies;
 
-        VK_ASSERT(vkCreateRenderPass(engine.device, &info, nullptr, &present_pass.renderpass));
+        VK_ASSERT(vkCreateRenderPass(engine.device, &info, nullptr, &renderpass));
     }
 
     { // init depth attachment
@@ -589,15 +550,15 @@ void Renderer::recreate_swapchain() {
             VkImageCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             info.imageType = VK_IMAGE_TYPE_2D;
-            info.extent = { swapchain_extent.x, swapchain_extent.y, 1 };
+            info.extent = { settings.resolution.x, settings.resolution.y, 1 };
             info.mipLevels = 1;
             info.arrayLayers = 1;
             info.format = depth_format;
             info.tiling = VK_IMAGE_TILING_OPTIMAL;
             info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-            info.samples = sample_count;
-            info.sharingMode = engine.graphics.family == engine.present.family ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
+            info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;   // !!!
+            info.samples = sample_count;                                // !!!
+            info.sharingMode = engine.graphics.family == engine.present.family ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT; // !!!
 
             VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &present_pass.depth_attachment.image));
         }
@@ -639,13 +600,13 @@ void Renderer::recreate_swapchain() {
         }
     }
 
-    // init colour attachment
-    if (msaa_enabled) { 
+    
+    if (msaa_enabled) { // init colour attachment
         { // init image
             VkImageCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             info.imageType = VK_IMAGE_TYPE_2D;
-            info.extent = { swapchain_extent.x, swapchain_extent.y, 1 };
+            info.extent = { settings.resolution.x, settings.resolution.y, 1 };
             info.mipLevels = 1;
             info.arrayLayers = 1;
             info.format = colour_format;
@@ -712,11 +673,11 @@ void Renderer::recreate_swapchain() {
         info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         info.pNext = nullptr;
         info.flags = 0;
-        info.renderPass = present_pass.renderpass;
+        info.renderPass = renderpass;
         info.attachmentCount = attachment_count;
         info.pAttachments = attachments;
-        info.width = swapchain_extent.x;
-        info.height = swapchain_extent.y;
+        info.width = settings.resolution.x;
+        info.height = settings.resolution.y;
         info.layers = 1;
 
         for (uint32_t i = 0; i < image_count; ++i) {
@@ -724,6 +685,27 @@ void Renderer::recreate_swapchain() {
             VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &present_pass.framebuffers[i]));
         }
     }
+
+    vkDeviceWaitIdle(engine.device);
+}
+
+auto Swapchain::create_shader_module(std::filesystem::path fp) -> VkShaderModule {
+    std::ifstream file(fp, std::ios::ate | std::ios::binary);
+    if (!file.is_open()) throw std::runtime_error("could not open file");
+
+    std::vector<char> buffer(static_cast<std::size_t>(file.tellg()));
+    file.seekg(0);
+    file.read(buffer.data(), buffer.size());
+    file.close();
+
+    VkShaderModuleCreateInfo info {};
+    info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    info.pCode = reinterpret_cast<uint32_t*>(buffer.data());
+    info.codeSize = buffer.size();
+
+    VkShaderModule shader;
+    VK_ASSERT(vkCreateShaderModule(engine.device, &info, NULL, &shader));
+    return shader;
 }
 
 auto init_pipeline_layout(VkDescriptorSetLayout set_layout)

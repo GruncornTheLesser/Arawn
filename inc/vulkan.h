@@ -1,5 +1,9 @@
 #pragma once
 #include <stdint.h>
+#include <string_view>
+#include <source_location>
+void log_error(std::string_view msg, std::source_location loc = std::source_location::current());
+
 
 #ifdef VK_IMPLEMENTATION
 #include <vulkan/vulkan.h> // for now 
@@ -8,8 +12,6 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include <string_view>
-#include <source_location>
 #include <iostream>
 
 #define VK_TYPE(TYPE) TYPE
@@ -17,7 +19,6 @@
 #define ENUM_ENTRY(NAME, ENUM) NAME = ENUM
 
 
-void log_error(std::string_view msg, std::source_location loc = std::source_location::current());
 
 #define VK_ASSERT(x) {                          \
     VkResult RESULT_VAL = (x);                  \
@@ -43,5 +44,5 @@ void log_error(std::string_view msg, std::source_location loc = std::source_loca
 #endif
 
 #ifndef MAX_FRAMES_IN_FLIGHT
-#define MAX_FRAMES_IN_FLIGHT 3
+#define MAX_FRAMES_IN_FLIGHT 4
 #endif

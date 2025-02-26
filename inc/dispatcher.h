@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <functional>
+#include <algorithm>
 
 template<typename ... event_Ts>
 class Dispatcher;

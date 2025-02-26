@@ -1,0 +1,150 @@
+#include "json.h"
+#include <charconv>
+#include <iostream>
+
+// json standard 
+// https://www.json.org/json-en.html
+/*
+design:
+Json object is an opaque json value holding a string_view of the location in the buffer. 
+On construction the end of the object is found:
+ - ignore leading whitespace
+ - comparing the first char, to evaluate the type
+ - for arrays and objects, the closing deliminator, takes into account depth, strings and 
+The data is accessed on casting the json type into the matching type. 
+The raw string stored in the Json value is then converted into the value requested.
+
+*/
+
+Json::Json(std::string_view val) : view(val) {
+    size_t start = ignore_whitespace(0);
+
+    switch (view.at(start)) {
+    case 't': view = view.substr(start, 4); break;
+    case 'f': view = view.substr(start, 5); break;
+    case '"': view = view.substr(start, end_of_string(start) - start); break;
+    case '[': view = view.substr(start, end_of_object(start, ']') - start); break;
+    case '{': view = view.substr(start, end_of_object(start, '}') - start); break;
+    default: view = view.substr(start, view.find_first_not_of("-1234567890.eE", start) - start); break;
+    }
+}
+
+Json::operator Json::Integer() const {
+    size_t pos = view.find_first_not_of("0123456789+-");
+    int val;
+    if (std::from_chars(view.begin(), view.end(), val).ec != std::errc{}) throw ParseException();
+    return val;
+}
+
+Json::operator Json::Float() const {
+    float val;
+    if (std::from_chars(view.begin(), view.end(), val).ec != std::errc{}) throw ParseException();
+    return val;
+}
+
+Json::operator Boolean() const {
+    if (view.substr(0, 4) == "true") return true;
+    if (view.substr(0, 5) == "false") return false;
+
+    throw ParseException();
+}
+
+Json::operator Json::String() const {
+    if (view.front() != '"') throw ParseException();
+    return view.substr(1, view.size() - 2);
+}
+
+Json::operator Json::Object() const {
+    Json::Object object;
+    size_t pos = 0;
+    
+    if (view[pos] != '{') throw ParseException();
+    
+    do {
+        pos = ignore_whitespace(++pos);
+        
+        if (view[pos] == '}') break;
+
+        Json field_name(view.substr(pos)); // parse string
+        
+        pos = ignore_whitespace(pos + field_name.view.size());
+
+        if (view[pos] != ':') throw ParseException();
+        
+        pos = ignore_whitespace(pos + 1);
+
+        Json field_value(view.substr(pos));
+        object[field_name] = field_value;
+        
+        std::cout << field_name.view << " : " << field_value.view << std::endl;
+
+        pos = ignore_whitespace(pos + field_value.view.size());
+        
+    } while (view[pos] == ',');
+
+    return object;
+}
+
+Json::operator Json::Array() const {
+    Json::Array array;
+    size_t pos = 0;
+    
+    if (view[pos] != '[') throw ParseException();
+    
+    do {
+        pos = ignore_whitespace(++pos);
+        
+        if (view[pos] == ']') break;
+
+        Json element(view.substr(pos)); // parse string
+        std::cout << array.size() << ":" << element.view << std::endl;
+        array.push_back(element);
+        
+        pos = ignore_whitespace(pos + element.view.size());
+        
+    } while (view[pos] == ',');
+
+    return array;
+}
+
+Json Json::operator[](const char* key) const {
+    return static_cast<Json::Object>(*this)[key];
+}
+
+Json Json::operator[](int index) const {
+    return static_cast<Json::Array>(*this)[index];
+}
+
+size_t Json::ignore_whitespace(size_t pos) const {
+    pos = view.find_first_not_of(" \n\r\t", pos);
+    if (pos == std::string::npos) throw ParseException();
+    return pos;
+}
+
+size_t Json::end_of_string(size_t pos) const {
+    do {
+        pos = view.find_first_of('"', pos + 1);
+        if (pos == std::string::npos) throw ParseException();
+    } while (view.at(pos - 1) == '\\');
+    return pos + 1;
+}
+
+size_t Json::end_of_object(size_t pos, char delim) const {
+    size_t depth = 1;
+    do { 
+        pos = view.find_first_of("\"/{}[]", pos + 1);
+        if (pos == std::string::npos) throw ParseException();
+
+
+        if (view.substr(pos, 2) == "//") pos = view.find_first_of('\n') + 1; // comments
+        else if (view.at(pos) == '"') pos = end_of_string(pos) - 1;          // string
+        
+        else if (view.at(pos) == '{') ++depth;
+        else if (view.at(pos) == '}') --depth;
+        else if (view.at(pos) == '[') ++depth;
+        else if (view.at(pos) == ']') --depth;
+
+    } while(depth != 0 || view.at(pos) != delim);
+    
+    return pos + 1;
+}
