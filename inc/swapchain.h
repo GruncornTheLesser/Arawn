@@ -54,21 +54,18 @@ private:
 
     uint32_t frame_count = 0;
     uint32_t frame_index = 0; // current frame index
+    VK_TYPE(VkCommandBuffer) cmd_buffers[MAX_FRAMES_IN_FLIGHT];
+    VK_TYPE(VkSemaphore)     render_finished_semaphore[MAX_FRAMES_IN_FLIGHT];
+    VK_TYPE(VkSemaphore)     image_available_semaphore[MAX_FRAMES_IN_FLIGHT];
+    VK_TYPE(VkFence)         in_flight_fence[MAX_FRAMES_IN_FLIGHT];
+
+    VK_TYPE(VkFramebuffer)* framebuffers; // array of framebuffers
     struct {
-        VK_TYPE(VkCommandBuffer) cmd_buffers[MAX_FRAMES_IN_FLIGHT];
-        VK_TYPE(VkSemaphore)     finished[MAX_FRAMES_IN_FLIGHT];
-        VK_TYPE(VkSemaphore)     image_available[MAX_FRAMES_IN_FLIGHT];
-        VK_TYPE(VkFence)         in_flight[MAX_FRAMES_IN_FLIGHT];
+        VK_TYPE(VkImage) image;
+        VK_TYPE(VkImageView) view;
+        VK_TYPE(VkDeviceMemory) memory;
+    } resolve_attachment, depth_attachment;
 
-        VK_TYPE(VkFramebuffer)* framebuffers; // array of framebuffers
-        struct {
-            VK_TYPE(VkImage) image;
-            VK_TYPE(VkImageView) view;
-            VK_TYPE(VkDeviceMemory) memory;
-        } resolve_attachment, depth_attachment;
-
-    
-    } present_pass;
 
 
     VK_TYPE(VkRenderPass) renderpass;

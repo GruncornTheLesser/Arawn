@@ -1,10 +1,9 @@
 #define VK_IMPLEMENTATION
-#include "engine.h"
 #include "swapchain.h"
+#include "engine.h"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
-
 auto init_pipeline_layout(VkDescriptorSetLayout set_layout) -> VkPipelineLayout; 
 auto init_pipeline(VkRenderPass renderpass, VkPipelineLayout layout, VkSampleCountFlagBits msaa_sample, VkShaderModule vert, VkShaderModule frag) -> VkPipeline;
 
@@ -64,31 +63,31 @@ Swapchain::~Swapchain() {
     
     vkDestroyDescriptorSetLayout(engine.device, set_layout, nullptr);
 
-    vkFreeCommandBuffers(engine.device, engine.graphics.pool, frame_count, present_pass.cmd_buffers);
+    vkFreeCommandBuffers(engine.device, engine.graphics.pool, frame_count, cmd_buffers);
     for (uint32_t i = 0; i < frame_count; ++i) {
-        vkDestroySemaphore(engine.device, present_pass.finished[i], nullptr);
-        vkDestroySemaphore(engine.device, present_pass.image_available[i], nullptr);
-        vkDestroyFence(engine.device, present_pass.in_flight[i], nullptr);
+        vkDestroySemaphore(engine.device, render_finished_semaphore[i], nullptr);
+        vkDestroySemaphore(engine.device, image_available_semaphore[i], nullptr);
+        vkDestroyFence(engine.device, in_flight_fence[i], nullptr);
     }
 
-    bool old_msaa_enabled = present_pass.resolve_attachment.image != nullptr;
+    bool old_msaa_enabled = resolve_attachment.image != nullptr;
     
     uint32_t image_count;
     vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, nullptr);
 
     for (uint32_t i = 0; i < image_count; ++i)
-        vkDestroyFramebuffer(engine.device, present_pass.framebuffers[i], nullptr);
-    std::allocator<VkFramebuffer>().deallocate(present_pass.framebuffers, image_count);
+        vkDestroyFramebuffer(engine.device, framebuffers[i], nullptr);
+    std::allocator<VkFramebuffer>().deallocate(framebuffers, image_count);
 
     // destroy depth attachment
-    vkDestroyImageView(engine.device, present_pass.depth_attachment.view, nullptr);
-    vkFreeMemory(engine.device, present_pass.depth_attachment.memory, nullptr);
-    vkDestroyImage(engine.device, present_pass.depth_attachment.image, nullptr);
+    vkDestroyImageView(engine.device, depth_attachment.view, nullptr);
+    vkFreeMemory(engine.device, depth_attachment.memory, nullptr);
+    vkDestroyImage(engine.device, depth_attachment.image, nullptr);
     
     if (old_msaa_enabled) { // destroy resolve attachment
-        vkDestroyImageView(engine.device, present_pass.resolve_attachment.view, nullptr);
-        vkFreeMemory(engine.device, present_pass.resolve_attachment.memory, nullptr);
-        vkDestroyImage(engine.device, present_pass.resolve_attachment.image, nullptr);
+        vkDestroyImageView(engine.device, resolve_attachment.view, nullptr);
+        vkFreeMemory(engine.device, resolve_attachment.memory, nullptr);
+        vkDestroyImage(engine.device, resolve_attachment.image, nullptr);
     }
     
     vkDestroyRenderPass(engine.device, renderpass, nullptr);
@@ -174,8 +173,8 @@ void Swapchain::draw() {
     const uint64_t timeout = 1000000000;
     
     uint32_t image_index;
-    VkFence in_flight = present_pass.in_flight[frame_index];
-    VkSemaphore image_available = present_pass.image_available[frame_index];
+    VkFence in_flight = in_flight_fence[frame_index];
+    VkSemaphore image_available = image_available_semaphore[frame_index];
     
     { // get next swapchain image
         VK_ASSERT(vkWaitForFences(engine.device, 1, &in_flight, true, timeout));
@@ -194,8 +193,8 @@ void Swapchain::draw() {
 
     // TODO: update uniform buffers
     
-    VkCommandBuffer cmd_buffer = present_pass.cmd_buffers[frame_index];
-    VkSemaphore finished = present_pass.finished[frame_index];
+    VkCommandBuffer cmd_buffer = cmd_buffers[frame_index];
+    VkSemaphore render_finished = render_finished_semaphore[frame_index];
     
     VK_ASSERT(vkResetCommandBuffer(cmd_buffer, 0));
     { // record cmd buffer
@@ -214,7 +213,7 @@ void Swapchain::draw() {
             info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
             info.pNext = nullptr;
             info.renderPass = renderpass;
-            info.framebuffer = present_pass.framebuffers[image_index];
+            info.framebuffer = framebuffers[image_index];
             info.renderArea.offset = { 0, 0 };
             info.renderArea.extent = { settings.resolution.x, settings.resolution.y };
             info.clearValueCount = settings.anti_alias == AntiAlias::NONE ? 2 : 3;
@@ -261,13 +260,13 @@ void Swapchain::draw() {
         info.commandBufferCount = 1;
         info.pCommandBuffers = &cmd_buffer;
         info.signalSemaphoreCount = 1;
-        info.pSignalSemaphores = &finished;
+        info.pSignalSemaphores = &render_finished;
 
         VK_ASSERT(vkQueueSubmit(engine.graphics.queue, 1, &info, in_flight));
     }
 
     { // present to screen
-        VkSemaphore wait[1] = { finished };
+        VkSemaphore wait[1] = { render_finished };
 
         VkPresentInfoKHR info{};
         info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;;
@@ -318,14 +317,14 @@ void Swapchain::recreate_swapchain() {
     
     if (capabilities.minImageCount > frame_count) { // init additional cmd buffers if necessary
         VkCommandBufferAllocateInfo cmd_buffer_info{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, capabilities.minImageCount - frame_count };
-        VK_ASSERT(vkAllocateCommandBuffers(engine.device, &cmd_buffer_info, present_pass.cmd_buffers + frame_count));
+        VK_ASSERT(vkAllocateCommandBuffers(engine.device, &cmd_buffer_info, cmd_buffers + frame_count));
         
         VkSemaphoreCreateInfo semaphore_info{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
         VkFenceCreateInfo fence_info{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
         for (uint32_t i = frame_count; i < capabilities.minImageCount; ++i) {
-            VK_ASSERT(vkCreateSemaphore(engine.device, &semaphore_info, nullptr, &present_pass.finished[i]));
-            VK_ASSERT(vkCreateSemaphore(engine.device, &semaphore_info, nullptr, &present_pass.image_available[i]));
-            VK_ASSERT(vkCreateFence(engine.device, &fence_info, nullptr, &present_pass.in_flight[i]));
+            VK_ASSERT(vkCreateSemaphore(engine.device, &semaphore_info, nullptr, &render_finished_semaphore[i]));
+            VK_ASSERT(vkCreateSemaphore(engine.device, &semaphore_info, nullptr, &image_available_semaphore[i]));
+            VK_ASSERT(vkCreateFence(engine.device, &fence_info, nullptr, &in_flight_fence[i]));
         }
         frame_count = capabilities.minImageCount;
     }
@@ -399,24 +398,24 @@ void Swapchain::recreate_swapchain() {
     if (old_swapchain != nullptr) {
         VK_ASSERT(vkDeviceWaitIdle(engine.device));
 
-        bool old_msaa_enabled = present_pass.resolve_attachment.image != nullptr;
+        bool old_msaa_enabled = resolve_attachment.image != nullptr;
     
         uint32_t image_count;
         VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, old_swapchain, &image_count, nullptr));
 
         for (uint32_t i = 0; i < image_count; ++i)
-            vkDestroyFramebuffer(engine.device, present_pass.framebuffers[i], nullptr);
-        std::allocator<VkFramebuffer>().deallocate(present_pass.framebuffers, image_count);
+            vkDestroyFramebuffer(engine.device, framebuffers[i], nullptr);
+        std::allocator<VkFramebuffer>().deallocate(framebuffers, image_count);
 
         // destroy depth attachment
-        vkDestroyImageView(engine.device, present_pass.depth_attachment.view, nullptr);
-        vkFreeMemory(engine.device, present_pass.depth_attachment.memory, nullptr);
-        vkDestroyImage(engine.device, present_pass.depth_attachment.image, nullptr);
+        vkDestroyImageView(engine.device, depth_attachment.view, nullptr);
+        vkFreeMemory(engine.device, depth_attachment.memory, nullptr);
+        vkDestroyImage(engine.device, depth_attachment.image, nullptr);
         
         if (old_msaa_enabled) { // destroy resolve attachment
-            vkDestroyImageView(engine.device, present_pass.resolve_attachment.view, nullptr);
-            vkFreeMemory(engine.device, present_pass.resolve_attachment.memory, nullptr);
-            vkDestroyImage(engine.device, present_pass.resolve_attachment.image, nullptr);
+            vkDestroyImageView(engine.device, resolve_attachment.view, nullptr);
+            vkFreeMemory(engine.device, resolve_attachment.memory, nullptr);
+            vkDestroyImage(engine.device, resolve_attachment.image, nullptr);
         }
         
         vkDestroyRenderPass(engine.device, renderpass, nullptr);
@@ -560,12 +559,12 @@ void Swapchain::recreate_swapchain() {
             info.samples = sample_count;                                // !!!
             info.sharingMode = engine.graphics.family == engine.present.family ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT; // !!!
 
-            VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &present_pass.depth_attachment.image));
+            VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &depth_attachment.image));
         }
 
         { // init memory
             VkMemoryRequirements requirements;
-            vkGetImageMemoryRequirements(engine.device, present_pass.depth_attachment.image, &requirements);
+            vkGetImageMemoryRequirements(engine.device, depth_attachment.image, &requirements);
             uint32_t memory_index = engine.get_memory_index(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             VkMemoryAllocateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -573,17 +572,17 @@ void Swapchain::recreate_swapchain() {
             info.memoryTypeIndex = memory_index;
             info.allocationSize = requirements.size;
 
-            VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &present_pass.depth_attachment.memory));
+            VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &depth_attachment.memory));
         }
         
-        VK_ASSERT(vkBindImageMemory(engine.device, present_pass.depth_attachment.image, present_pass.depth_attachment.memory, 0));
+        VK_ASSERT(vkBindImageMemory(engine.device, depth_attachment.image, depth_attachment.memory, 0));
 
         { // init view
             VkImageViewCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             info.pNext = nullptr;
             info.flags = 0;
-            info.image = present_pass.depth_attachment.image;
+            info.image = depth_attachment.image;
             info.viewType = VK_IMAGE_VIEW_TYPE_2D;
             info.format = depth_format;
             info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -596,11 +595,11 @@ void Swapchain::recreate_swapchain() {
             info.subresourceRange.baseArrayLayer = 0;
             info.subresourceRange.layerCount = 1;
 
-            VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &present_pass.depth_attachment.view));
+            VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &depth_attachment.view));
         }
     }
 
-    
+    auto image_sharing_mode = engine.graphics.family == engine.present.family ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
     if (msaa_enabled) { // init colour attachment
         { // init image
             VkImageCreateInfo info{};
@@ -616,12 +615,12 @@ void Swapchain::recreate_swapchain() {
             info.samples = sample_count;
             info.sharingMode = engine.graphics.family == engine.present.family ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
 
-            VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &present_pass.resolve_attachment.image));
+            VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &resolve_attachment.image));
         }
 
         { // init memory
             VkMemoryRequirements requirements;
-            vkGetImageMemoryRequirements(engine.device, present_pass.resolve_attachment.image, &requirements);
+            vkGetImageMemoryRequirements(engine.device, resolve_attachment.image, &requirements);
             uint32_t memory_index = engine.get_memory_index(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             VkMemoryAllocateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -629,17 +628,17 @@ void Swapchain::recreate_swapchain() {
             info.memoryTypeIndex = memory_index;
             info.allocationSize = requirements.size;
 
-            VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &present_pass.resolve_attachment.memory));
+            VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &resolve_attachment.memory));
         }
         
-        VK_ASSERT(vkBindImageMemory(engine.device, present_pass.resolve_attachment.image, present_pass.resolve_attachment.memory, 0));
+        VK_ASSERT(vkBindImageMemory(engine.device, resolve_attachment.image, resolve_attachment.memory, 0));
 
         { // init view
             VkImageViewCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             info.pNext = nullptr;
             info.flags = 0;
-            info.image = present_pass.resolve_attachment.image;
+            info.image = resolve_attachment.image;
             info.viewType = VK_IMAGE_VIEW_TYPE_2D;
             info.format = colour_format;
             info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -652,21 +651,21 @@ void Swapchain::recreate_swapchain() {
             info.subresourceRange.baseArrayLayer = 0;
             info.subresourceRange.layerCount = 1;
 
-            VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &present_pass.resolve_attachment.view));
+            VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &resolve_attachment.view));
         }
     } else {
-        present_pass.resolve_attachment.image = nullptr;
-        present_pass.resolve_attachment.memory = nullptr;
-        present_pass.resolve_attachment.view = nullptr;
+        resolve_attachment.image = nullptr;
+        resolve_attachment.memory = nullptr;
+        resolve_attachment.view = nullptr;
     }
 
     { // init framebuffers
         uint32_t image_count;
         VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, nullptr));
         
-        present_pass.framebuffers = std::allocator<VkFramebuffer>().allocate(image_count);
+        framebuffers = std::allocator<VkFramebuffer>().allocate(image_count);
         
-        VkImageView attachments[3] { present_pass.depth_attachment.view, nullptr, present_pass.resolve_attachment.view };
+        VkImageView attachments[3] { depth_attachment.view, nullptr, resolve_attachment.view };
         //                                                                  ^ swapchain image view
 
         VkFramebufferCreateInfo info{};
@@ -682,7 +681,7 @@ void Swapchain::recreate_swapchain() {
 
         for (uint32_t i = 0; i < image_count; ++i) {
             attachments[1] = swapchain_views[i];
-            VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &present_pass.framebuffers[i]));
+            VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &framebuffers[i]));
         }
     }
 
