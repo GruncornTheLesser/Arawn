@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
-project(ARAWN VERSION 1.0 LANGUAGES CXX)
+project(arawn VERSION 1.0 LANGUAGES CXX)
 set(GLM_ENABLE_CXX_20 ON CACHE BOOL "")
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -15,7 +15,7 @@ set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 
 file(GLOB_RECURSE SOURCES "src/*.cpp")
-add_executable(ARAWN ${SOURCES})
+add_executable(arawn ${SOURCES})
 include_directories(${CMAKE_SOURCE_DIR}/inc)
 
 find_package(Vulkan REQUIRED)
@@ -23,40 +23,63 @@ if (NOT VULKAN_FOUND)
 	message(FATAL_ERROR "vulkan sdk not found")
 endif()
 
-FetchContent_Declare(GLFW GIT_REPOSITORY https://github.com/glfw/glfw GIT_TAG 3.3.8)
-FetchContent_Declare(GLM GIT_REPOSITORY https://github.com/g-truc/glm GIT_TAG release-1-0-2)
-FetchContent_Declare(ENTT GIT_REPOSITORY https://github.com/skypjack/entt GIT_TAG v3.13.x)
-FetchContent_MakeAvailable(GLFW GLM ENTT)
+FetchContent_Declare(GLFW GIT_REPOSITORY https://github.com/glfw/glfw GIT_TAG 3.4)
+FetchContent_Declare(GLM GIT_REPOSITORY https://github.com/g-truc/glm GIT_TAG 1.0.1)
+FetchContent_Declare(ENTT GIT_REPOSITORY https://github.com/skypjack/entt GIT_TAG v3.14.0)
+FetchContent_Declare(STB GIT_REPOSITORY https://github.com/nothings/stb GIT_TAG master)
+FetchContent_Declare(TINYOBJ GIT_REPOSITORY https://github.com/tinyobjloader/tinyobjloader GIT_TAG release)
+FetchContent_MakeAvailable(GLFW GLM ENTT STB TINYOBJ)
 
-target_include_directories(ARAWN 
+target_include_directories(arawn 
 	PRIVATE ${Vulkan_INCLUDE_DIRS} 
 	PRIVATE ${glfw_SOURCE_DIR}/include
 	PRIVATE ${glm_SOURCE_DIR}
 	PRIVATE ${entt_SOURCE_DIR}/single_include
+	PRIVATE ${stb_SOURCE_DIR}
+	PRIVATE ${tinyobjloader_SOURCE_DIR}
 )
 
-target_link_libraries(ARAWN 
+target_link_libraries(arawn 
 	PRIVATE glfw
+	PRIVATE tinyobjloader
 	PRIVATE Vulkan::Vulkan
 )
 
-if(WIN32)
+find_program(GLSLC_EXECUTABLE glslc)
 
-	set(GLSLC_EXECUTABLE "$ENV{VULKAN_SDK}\\Bin\\glslc.exe")
+if (GLSLC_EXECUTABLE)
+	message(STATUS "ARAWN: using glslc from path")
+	set(GLSLC_EXECUTABLE glslc)
+elseif(DEFINED ENV{VULKAN_SDK})
+	message(STATUS "using vulkan sdk")
+	if(WIN32)
+		set(GLSLC_EXECUTABLE "$ENV{VULKAN_SDK}\\Bin\\glslc.exe")
+		
+		
+
+	elseif(UNIX)
+		set(GLSLC_EXECUTABLE "$ENV{VULKAN_SDK}/Bin/glslc")
+	else()
+		message(FATAL_ERROR "ARAWN: unsupported platform cannot compile shaders")
+	endif()
+else()
+	message(FATAL_ERROR "ARAWN: couldn't find vulkan sdk")
+endif()
+
+if(WIN32)
 	string(REPLACE "\\" "/" GLSLC_EXECUTABLE "${GLSLC_EXECUTABLE}")
+	string(REPLACE "\\" "/" RESOURCE_DIR "${PROJECT_SOURCE_DIR}/res")
 	
-	string(REPLACE "\\" "/" RESOURCE_DIR "${PROJECT_SOURCE_DIR}")
-	
-	set(RESOURCE_DIR "${RESOURCE_DIR}/res")
 	set(IMPORT_DIR "${RESOURCE_DIR}/import/")
+
 	file(GLOB_RECURSE SHADERS "res/*.vert" "res/*.frag" "res/*.comp" "res/*.geom")
 elseif(UNIX)
-	set(GLSLC_EXECUTABLE "$ENV{VULKAN_SDK}/Bin/glslc")
 	set(RESOURCE_DIR "${PROJECT_SOURCE_DIR}/res")
-	set(IMPORT_DIR "${RESOURCE_DIR}/import/") # slash appended
+	set(IMPORT_DIR "${RESOURCE_DIR}/import/")
+	
 	file(GLOB_RECURSE SHADERS "res/*.vert" "res/*.frag" "res/*.comp" "res/*.geom")
 else()
-	message(FATAL_ERROR "unsupported platform cannot compile shaders")
+	message(FATAL_ERROR "ARAWN: unsupported platform cannot compile shaders")
 endif()
 
 set(SHADER_INDEX 1)
@@ -74,10 +97,10 @@ foreach(SHADER ${SHADERS})
 	)
 
 	add_custom_target(compile_shader_${SHADER_INDEX} DEPENDS ${TARGET})
-	add_dependencies(ARAWN compile_shader_${SHADER_INDEX})
+	add_dependencies(arawn compile_shader_${SHADER_INDEX})
 
 	math(EXPR SHADER_INDEX "${SHADER_INDEX} + 1")
 endforeach()
 
 add_custom_target(compile_shaders ALL DEPENDS ${SHADERS})
-add_dependencies(ARAWN compile_shaders)
+add_dependencies(arawn compile_shaders)

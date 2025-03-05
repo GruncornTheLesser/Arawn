@@ -1,10 +1,13 @@
 #include "engine.h"
 #include "window.h"
 #include "swapchain.h"
-
+#include "model.h"
+//#include "renderer/forward.h"
+//#include "renderer/deferred.h"
 
 /*
 TODOLIST:
+ * move paremeters to settings class
  * materials
  * lights
  * forward Swapchain
@@ -15,15 +18,15 @@ TODOLIST:
  * performance metrics
 */
 
-
 Settings    settings("configs/settings.json");
 Engine      engine;
 Window      window;
 Swapchain   swapchain;
-
+// Renderer    renderer;
 int main() {
-
-
+    Model       model("res/model/bunny.obj");
+    return 0;
+    
     // toggle fullscreen hotkey
     window.on(KeyDown{ Key::F }) += [&](auto& event) {
         window.set_display_mode(static_cast<DisplayMode>((static_cast<uint32_t>(window.get_display_mode()) + 1) % 3));
@@ -43,6 +46,5 @@ int main() {
         window.set_resolution(resolutions[--index]);
     };
     
-    
-    while (!window.closed()) swapchain.draw();
+    // while (!window.closed()) swapchain.draw();
 }

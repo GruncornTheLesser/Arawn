@@ -3,7 +3,7 @@
 #include "settings.h"
 #include "dispatcher.h"
 #include "input.h"
-#include <glm/glm.hpp>
+
 #include <vector>
 
 

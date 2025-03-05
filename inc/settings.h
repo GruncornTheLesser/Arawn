@@ -1,22 +1,7 @@
 #pragma once
-#include <glm/glm.hpp>
+#include "vulkan.h"
 #include <filesystem>
 #include <string>
-
-// window settings 
-// * resolution
-// * display mode
-
-// swapchain settings
-// * vsync_mode { OFF, ON }
-// * sync_mode { DOUBLE, TRIPLE }
-// * anti_alias { NONE, MSAA_2, MSAA_4, MSAA_8 }
-
-// renderer
-// * depth_mode { NONE, ENABLED, PREPASS };
-// * shadow_mode { NONE, MAPPED, PROJECTION };
-// * reflection { NONE, SCREENSPACE, };
-// * SSAO { OFF ON }; // further parameters???
 
 enum class DisplayMode { 
     WINDOWED=0,
@@ -26,7 +11,8 @@ enum class DisplayMode {
 
 enum class SyncMode {  
     DOUBLE=2,
-    TRIPLE=3
+    TRIPLE=3,
+    // ...
 };
 
 enum class VsyncMode { 
@@ -43,11 +29,29 @@ enum class AntiAlias {
 };
 
 enum class AspectRatio { 
-    SQUARE,         // 1:1
-    STANDARD,       // 4:3 
-    WIDESCREEN,     // 16:9
-    CINEMA,         // 21:9
+    SQUARE = 9,      //  1:1 = 9:9 = 1
+    STANDARD = 12,   //  3:4 = 12:9 = 1.333...
+    WIDESCREEN = 16, // 16:9 = 16:9 = 1.777...
+    CINEMA = 21,     // 21:9 = 21:9 = 2.333...
 };
+
+enum class RenderMode {
+    FORWARD,        // standard object to screen rendering
+    DEFERRED,       // separate geometry and shading calculations
+};
+
+enum class CullMode {
+    NONE,           // no light culling
+    TILED,          // light culled against tiled(x, y) bounding box
+    CLUSTERED,      // light culled against clustered(x, y, z) bounding box
+};
+
+enum class DepthMode {
+    NONE,
+    PARALLEL,
+    PRE_PASS
+};
+
 
 struct Settings {
     Settings(std::filesystem::path fp);    
@@ -57,13 +61,21 @@ struct Settings {
     std::string device;
     
     // window
-    glm::uvec2  resolution;
+    glm::uvec2 resolution;
     DisplayMode display_mode;
     
     // swapchain
     SyncMode    sync_mode;
     VsyncMode   vsync_mode;
     AntiAlias   anti_alias;
+
+    // renderer
+    RenderMode render_mode;
+    CullMode   cull_mode;
+    DepthMode  depth_mode;
+
+    
+
 };
 
 extern Settings settings;
