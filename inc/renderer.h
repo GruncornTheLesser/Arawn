@@ -96,12 +96,6 @@ private:
         VK_TYPE(VkPipelineLayout) layout;
     };
 
-
-    VK_TYPE(VkDescriptorSetLayout) object_layout;
-    VK_TYPE(VkDescriptorSetLayout) camera_layout;
-    VK_TYPE(VkDescriptorSetLayout) light_layout;
-    VK_TYPE(VkDescriptorSetLayout) material_layout;
-
     TextureAttachment msaa_attachment;      // enabled when anti alias not NONE
     TextureAttachment depth_attachment;     // enabled when depth mode not NONE
     TextureAttachment albedo_attachment;    // enabled when render mode DEFERRED

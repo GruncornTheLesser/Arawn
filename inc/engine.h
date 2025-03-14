@@ -13,7 +13,6 @@ public:
     VK_TYPE(VkInstance) instance;               // vulkan instance
     VK_TYPE(VkPhysicalDevice) gpu;              // gpu selected
     VK_TYPE(VkDevice) device;
-    VK_TYPE(VkDescriptorPool) descriptor_pool;
     struct {
         uint32_t family;
         VK_TYPE(VkQueue) queue;
@@ -23,6 +22,12 @@ public:
         VK_TYPE(VkQueue) queue;
         VK_TYPE(VkCommandPool) pool;
     } graphics, compute;
+
+    VK_TYPE(VkDescriptorPool) descriptor_pool;
+    VK_TYPE(VkDescriptorSetLayout) object_layout;
+    VK_TYPE(VkDescriptorSetLayout) camera_layout;
+    VK_TYPE(VkDescriptorSetLayout) light_layout;
+    VK_TYPE(VkDescriptorSetLayout) material_layout;
 };
 
 extern Engine engine;

@@ -3,7 +3,6 @@
 #include "engine.h"
 #include "swapchain.h"
 #include "vertex.h"
-#include "model.h"
 #include <fstream>
 #include <numeric>
 
@@ -50,108 +49,6 @@ VkShaderModule create_shader_module(std::filesystem::path fp) {
 }
 
 Renderer::Renderer() {
-    { // init descriptor set layouts
-        { // object layout
-            VkDescriptorSetLayoutBinding bindings[1];
-
-            VkDescriptorSetLayoutBinding& obj_binding = bindings[0];
-            obj_binding.binding = 0;
-            obj_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            obj_binding.descriptorCount = 1;
-            obj_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-            obj_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.bindingCount = 1;
-            info.pBindings = bindings;
-            
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &object_layout));
-        }
-
-        { // camera layout
-            VkDescriptorSetLayoutBinding bindings[1];
-
-            VkDescriptorSetLayoutBinding& cam_binding = bindings[0];
-            cam_binding.binding = 0;
-            cam_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            cam_binding.descriptorCount = 1;
-            cam_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            cam_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.bindingCount = 1;
-            info.pBindings = bindings;
-
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &camera_layout));
-        }
-
-        { // specular layout
-            VkDescriptorSetLayoutBinding bindings[3];
-
-            VkDescriptorSetLayoutBinding& mat_binding = bindings[0];
-            mat_binding.binding = 0;
-            mat_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            mat_binding.descriptorCount = 1;
-            mat_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            mat_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutBinding& albedo_binding = bindings[1];
-            albedo_binding.binding = 1;
-            albedo_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            albedo_binding.descriptorCount = 1;
-            albedo_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            albedo_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutBinding& normal_binding = bindings[2];
-            normal_binding.binding = 2;
-            normal_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            normal_binding.descriptorCount = 1;
-            normal_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            normal_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.bindingCount = 3;
-            info.pBindings = bindings;
-            
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &material_layout));
-        
-        }
-
-        { // lights/clusters layout
-            VkDescriptorSetLayoutBinding bindings[2];
-            
-            VkDescriptorSetLayoutBinding& light_binding = bindings[0];
-            light_binding.binding = 0;
-            light_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            light_binding.descriptorCount = 1;
-            light_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            light_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutBinding& frustrum_binding = bindings[1];
-            frustrum_binding.binding = 1;
-            frustrum_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            frustrum_binding.descriptorCount = 1;
-            frustrum_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            frustrum_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.bindingCount = 2;
-            info.pBindings = bindings;
-
-
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &light_layout));
-            
-        }
-    }
-
     { // init textures
         { // init msaa attachment
             { // image
@@ -495,7 +392,7 @@ Renderer::Renderer() {
         }
         
         { // create pipeline layout
-            std::array<VkDescriptorSetLayout, 2> sets = { object_layout, camera_layout };
+            std::array<VkDescriptorSetLayout, 2> sets = { engine.object_layout, engine.camera_layout };
 
             VkPipelineLayoutCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -771,7 +668,7 @@ Renderer::Renderer() {
         }
 
         { // initialize layout
-            std::array<VkDescriptorSetLayout, 2> sets{ object_layout, camera_layout };
+            std::array<VkDescriptorSetLayout, 2> sets{ engine.object_layout, engine.camera_layout };
             std::array<VkPushConstantRange, 1> ranges;
 
             ranges[0].size = sizeof(PushConstants);
@@ -1170,11 +1067,6 @@ Renderer::~Renderer() {
             vkDestroyFence(engine.device, lighting_pass.in_flight[i], nullptr);
         }
     }
-
-    vkDestroyDescriptorSetLayout(engine.device, object_layout, nullptr);
-    vkDestroyDescriptorSetLayout(engine.device, camera_layout, nullptr);
-    vkDestroyDescriptorSetLayout(engine.device, light_layout, nullptr);
-    vkDestroyDescriptorSetLayout(engine.device, material_layout, nullptr);
 }
 
 void Renderer::draw() {
@@ -1410,11 +1302,51 @@ void Renderer::DepthPass::record(uint32_t frame_index) {
 }
 
 void Renderer::ClusterPass::record(uint32_t frame_index) {
+    { // reset & begin cmd buffer
+        VK_ASSERT(vkResetCommandBuffer(cmd_buffer[frame_index], 0));
+        
+        VkCommandBufferBeginInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        VK_ASSERT(vkBeginCommandBuffer(cmd_buffer[frame_index], &info));
+    }
 
+
+
+    VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
 }
 
 void Renderer::DeferredPass::record(uint32_t frame_index) {
+    { // reset & begin cmd buffer
+        VK_ASSERT(vkResetCommandBuffer(cmd_buffer[frame_index], 0));
+        
+        VkCommandBufferBeginInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        VK_ASSERT(vkBeginCommandBuffer(cmd_buffer[frame_index], &info));
+    }
 
+    { // begin renderpass
+        VkClearValue clear[3];
+        clear[0].color = { 0.0, 0.0, 0.0, 0.0 };
+        clear[1].color = { 0.0, 0.0, 0.0, 0.0 };
+        clear[2].color = { 0.0, 0.0, 0.0, 0.0 };
+        
+        VkRenderPassBeginInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        info.renderPass = renderpass;
+        info.renderArea.offset = { 0, 0 };
+        info.renderArea.extent = { swapchain.extent.x, swapchain.extent.y };
+        info.framebuffer = framebuffer[frame_index];
+        info.pClearValues = clear;
+        info.clearValueCount = 3;
+
+        vkCmdBeginRenderPass(cmd_buffer[frame_index], &info, VK_SUBPASS_CONTENTS_INLINE);
+    }
+
+
+
+    vkCmdEndRenderPass(cmd_buffer[frame_index]);
+    
+    VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
 }
 
 void Renderer::LightingPass::record(uint32_t frame_index) {
@@ -1428,9 +1360,8 @@ void Renderer::LightingPass::record(uint32_t frame_index) {
     }
 
     { // begin renderpass
-        VkClearValue clear[6];
-        clear[0] = { 0.0, 0.0, 0.0, 0.0 }; // swapchain image
-        clear[1] = { 0.1f }; // depth
+        VkClearValue clear[1];
+        clear[0].color = { 0.05, 0.05, 0.05 };
         
         VkRenderPassBeginInfo info{};
         info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -1439,7 +1370,7 @@ void Renderer::LightingPass::record(uint32_t frame_index) {
         info.renderArea.extent = { swapchain.extent.x, swapchain.extent.y };
         info.framebuffer = framebuffer[frame_index];
         info.pClearValues = clear;
-        info.clearValueCount = 2 - (z_prepass_enabled);
+        info.clearValueCount = 1;
 
         vkCmdBeginRenderPass(cmd_buffer[frame_index], &info, VK_SUBPASS_CONTENTS_INLINE);
     }
