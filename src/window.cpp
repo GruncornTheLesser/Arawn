@@ -150,7 +150,11 @@ auto Window::enum_display_modes() const -> std::vector<DisplayMode> {
 }
 
 auto Window::closed() const -> bool {
-    glfwPollEvents(); // TODO: this is for all windows but will do for now 
+    // only single window is being supported so this is fine, 
+    // this is for all all glfwWindows, 
+    // if multiple windows initialized this will skip events
+    glfwPollEvents();
+    
     return glfwWindowShouldClose(window);
 }
 

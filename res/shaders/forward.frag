@@ -20,10 +20,9 @@ layout(push_constant) uniform PushConstant {
     ivec2 viewport_size;
     ivec3 cluster_count;
     int debug_view;
-} push_constants;
+} push_constant;
 
-
-layout(std140, set = 1, binding = 0) buffer readonly Camera {
+layout(std140, set = 1, binding = 0) uniform Camera {
     mat4 projview;
     vec3 position;
 } camera;

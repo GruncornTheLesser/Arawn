@@ -1,15 +1,8 @@
 #pragma once
 #include "vulkan.h"
-#include "swapchain.h"
-#include <vector>
+#include <span>
 
 // TODO: work out padding/packing
-
-struct Camera {
-    glm::mat4 projview;
-    glm::vec3 position;
-    // padding ???
-};
 
 struct Light {
     glm::vec3 position;
@@ -17,6 +10,26 @@ struct Light {
     glm::vec3 intensity;
 private:
     float padding;
+};
+
+struct Frustrum {
+    glm::vec3 bb_min; // bounding box min 
+    int light_offset;
+    glm::vec3 bb_max; // bounding box max
+    int light_count;
+};
+
+struct Camera {
+    glm::mat4 projview;
+    glm::vec3 position;
+private:
+    float padding;
+};
+
+struct PushConstants {
+    glm::ivec2 viewport_size;
+    glm::ivec3 cluster_count;
+    int debug_mode;
 };
 
 class Renderer {
@@ -30,75 +43,98 @@ public:
 
     void draw();
 
-    void recreate();
-
-    void record();
-
 private:
-    struct Attachment {
-        Attachment();
-        ~Attachment();
-        Attachment(Attachment&& other);
-        Attachment& operator=(Attachment&& other);
-        Attachment(const Attachment& other) = delete;
-        Attachment& operator=(const Attachment& other) = delete;
-        
-        VK_TYPE(VkImage) image;
-        VK_TYPE(VkImageView) view;
-        VK_TYPE(VkDeviceMemory) memory;
+    struct TextureAttachment {
+        ~TextureAttachment();
+
+        std::array<VK_TYPE(VkImage), MAX_FRAMES_IN_FLIGHT> image;
+        std::array<VK_TYPE(VkImageView), MAX_FRAMES_IN_FLIGHT> view;
+        std::array<VK_TYPE(VkDeviceMemory), MAX_FRAMES_IN_FLIGHT> memory;
     };
 
-    VK_TYPE(VkFramebuffer)* framebuffers; // array of framebuffers, 
-    
-    VK_TYPE(VkDescriptorSetLayout) object_set_layout;
-    VK_TYPE(VkDescriptorSetLayout) camera_set_layout;
-    VK_TYPE(VkDescriptorSetLayout) material_set_layout;
-    VK_TYPE(VkDescriptorSetLayout) light_set_layout; // lights and clusters
-    
-    Attachment resolve_attachment;  // enabled when anti alias not NONE
-    Attachment depth_attachment;    // enabled when depth mode not NONE
-    Attachment position_attachment, normal_attachment, albedo_attachment; // enabled when render mode DEFERRED
+    struct BufferAttachment {
+        ~BufferAttachment();
+        
+        std::array<VK_TYPE(VkBuffer), MAX_FRAMES_IN_FLIGHT> buffer;
+        std::array<VK_TYPE(VkDeviceMemory), MAX_FRAMES_IN_FLIGHT> memory;
+    };
 
-    struct {
-        VK_TYPE(VkCommandBuffer) cmd_buffer;
-        VK_TYPE(VkRenderPass) renderpass;
-        VK_TYPE(VkPipelineLayout) pipeline_layout; // obj, cam
+
+    struct GraphicPipeline {
+        ~GraphicPipeline();
+
+        void bind(VK_TYPE(VkCommandBuffer) cmd_buffer);
+
+        void submit(uint32_t frame_index, 
+            std::span<VK_TYPE(VkSemaphore)> wait_semaphore = { }, 
+            std::span<VK_ENUM(VkPipelineStageFlags)> wait_stages = { }, 
+            VK_TYPE(VkFence) signal_fence = nullptr
+        );
+
+        std::array<VK_TYPE(VkCommandBuffer), MAX_FRAMES_IN_FLIGHT> cmd_buffer;
+        std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> finished;
         VK_TYPE(VkPipeline) pipeline;
-        VK_TYPE(VkSemaphore) finished;
+        VK_TYPE(VkRenderPass) renderpass;
+        VK_TYPE(VkPipelineLayout) layout;
+        
+    };
+
+    struct ComputePipeline {
+        ~ComputePipeline();
+
+        void bind(VK_TYPE(VkCommandBuffer) cmd_buffer);
+
+        void submit(uint32_t frame_index, 
+            std::span<VK_TYPE(VkSemaphore)> wait_semaphore = { }, 
+            std::span<VK_ENUM(VkPipelineStageFlags)> wait_stages = { }, 
+            VK_TYPE(VkFence) signal_fence = nullptr
+        );
+
+        std::array<VK_TYPE(VkCommandBuffer), MAX_FRAMES_IN_FLIGHT> cmd_buffer{};
+        std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> finished;
+        VK_TYPE(VkPipeline) pipeline;
+        VK_TYPE(VkPipelineLayout) layout;
+    };
+
+
+    VK_TYPE(VkDescriptorSetLayout) object_layout;
+    VK_TYPE(VkDescriptorSetLayout) camera_layout;
+    VK_TYPE(VkDescriptorSetLayout) light_layout;
+    VK_TYPE(VkDescriptorSetLayout) material_layout;
+
+    TextureAttachment msaa_attachment;      // enabled when anti alias not NONE
+    TextureAttachment depth_attachment;     // enabled when depth mode not NONE
+    TextureAttachment albedo_attachment;    // enabled when render mode DEFERRED
+    TextureAttachment normal_attachment;    // enabled when render mode DEFERRED
+    TextureAttachment specular_attachment;  // enabled when render mode DEFERRED
+
+    BufferAttachment light_buffer;
+    BufferAttachment cluster_buffer;
+
+    uint32_t frame_index = 0;
+    uint32_t image_index;
+
+    struct DepthPass : GraphicPipeline {
+        std::array<VK_TYPE(VkFramebuffer), MAX_FRAMES_IN_FLIGHT> framebuffer;
+        
+        void record(uint32_t frame_index);
     } depth_pass;
 
-    struct { // compute pass, generates clusters/tiles
-        VK_TYPE(VkCommandBuffer) cmd_buffer;
-        VK_TYPE(VkPipelineLayout) pipeline_layout; // viewport, clusters
-        VK_TYPE(VkPipeline) pipeline;
-        VK_TYPE(VkSemaphore) finished;
-    } cluster_pass;
-
-    struct { // compute pass, cull lights outside of cluster/tiles
-        VK_TYPE(VkCommandBuffer) cmd_buffer;
-        VK_TYPE(VkPipelineLayout) pipeline_layout; // cam, lights, clusters
-        VK_TYPE(VkPipeline) pipeline;
-        VK_TYPE(VkSemaphore) finished;
+    struct ClusterPass : ComputePipeline { 
+        void record(uint32_t frame_index);
     } culling_pass;
 
-    struct {
-        VK_TYPE(VkCommandBuffer) cmd_buffer;
-        VK_TYPE(VkRenderPass) renderpass;
-
-        VK_TYPE(VkPipelineLayout) pipeline_layout;
-        VK_TYPE(VkPipeline) pipeline;
-        VK_TYPE(VkSemaphore) finished;
+    struct DeferredPass : GraphicPipeline { 
+        std::array<VK_TYPE(VkFramebuffer), MAX_FRAMES_IN_FLIGHT> framebuffer;
+        
+        void record(uint32_t frame_index);
     } deferred_pass;
 
-    struct {
-        VK_TYPE(VkCommandBuffer) cmd_buffer;
-        VK_TYPE(VkRenderPass) renderpass;
-        VK_TYPE(VkPipelineLayout) pipeline_layout;
-        VK_TYPE(VkPipeline) pipeline;
-        VK_TYPE(VkSemaphore) finished;
-    } forward_pass;
+    struct LightingPass : GraphicPipeline { 
+        std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> image_available;
+        std::array<VK_TYPE(VkFence), MAX_FRAMES_IN_FLIGHT> in_flight;
+        std::vector<VK_TYPE(VkFramebuffer)> framebuffer;
+        
+        void record(uint32_t frame_index);
+    } lighting_pass;
 };
-
-/*
-    
-*/

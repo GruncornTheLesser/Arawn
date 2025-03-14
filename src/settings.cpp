@@ -15,24 +15,24 @@ Settings::Settings(std::filesystem::path fp) {
     file.close();
     
     Json::Object settings;
-    settings = Json(buffer);
     try {
+        settings = Json(buffer);
     } catch (Json::ParseException e) {
-        return;        
+        return;
     }
     
     try {
         device = settings["device"];
-    
-    } catch (Json::ParseException e) {
-        return;
+    } catch (Json::ParseException e) { 
+        device = "";
     }
 
-    Json::Array res = settings["resolution"];
-    resolution = { res[0], res[1] };
     try {
-    
-    } catch (Json::ParseException e) { }
+        Json::Array res = settings["resolution"];
+        resolution = { res[0], res[1] };
+    } catch (Json::ParseException e) { 
+        resolution = { 800, 600 };
+    }
 
     try {
         std::string_view display_str = settings["display mode"];
@@ -41,15 +41,15 @@ Settings::Settings(std::filesystem::path fp) {
         else if (display_str == "exclusive") display_mode = DisplayMode::EXCLUSIVE; 
         else if (display_str == "fullscreen") display_mode = DisplayMode::FULLSCREEN;
     
-    } catch (Json::ParseException e) { }
+    } catch (Json::ParseException e) { 
+        display_mode = DisplayMode::WINDOWED;
+    }
 
     try {
-        std::string_view sync_str = settings["sync mode"];
-        
-        if      (sync_str == "double") sync_mode = SyncMode::DOUBLE;
-        else if (sync_str == "triple") sync_mode = SyncMode::TRIPLE;
-    
-    } catch (Json::ParseException e) { }
+        uint32_t frame_count = settings["frame count"];    
+    } catch (Json::ParseException e) { 
+        uint32_t frame_count = 2; // default 2
+    }
 
     try {
         std::string_view vsync_str = settings["vsync mode"];
@@ -57,7 +57,9 @@ Settings::Settings(std::filesystem::path fp) {
         if      (vsync_str == "off") vsync_mode = VsyncMode::OFF; 
         else if (vsync_str == "on") vsync_mode = VsyncMode::ON;
 
-    } catch (Json::ParseException e) { }
+    } catch (Json::ParseException e) { 
+        vsync_mode = VsyncMode::OFF;
+    }
 
     try {
         std::string_view anti_alias_str = settings["anti alias"];
@@ -68,5 +70,7 @@ Settings::Settings(std::filesystem::path fp) {
         else if (anti_alias_str == "msaa8") anti_alias = AntiAlias::MSAA_8; 
         else if (anti_alias_str == "msaa16") anti_alias = AntiAlias::MSAA_16;
 
-    } catch (Json::ParseException e) { }
+    } catch (Json::ParseException e) {
+        anti_alias = AntiAlias::NONE;
+    }
 }

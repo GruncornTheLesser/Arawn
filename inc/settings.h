@@ -9,23 +9,23 @@ enum class DisplayMode {
     EXCLUSIVE=2
 };
 
-enum class SyncMode {  
-    DOUBLE=2,
-    TRIPLE=3,
-    // ...
-};
-
 enum class VsyncMode { 
     OFF,            // IMMEDIATE/FIFO_RELAXED
     ON              // FIFO/MAILBOX
 };
 
 enum class AntiAlias { 
-    NONE = 1,       // VK_SAMPLE_COUNT_1
-    MSAA_2 = 2,     // VK_SAMPLE_COUNT_2
-    MSAA_4 = 4,     // VK_SAMPLE_COUNT_4
-    MSAA_8 = 8,     // VK_SAMPLE_COUNT_8
-    MSAA_16 = 16    // VK_SAMPLE_COUNT_16
+    NONE,       // VK_SAMPLE_COUNT_1
+    MSAA_2,     // VK_SAMPLE_COUNT_2
+    MSAA_4,     // VK_SAMPLE_COUNT_4
+    MSAA_8,     // VK_SAMPLE_COUNT_8
+    MSAA_16     // VK_SAMPLE_COUNT_16
+    /*
+    FXAA_2,
+    FXAA_4,
+    FXAA_8,
+    FXAA_16,
+    */
 };
 
 enum class AspectRatio { 
@@ -33,6 +33,7 @@ enum class AspectRatio {
     STANDARD = 12,   //  3:4 = 12:9 = 1.333...
     WIDESCREEN = 16, // 16:9 = 16:9 = 1.777...
     CINEMA = 21,     // 21:9 = 21:9 = 2.333...
+    // generate aspect ratio by aspect_ratio / AspectRatio::Square
 };
 
 enum class RenderMode {
@@ -65,7 +66,7 @@ struct Settings {
     DisplayMode display_mode;
     
     // swapchain
-    SyncMode    sync_mode;
+    uint32_t    frame_count;
     VsyncMode   vsync_mode;
     AntiAlias   anti_alias;
 
