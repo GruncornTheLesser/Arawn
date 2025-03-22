@@ -10,14 +10,18 @@ public:
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
 
+    uint32_t memory_type_index(VK_TYPE(VkMemoryRequirements&) requirements, VK_ENUM(VkMemoryPropertyFlags) memory_property_flags);
+
     VK_TYPE(VkInstance) instance;               // vulkan instance
     VK_TYPE(VkPhysicalDevice) gpu;              // gpu selected
     VK_TYPE(VkDevice) device;
-    struct {
+
+    struct { // queue data
         uint32_t family;
         VK_TYPE(VkQueue) queue;
     } present;
-    struct {
+
+    struct { // queue data
         uint32_t family;
         VK_TYPE(VkQueue) queue;
         VK_TYPE(VkCommandPool) pool;
@@ -28,6 +32,8 @@ public:
     VK_TYPE(VkDescriptorSetLayout) camera_layout;
     VK_TYPE(VkDescriptorSetLayout) light_layout;
     VK_TYPE(VkDescriptorSetLayout) material_layout;
+
+    VK_TYPE(VkSampler) sampler;
 };
 
 extern Engine engine;

@@ -1,4 +1,4 @@
-#define VK_IMPLEMENTATION
+#define ARAWN_IMPLEMENTATION
 #include "window.h"
 #include <algorithm>
 

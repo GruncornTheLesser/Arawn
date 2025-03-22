@@ -1,4 +1,4 @@
-#define VK_IMPLEMENTATION
+#define ARAWN_IMPLEMENTATION
 #include "engine.h"
 #include <vector>
 #include <algorithm>
@@ -228,6 +228,9 @@ Engine::Engine() {
             }
         }
         
+        VkPhysicalDeviceFeatures features{};
+        features.samplerAnisotropy = VK_TRUE;
+
         VkDeviceCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         info.queueCreateInfoCount = static_cast<uint32_t>(queues.size());
@@ -236,6 +239,8 @@ Engine::Engine() {
         info.ppEnabledExtensionNames = device_extensions.data();
         info.enabledLayerCount = static_cast<uint32_t>(device_layers.size());
         info.ppEnabledLayerNames = device_layers.data();
+        info.pEnabledFeatures = &features;
+
         VK_ASSERT(vkCreateDevice(gpu, &info, nullptr, &device));
     }
 
@@ -277,6 +282,8 @@ Engine::Engine() {
 
         VkDescriptorPoolCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        info.pNext = nullptr;
+        info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
         info.poolSizeCount = 3;
         info.pPoolSizes = pool_sizes;
         info.maxSets = 256;
@@ -324,7 +331,7 @@ Engine::Engine() {
         }
 
         { // material layout
-            VkDescriptorSetLayoutBinding bindings[3];
+            VkDescriptorSetLayoutBinding bindings[5];
 
             VkDescriptorSetLayoutBinding& mat_binding = bindings[0];
             mat_binding.binding = 0;
@@ -340,8 +347,23 @@ Engine::Engine() {
             albedo_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             albedo_binding.pImmutableSamplers = nullptr;
 
-            VkDescriptorSetLayoutBinding& normal_binding = bindings[2];
-            normal_binding.binding = 2;
+            VkDescriptorSetLayoutBinding& roughness_binding = bindings[2];
+            roughness_binding.binding = 2;
+            roughness_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            roughness_binding.descriptorCount = 1;
+            roughness_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            roughness_binding.pImmutableSamplers = nullptr;
+
+            VkDescriptorSetLayoutBinding& metallic_binding = bindings[3];
+            metallic_binding.binding = 3;
+            metallic_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            metallic_binding.descriptorCount = 1;
+            metallic_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            metallic_binding.pImmutableSamplers = nullptr;
+
+
+            VkDescriptorSetLayoutBinding& normal_binding = bindings[4];
+            normal_binding.binding = 4;
             normal_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             normal_binding.descriptorCount = 1;
             normal_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -350,7 +372,7 @@ Engine::Engine() {
             VkDescriptorSetLayoutCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             info.pNext = nullptr;
-            info.bindingCount = 3;
+            info.bindingCount = 5;
             info.pBindings = bindings;
             
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &material_layout));
@@ -386,9 +408,35 @@ Engine::Engine() {
         }
     }
 
+    { // create sampler
+        VkPhysicalDeviceProperties properties;
+        vkGetPhysicalDeviceProperties(engine.gpu, &properties);
+
+        VkSamplerCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        info.magFilter = VK_FILTER_LINEAR;
+        info.minFilter = VK_FILTER_LINEAR;
+        info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        info.anisotropyEnable = VK_TRUE;
+        info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+        info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+        info.unnormalizedCoordinates = VK_FALSE;
+        info.compareEnable = VK_FALSE;
+        info.compareOp = VK_COMPARE_OP_ALWAYS;
+        info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        info.minLod = 0.0f;
+        info.maxLod = MAX_MIPMAP_LEVEL;
+        info.mipLodBias = 0.0f;
+
+        VK_ASSERT(vkCreateSampler(engine.device, &info, nullptr, &sampler));
+    }
 }
 
 Engine::~Engine() {
+    vkDestroySampler(engine.device, sampler, nullptr);
+
     vkDestroyDescriptorSetLayout(engine.device, object_layout, nullptr);
     vkDestroyDescriptorSetLayout(engine.device, camera_layout, nullptr);
     vkDestroyDescriptorSetLayout(engine.device, light_layout, nullptr);
@@ -411,6 +459,21 @@ Engine::~Engine() {
     glfwTerminate();
 }
 
+uint32_t Engine::memory_type_index(VkMemoryRequirements& requirements, VkMemoryPropertyFlags memory_property_flags) {
+    VkPhysicalDeviceMemoryProperties properties;
+    vkGetPhysicalDeviceMemoryProperties(engine.gpu, &properties);
+
+    for (uint32_t i = 0; i < properties.memoryTypeCount; ++i)
+    {
+        if ((requirements.memoryTypeBits & (1 << i)) && 
+            (properties.memoryTypes[i].propertyFlags & memory_property_flags) == memory_property_flags)
+        {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("no supported memory index found");
+}
 
 void log_error(std::string_view msg, std::source_location loc) {
     // I dont know if I've ever seen this function work...

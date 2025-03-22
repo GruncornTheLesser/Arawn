@@ -1,4 +1,4 @@
-#define VK_IMPLEMENTATION
+#define ARAWN_IMPLEMENTATION
 #include "swapchain.h"
 #include "engine.h"
 #include <algorithm>

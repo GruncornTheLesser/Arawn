@@ -22,7 +22,7 @@ Texture::Texture(std::filesystem::path fp, VkFormat format) {
     }
 
     VkDeviceSize buffer_size = width * height * req_channels;
-    uint32_t mip_levels = static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;
+    uint32_t mip_levels = std::min<uint32_t>(MAX_MIPMAP_LEVEL, static_cast<uint32_t>(std::log2(std::max(width, height)) + 1));
 
     VkCommandBuffer cmd_buffer;
     VkFence finished;
@@ -272,7 +272,29 @@ Texture::Texture(std::filesystem::path fp, VkFormat format) {
         vkFreeMemory(engine.device, staging_memory, nullptr);
         vkDestroyFence(engine.device, finished, nullptr);        
     }
+
+    { // create view
+        VkImageViewCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        info.pNext = nullptr;
+        info.flags = 0;
+        info.image = image;
+        info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        info.format = format;
+        info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        info.subresourceRange.baseMipLevel = 0;
+        info.subresourceRange.levelCount = mip_levels;
+        info.subresourceRange.baseArrayLayer = 0;
+        info.subresourceRange.layerCount = 1;
+
+        VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &view));
+    }
 }
+
 Texture::~Texture() {
     if (image == nullptr) return;
 
@@ -280,6 +302,7 @@ Texture::~Texture() {
     vkDestroyImage(engine.device, image, nullptr);
     vkFreeMemory(engine.device, memory, nullptr);
 }
+
 Texture::Texture(Texture&& other) {
     if (this == &other) return;
 
@@ -287,6 +310,7 @@ Texture::Texture(Texture&& other) {
     memory = other.memory;
     view = other.view;
 }
+
 Texture& Texture::operator=(Texture&& other) {
     std::swap(image, other.image);
     std::swap(memory, other.memory);

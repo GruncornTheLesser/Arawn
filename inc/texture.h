@@ -11,7 +11,7 @@ struct Texture {
     Texture(const Texture& other) = delete;
     Texture& operator=(const Texture& other) = delete;
     
-    VK_TYPE(VkImage) image;
+    VK_TYPE(VkImage) image = nullptr;
     VK_TYPE(VkDeviceMemory) memory;
     VK_TYPE(VkImageView) view;
 };

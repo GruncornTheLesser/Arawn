@@ -1,61 +1,36 @@
 #pragma once
 #include "vulkan.h"
-#include <unordered_map>
+#include "vertex.h"
+#include "material.h"
 #include <filesystem>
-
-struct Material { 
-
-};
 
 class Model {
 public:
+    struct Mesh { 
+        uint32_t vertex_count;
+        Material material;
+    };
+
+    static std::vector<Model> Load(std::filesystem::path fp);
     Model() { }
-    Model(std::filesystem::path fp);
+    Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& vertices, std::vector<Mesh>&& meshes);
+    ~Model();
+    Model(Model&& other);
+    Model& operator=(Model&& other);
+    Model(const Model& other) = delete;
+    Model& operator=(const Model& other) = delete;
+    
+
+    void draw(VK_TYPE(VkCommandBuffer) cmd_buffer, VK_TYPE(VkPipelineLayout) layout, uint32_t frame_index);
 
 private:
-    struct Buffer { 
-        VK_TYPE(VkBuffer) buffer;
-        VK_TYPE(VkDeviceMemory) memory;
-    };
+    VK_TYPE(VkBuffer) vertex_buffer = nullptr;
+    VK_TYPE(VkDeviceMemory) vertex_memory;
 
-    struct UniformBuffer : Buffer {
-        VK_TYPE(VkDescriptorSet) set;
-    };
+    VK_TYPE(VkBuffer) index_buffer;
+    VK_TYPE(VkDeviceMemory) index_memory;
 
-    struct Transform : UniformBuffer {
-        struct UBO {
-            glm::mat4 transform;
-            glm::vec3 position;
-            glm::quat rotation;
-            glm::vec3 scale;
-        };
-        
-    } transform;
-
-    struct Texture {
-        VK_TYPE(VkImage) image;
-        VK_TYPE(VkDeviceMemory) memory;
-        VK_TYPE(VkImageView) view;
-    };
-
-    struct Material : UniformBuffer {
-        struct UBO {
-            glm::vec3 albedo;
-            float roughness;
-            float metallic;
-
-            std::shared_ptr<Texture> albedo_texture;
-            std::shared_ptr<Texture> normal_texture;
-            std::shared_ptr<Texture> roughness_texture;
-            std::shared_ptr<Texture> metallic_texture;
-        };
-    };
-
-
-    // texture buffer
-    Buffer vertices;
-    UniformBuffer indices;
-    UniformBuffer materials;
+    std::vector<Mesh> meshes;
 };
 
 extern Model model;

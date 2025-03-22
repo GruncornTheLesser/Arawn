@@ -27,18 +27,16 @@ layout(std140, set = 1, binding = 0) uniform Camera {
     vec3 position;
 } camera;
 
-layout(std430, set = 2, binding = 0) buffer readonly ClusterArray {
-    Cluster clusters[];
+layout (std140, set = 2, binding = 0) uniform Material {
+    vec3 albedo;
+    float metallic;
+    float roughness;
+    uint flags;
 };
 
-layout(set = 3, binding = 0) uniform sampler2D depth_sampler;
-
-layout(std140, set = 4, binding = 0) uniform Material {
-    int has_albedo_map;
-    int has_normal_map;
-    int has_metal_map;
-    int has_rough_map;
-} material;
+layout(std430, set = 3, binding = 0) buffer readonly ClusterArray {
+    Cluster clusters[];
+};
 
 layout(location = 0) in vec3 frag_colour;
 layout(location = 1) in vec2 frag_texcoord;

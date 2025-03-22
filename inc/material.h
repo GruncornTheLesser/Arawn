@@ -1,7 +1,6 @@
 #pragma once
 #include "vulkan.h"
 #include "texture.h"
-#include <filesystem>
 
 struct Material {
     enum Flags { ALBEDO_TEXTURE = 1, METALLIC_TEXTURE = 2, ROUGHNESS_TEXTURE = 4, NORMAL_TEXTURE = 8 };
@@ -23,7 +22,8 @@ struct Material {
 
     Texture albedo_texture, metallic_texture, roughness_texture, normal_texture;
 
-    VK_TYPE(VkDescriptorSet) set;
-    VK_TYPE(VkBuffer) buffer;
+    VK_TYPE(VkBuffer) buffer = nullptr;
     VK_TYPE(VkDeviceMemory) memory;
+    VK_TYPE(VkDescriptorSet) set;
+    Data* mapped_data;
 };

@@ -1,4 +1,4 @@
-#define VK_IMPLEMENTATION
+#define ARAWN_IMPLEMENTATION
 #include "renderer.h"
 #include "engine.h"
 #include "swapchain.h"
@@ -7,27 +7,11 @@
 #include <numeric>
 
 bool z_prepass_enabled = false; // depth != NONE
-bool msaa_enabled = false; // anti_alias != NONE
-bool deferred_enabled = false; // render_mode == DEFERRED
-bool culling_enabled = false; // cull_mode != NONE
+bool deferred_enabled = false;  // render_mode == DEFERRED
+bool culling_enabled = false;   // cull_mode != NONE
 VkSampleCountFlagBits sample_count = VK_SAMPLE_COUNT_1_BIT;
+bool msaa_enabled = sample_count == VK_SAMPLE_COUNT_1_BIT;
 
-uint32_t memory_type_index(VkMemoryRequirements& requirements, VkMemoryPropertyFlagBits memory_property_flags) {
-    VkPhysicalDeviceMemoryProperties properties;
-    vkGetPhysicalDeviceMemoryProperties(engine.gpu, &properties);
-
-    
-    for (uint32_t i = 0; i < properties.memoryTypeCount; ++i)
-    {
-        if ((requirements.memoryTypeBits & (1 << i)) && 
-            (properties.memoryTypes[i].propertyFlags & memory_property_flags) == memory_property_flags)
-        {
-            return i;
-        }
-    }
-
-    throw std::runtime_error("no supported memory index found");
-}
 
 VkShaderModule create_shader_module(std::filesystem::path fp) {
     std::ifstream file(fp, std::ios::ate | std::ios::binary);
@@ -80,7 +64,7 @@ Renderer::Renderer() {
                 VkMemoryAllocateInfo info{};
                 info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
                 info.pNext = nullptr;
-                info.memoryTypeIndex = memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
                 info.allocationSize = requirements.size;
                 
                 for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
@@ -146,7 +130,7 @@ Renderer::Renderer() {
                 VkMemoryAllocateInfo info{};
                 info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
                 info.pNext = nullptr;
-                info.memoryTypeIndex = memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
                 info.allocationSize = requirements.size;
                 
                 for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
@@ -209,7 +193,7 @@ Renderer::Renderer() {
                 VkMemoryAllocateInfo info{};
                 info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
                 info.pNext = nullptr;
-                info.memoryTypeIndex = memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
                 info.allocationSize = requirements.size;
                 
                 for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
@@ -272,7 +256,7 @@ Renderer::Renderer() {
                 VkMemoryAllocateInfo info{};
                 info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
                 info.pNext = nullptr;
-                info.memoryTypeIndex = memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
                 info.allocationSize = requirements.size;
                 
                 for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
@@ -335,7 +319,7 @@ Renderer::Renderer() {
                 VkMemoryAllocateInfo info{};
                 info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
                 info.pNext = nullptr;
-                info.memoryTypeIndex = memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
                 info.allocationSize = requirements.size;
                 
                 for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
@@ -575,7 +559,6 @@ Renderer::Renderer() {
             info.renderPass = depth_pass.renderpass;
             info.width = swapchain.extent.x;
             info.height = swapchain.extent.y;
-            info.attachmentCount = 1;
             info.pAttachments = attachments.data();
             info.attachmentCount = attachments.size(); 
             

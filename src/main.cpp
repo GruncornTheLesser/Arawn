@@ -2,7 +2,7 @@
 #include "window.h"
 #include "swapchain.h"
 #include "renderer.h"
-//#include "model.h"
+#include "model.h"
 
 //#include "renderer/forward.h"
 //#include "renderer/deferred.h"
@@ -25,7 +25,7 @@ Engine      engine;
 Window      window;
 Swapchain   swapchain;
 Renderer    renderer;
-//Model       model("res/model/bunny.obj");
+std::vector<Model> models = Model::Load("res/model/teapot.obj"); // "res/model/sponza/sponza.obj"
 
 int main() {
         

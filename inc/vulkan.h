@@ -11,7 +11,7 @@
 
 void log_error(std::string_view msg, std::source_location loc = std::source_location::current());
 
-#ifdef VK_IMPLEMENTATION
+#ifdef ARAWN_IMPLEMENTATION
 
 #include <vulkan/vulkan.h> // for now 
 #include <vulkan/vk_enum_string_helper.h>
@@ -23,7 +23,6 @@ void log_error(std::string_view msg, std::source_location loc = std::source_loca
 
 #define VK_TYPE(TYPE) TYPE
 #define VK_ENUM(ENUM) ENUM
-#define ENUM_ENTRY(NAME, ENUM) NAME = ENUM
 
 
 #define VK_ASSERT(x) {                          \
@@ -46,7 +45,6 @@ void log_error(std::string_view msg, std::source_location loc = std::source_loca
 #else
 #define VK_TYPE(TYPE) void*
 #define VK_ENUM(ENUM) uint32_t
-#define ENUM_ENTRY(NAME, ENUM) NAME
 #endif
 
 #ifndef MAX_FRAMES_IN_FLIGHT
@@ -71,4 +69,8 @@ void log_error(std::string_view msg, std::source_location loc = std::source_loca
 
 #ifndef MAX_NUM_TILES
 #define MAX_NUM_TILES 512
+#endif
+
+#ifndef MAX_MIPMAP_LEVEL 
+#define MAX_MIPMAP_LEVEL 12
 #endif

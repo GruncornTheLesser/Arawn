@@ -16,7 +16,7 @@ struct Frustrum {
     glm::vec3 bb_min; // bounding box min 
     int light_offset;
     glm::vec3 bb_max; // bounding box max
-    int light_count;
+    uint32_t light_count;
 };
 
 struct Camera {
@@ -132,3 +132,5 @@ private:
         void record(uint32_t frame_index);
     } lighting_pass;
 };
+
+extern Renderer renderer;
