@@ -145,7 +145,7 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
         }
         
         {
-            uint32_t vertex_count;
+            uint32_t vertex_count = 0;
             int curr_material = obj_model.mesh.material_ids[0];
 
             for (uint32_t face_index : face_indices) {
