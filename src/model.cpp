@@ -33,7 +33,7 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
     
     std::string warn, err;
 
-    if (!tinyobj::LoadObj(&obj_attrib, &obj_models, &obj_materials, &warn, &err, fp.c_str())) {
+    if (!tinyobj::LoadObj(&obj_attrib, &obj_models, &obj_materials, &warn, &err, fp.string().c_str())) {
         throw std::runtime_error(warn + err);
     }
     
