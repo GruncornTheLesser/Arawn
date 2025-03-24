@@ -15,7 +15,7 @@ Texture::Texture(std::filesystem::path fp, VkFormat format) {
     default: req_channels = 4; format = VK_FORMAT_R8G8B8A8_UNORM; break;
     }
 
-    void* data = stbi_load(fp.c_str(), &width, &height,  &channels, req_channels);
+    void* data = stbi_load(fp.string().c_str(), &width, &height,  &channels, req_channels);
 
     if (!data) {
         throw std::runtime_error("failed to load texture image");

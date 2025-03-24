@@ -15,7 +15,7 @@ bool msaa_enabled = sample_count == VK_SAMPLE_COUNT_1_BIT;
 
 VkShaderModule create_shader_module(std::filesystem::path fp) {
     std::ifstream file(fp, std::ios::ate | std::ios::binary);
-    if (!file.is_open()) throw std::runtime_error("could not open file: " + std::string(fp));
+    if (!file.is_open()) throw std::runtime_error("could not open file: " + fp.string());
 
     std::vector<char> buffer(static_cast<std::size_t>(file.tellg()));
     file.seekg(0);
