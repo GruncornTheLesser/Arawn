@@ -293,68 +293,68 @@ Engine::Engine() {
 
     { // init descriptor set layouts
         { // object layout
-            VkDescriptorSetLayoutBinding bindings[1];
+            VkDescriptorSetLayoutBinding set_layout_binding[1];
 
-            VkDescriptorSetLayoutBinding& obj_binding = bindings[0];
-            obj_binding.binding = 0;
-            obj_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            obj_binding.descriptorCount = 1;
-            obj_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-            obj_binding.pImmutableSamplers = nullptr;
+            VkDescriptorSetLayoutBinding& transform_binding = set_layout_binding[0];
+            transform_binding.binding = 0;
+            transform_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            transform_binding.descriptorCount = 1;
+            transform_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            transform_binding.pImmutableSamplers = nullptr;
 
             VkDescriptorSetLayoutCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             info.pNext = nullptr;
             info.bindingCount = 1;
-            info.pBindings = bindings;
+            info.pBindings = set_layout_binding;
             
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &object_layout));
         }
 
         { // camera layout
-            VkDescriptorSetLayoutBinding bindings[1];
+            VkDescriptorSetLayoutBinding set_layout_binding[1];
 
-            VkDescriptorSetLayoutBinding& cam_binding = bindings[0];
-            cam_binding.binding = 0;
-            cam_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            cam_binding.descriptorCount = 1;
-            cam_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            cam_binding.pImmutableSamplers = nullptr;
+            VkDescriptorSetLayoutBinding& camera_binding = set_layout_binding[0];
+            camera_binding.binding = 0;
+            camera_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            camera_binding.descriptorCount = 1;
+            camera_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+            camera_binding.pImmutableSamplers = nullptr;
 
             VkDescriptorSetLayoutCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             info.pNext = nullptr;
             info.bindingCount = 1;
-            info.pBindings = bindings;
+            info.pBindings = set_layout_binding;
 
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &camera_layout));
         }
 
         { // material layout
-            VkDescriptorSetLayoutBinding bindings[5];
+            VkDescriptorSetLayoutBinding set_layout_binding[5];
 
-            VkDescriptorSetLayoutBinding& mat_binding = bindings[0];
+            VkDescriptorSetLayoutBinding& mat_binding = set_layout_binding[0];
             mat_binding.binding = 0;
             mat_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             mat_binding.descriptorCount = 1;
             mat_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             mat_binding.pImmutableSamplers = nullptr;
 
-            VkDescriptorSetLayoutBinding& albedo_binding = bindings[1];
+            VkDescriptorSetLayoutBinding& albedo_binding = set_layout_binding[1];
             albedo_binding.binding = 1;
             albedo_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             albedo_binding.descriptorCount = 1;
             albedo_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             albedo_binding.pImmutableSamplers = nullptr;
 
-            VkDescriptorSetLayoutBinding& roughness_binding = bindings[2];
+            VkDescriptorSetLayoutBinding& roughness_binding = set_layout_binding[2];
             roughness_binding.binding = 2;
             roughness_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             roughness_binding.descriptorCount = 1;
             roughness_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             roughness_binding.pImmutableSamplers = nullptr;
 
-            VkDescriptorSetLayoutBinding& metallic_binding = bindings[3];
+            VkDescriptorSetLayoutBinding& metallic_binding = set_layout_binding[3];
             metallic_binding.binding = 3;
             metallic_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             metallic_binding.descriptorCount = 1;
@@ -362,7 +362,7 @@ Engine::Engine() {
             metallic_binding.pImmutableSamplers = nullptr;
 
 
-            VkDescriptorSetLayoutBinding& normal_binding = bindings[4];
+            VkDescriptorSetLayoutBinding& normal_binding = set_layout_binding[4];
             normal_binding.binding = 4;
             normal_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             normal_binding.descriptorCount = 1;
@@ -373,34 +373,34 @@ Engine::Engine() {
             info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             info.pNext = nullptr;
             info.bindingCount = 5;
-            info.pBindings = bindings;
+            info.pBindings = set_layout_binding;
             
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &material_layout));
         
         }
 
         { // lights/clusters layout
-            VkDescriptorSetLayoutBinding bindings[2];
+            VkDescriptorSetLayoutBinding set_layout_binding[2];
             
-            VkDescriptorSetLayoutBinding& light_binding = bindings[0];
+            VkDescriptorSetLayoutBinding& light_binding = set_layout_binding[0];
             light_binding.binding = 0;
             light_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             light_binding.descriptorCount = 1;
             light_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
             light_binding.pImmutableSamplers = nullptr;
 
-            VkDescriptorSetLayoutBinding& frustrum_binding = bindings[1];
-            frustrum_binding.binding = 1;
-            frustrum_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            frustrum_binding.descriptorCount = 1;
-            frustrum_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            frustrum_binding.pImmutableSamplers = nullptr;
+            VkDescriptorSetLayoutBinding& cluster_binding = set_layout_binding[1];
+            cluster_binding.binding = 1;
+            cluster_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            cluster_binding.descriptorCount = 1;
+            cluster_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+            cluster_binding.pImmutableSamplers = nullptr;
 
             VkDescriptorSetLayoutCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             info.pNext = nullptr;
             info.bindingCount = 2;
-            info.pBindings = bindings;
+            info.pBindings = set_layout_binding;
 
 
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &light_layout));

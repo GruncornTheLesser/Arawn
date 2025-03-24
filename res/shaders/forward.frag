@@ -34,6 +34,11 @@ layout (std140, set = 2, binding = 0) uniform Material {
     uint flags;
 };
 
+layout(set = 2, binding = 1) uniform sampler albedo_map;
+layout(set = 2, binding = 2) uniform sampler metallic_map;
+layout(set = 2, binding = 3) uniform sampler roughness_map;
+layout(set = 2, binding = 4) uniform sampler normal_map;
+
 layout(std430, set = 3, binding = 0) buffer readonly ClusterArray {
     Cluster clusters[];
 };

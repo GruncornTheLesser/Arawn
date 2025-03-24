@@ -4,6 +4,8 @@ mtllib default.mtl
 # object Teapot001
 #
 
+g teapot
+usemtl column_b
 v  33.647778 59.807484 4.662212
 v  33.322739 59.872997 4.617175
 v  34.018166 59.610893 4.713532

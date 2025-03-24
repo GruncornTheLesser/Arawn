@@ -1,6 +1,11 @@
 #pragma once
 #include "vulkan.h"
 #include "texture.h"
+#include "uniform.h"
+
+#ifdef ARAWN_IMPLEMENTATION
+#include <tiny_obj_loader.h>
+#endif
 
 struct Material {
     enum Flags { ALBEDO_TEXTURE = 1, METALLIC_TEXTURE = 2, ROUGHNESS_TEXTURE = 4, NORMAL_TEXTURE = 8 };
@@ -21,9 +26,6 @@ struct Material {
     Material& operator=(const Material& other) = delete;
 
     Texture albedo_texture, metallic_texture, roughness_texture, normal_texture;
-
-    VK_TYPE(VkBuffer) buffer = nullptr;
-    VK_TYPE(VkDeviceMemory) memory;
-    VK_TYPE(VkDescriptorSet) set;
-    Data* mapped_data;
+    UniformBuffer<Data> uniform_buffer;
+    VK_TYPE(VkDescriptorSet) set = nullptr;
 };

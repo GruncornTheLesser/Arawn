@@ -48,5 +48,6 @@ int main() {
         window.set_resolution(resolutions[--index]);
     };
     
-    while (!window.closed()) renderer.draw();
+    //while (!window.closed()) 
+    renderer.draw();
 }

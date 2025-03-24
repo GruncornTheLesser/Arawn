@@ -3,9 +3,6 @@
 
 #include "material.h"
 #include "engine.h"
-#include "renderer.h"
-
-
 
 Material::Material() {
     tinyobj::material_t default_material;
@@ -24,36 +21,8 @@ Material::Material() {
 }
 
 Material::Material(const tinyobj::material_t* info) {
-    { // create buffer
-        VkBufferCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        info.flags = 0;
-        info.pNext = nullptr;
-        info.pQueueFamilyIndices = &engine.graphics.family;
-        info.queueFamilyIndexCount = 1;
-        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        info.size = sizeof(Material::Data);
-        info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    Data* mapped_data = uniform_buffer.get();
 
-        VK_ASSERT(vkCreateBuffer(engine.device, &info, nullptr, &buffer));
-    }
-    
-    { // allocate memory
-        VkMemoryRequirements requirements;
-        vkGetBufferMemoryRequirements(engine.device, buffer, &requirements);
-
-        VkMemoryAllocateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        info.allocationSize = requirements.size;
-        info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &memory)); 
-
-        VK_ASSERT(vkBindBufferMemory(engine.device, buffer, memory, 0));
-    }
-
-    vkMapMemory(engine.device, memory, 0, sizeof(Data), 0, reinterpret_cast<void**>(&mapped_data));
-    
     mapped_data->albedo = { info->diffuse[0], info->diffuse[1], info->diffuse[2] };
     mapped_data->metallic = info->metallic;
     mapped_data->roughness = info->roughness;
@@ -89,7 +58,7 @@ Material::Material(const tinyobj::material_t* info) {
         VK_ASSERT(vkAllocateDescriptorSets(engine.device, &info, &set));
     }
 
-    { // bind descriptor set
+    { // write descriptor set
         VkWriteDescriptorSet desc_writes[5];
         VkDescriptorBufferInfo buffer_info[1];
         VkDescriptorImageInfo image_info[4];
@@ -99,7 +68,7 @@ Material::Material(const tinyobj::material_t* info) {
         uint32_t image_count = 0;
         {
             auto& uniform_write = buffer_info[buffer_count++];
-            uniform_write.buffer = buffer;
+            uniform_write.buffer = uniform_buffer.buffer;
             uniform_write.offset = 0;
             uniform_write.range = sizeof(Data);
 
@@ -191,38 +160,30 @@ Material::Material(const tinyobj::material_t* info) {
 }
 
 Material::~Material() {
-    if (buffer == nullptr) return;
+    if (set == nullptr) return;
 
-    vkFreeMemory(engine.device, memory, nullptr);
-    vkDestroyBuffer(engine.device, buffer, nullptr);
     vkFreeDescriptorSets(engine.device, engine.descriptor_pool, 1, &set);
 }
 
 Material::Material(Material&& other) {
     if (this == &other) return;
-
     albedo_texture = std::move(other.albedo_texture);
     metallic_texture = std::move(other.metallic_texture);
     roughness_texture = std::move(other.roughness_texture);
     normal_texture = std::move(other.normal_texture);
+    uniform_buffer = std::move(other.uniform_buffer);
     
     set = other.set;
-    buffer = other.buffer;
-    memory = other.memory;
-    mapped_data = other.mapped_data;
-
-    other.buffer = nullptr;
+    other.set = nullptr;
 }
 Material& Material::operator=(Material&& other) {
     albedo_texture = std::move(other.albedo_texture);
     metallic_texture = std::move(other.metallic_texture);
     roughness_texture = std::move(other.roughness_texture);
     normal_texture = std::move(other.normal_texture);
-
+    uniform_buffer = std::move(other.uniform_buffer);
+    
     std::swap(set, other.set);
-    std::swap(buffer, other.buffer);
-    std::swap(memory, other.memory);
-    std::swap(mapped_data, other.mapped_data);
 
     return *this;
 }

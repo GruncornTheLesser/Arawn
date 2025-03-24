@@ -2,10 +2,10 @@
 #include "renderer.h"
 #include "engine.h"
 #include "swapchain.h"
+#include "model.h"
 #include "vertex.h"
 #include <fstream>
 #include <numeric>
-
 bool z_prepass_enabled = false; // depth != NONE
 bool deferred_enabled = false;  // render_mode == DEFERRED
 bool culling_enabled = false;   // cull_mode != NONE
@@ -650,8 +650,8 @@ Renderer::Renderer() {
                 vkCreateFence(engine.device, &info, nullptr, &lighting_pass.in_flight[i]);
         }
 
-        { // initialize layout
-            std::array<VkDescriptorSetLayout, 2> sets{ engine.object_layout, engine.camera_layout };
+        { // initialize pipeline layout
+            std::array<VkDescriptorSetLayout, 3> sets{ engine.object_layout, engine.camera_layout, engine.material_layout };
             std::array<VkPushConstantRange, 1> ranges;
 
             ranges[0].size = sizeof(PushConstants);
@@ -1139,6 +1139,7 @@ void Renderer::draw() {
 }
 
 
+
 Renderer::TextureAttachment::~TextureAttachment() {
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT && memory[i]; ++i) {
         vkDestroyImage(engine.device, image[i], nullptr);
@@ -1173,8 +1174,8 @@ void Renderer::GraphicPipeline::submit(
     uint32_t frame_index, 
     std::span<VkSemaphore> wait_semaphore, 
     std::span<VkPipelineStageFlags> wait_stages, 
-    VkFence signal_fence) 
-{
+    VkFence signal_fence
+) {
     VkSubmitInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     info.waitSemaphoreCount = wait_semaphore.size();
@@ -1202,7 +1203,8 @@ Renderer::ComputePipeline::~ComputePipeline() {
         vkDestroySemaphore(engine.device, finished[i], nullptr);
 }
 
-void Renderer::ComputePipeline::submit(uint32_t frame_index, 
+void Renderer::ComputePipeline::submit(
+    uint32_t frame_index, 
     std::span<VkSemaphore> wait_semaphore, 
     std::span<VkPipelineStageFlags> wait_stages, 
     VkFence signal_fence) 
@@ -1246,42 +1248,44 @@ void Renderer::DepthPass::record(uint32_t frame_index) {
         vkCmdBeginRenderPass(cmd_buffer[frame_index], &info, VK_SUBPASS_CONTENTS_INLINE);
     }
 
-    vkCmdBindPipeline(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    { // bind pipeline
+        vkCmdBindPipeline(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = (float) swapchain.extent.x;
-    viewport.height = (float) swapchain.extent.y;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(cmd_buffer[frame_index], 0, 1, &viewport);
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = (float) swapchain.extent.x;
+        viewport.height = (float) swapchain.extent.y;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(cmd_buffer[frame_index], 0, 1, &viewport);
 
-    VkRect2D scissor{};
-    scissor.offset = { 0, 0 };
-    scissor.extent = { swapchain.extent.x, swapchain.extent.y };
-    vkCmdSetScissor(cmd_buffer[frame_index], 0, 1, &scissor);
+        VkRect2D scissor{};
+        scissor.offset = { 0, 0 };
+        scissor.extent = { swapchain.extent.x, swapchain.extent.y };
+        vkCmdSetScissor(cmd_buffer[frame_index], 0, 1, &scissor);
+    }
 
-    // for (Model model : scene) {
-    // vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &model.transform.set[frame_index], 0, nullptr);
-    // for (uint32_t mesh_index = 0; mesh_index < model.mesh.size(); ++mesh_index) {
-    //     vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &model.material[mesh_index].set[frame_index], 0, nullptr);
-    // 
-    // }
-    //        vkCmdDrawIndexed(
-    //            cmd_buffer[frame_index],    // cmd buffer
-    //            model.mesh[mesh_index + 1], // index count - number of vertices
-    //            1,                          // instance count - number of instances
-    //            model.mesh[mesh_index],     // first index - base index within the index buffer
-    //            0
-    //        );
-    //    }
-    // }
+    for (Model& model : models) {
+        // TODO: bind transform descriptor set
+
+        VkDeviceSize offsets[] = { 0 };
+        vkCmdBindVertexBuffers(cmd_buffer[frame_index], 0, 1, &model.vertex_buffer, offsets);
+        
+        uint32_t index_offset = 0;
+        vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index_buffer, index_offset, VK_INDEX_TYPE_UINT32);
+
+        for (uint32_t i = 0; i < model.meshes.size(); ++i) {
+            vkCmdDrawIndexed(cmd_buffer[frame_index], model.meshes[i].vertex_count, 1, index_offset, 0, 0);
+            index_offset += model.meshes[i].vertex_count;
+        }
+    }
     
-    
-    vkCmdEndRenderPass(cmd_buffer[frame_index]);
+    { // end renderpass & cmd buffer
+        vkCmdEndRenderPass(cmd_buffer[frame_index]);
 
-    VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
+        VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
+    }
 }
 
 void Renderer::ClusterPass::record(uint32_t frame_index) {
@@ -1333,7 +1337,6 @@ void Renderer::DeferredPass::record(uint32_t frame_index) {
 }
 
 void Renderer::LightingPass::record(uint32_t frame_index) {
-    
     { // reset & begin cmd buffer
         VK_ASSERT(vkResetCommandBuffer(cmd_buffer[frame_index], 0));
         
@@ -1358,28 +1361,43 @@ void Renderer::LightingPass::record(uint32_t frame_index) {
         vkCmdBeginRenderPass(cmd_buffer[frame_index], &info, VK_SUBPASS_CONTENTS_INLINE);
     }
 
-    vkCmdBindPipeline(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    { // bind pipeline
+        vkCmdBindPipeline(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = (float) swapchain.extent.x;
-    viewport.height = (float) swapchain.extent.y;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(cmd_buffer[frame_index], 0, 1, &viewport);
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = (float) swapchain.extent.x;
+        viewport.height = (float) swapchain.extent.y;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(cmd_buffer[frame_index], 0, 1, &viewport);
 
-    VkRect2D scissor{};
-    scissor.offset = { 0, 0 };
-    scissor.extent = { swapchain.extent.x, swapchain.extent.y };
-    vkCmdSetScissor(cmd_buffer[frame_index], 0, 1, &scissor);
+        VkRect2D scissor{};
+        scissor.offset = { 0, 0 };
+        scissor.extent = { swapchain.extent.x, swapchain.extent.y };
+        vkCmdSetScissor(cmd_buffer[frame_index], 0, 1, &scissor);
+    }
 
-    /*
+    for (Model& model : models) {
+        //vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.set, 0, nullptr);
+
+        VkDeviceSize offsets[] = { 0 };
+        vkCmdBindVertexBuffers(cmd_buffer[frame_index], 0, 1, &model.vertex_buffer, offsets);
+        
+        uint32_t index_offset = 0;
+        vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index_buffer, index_offset, VK_INDEX_TYPE_UINT32);
+
+        for (uint32_t i = 0; i < model.meshes.size(); ++i) {
+            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2/*material set*/, 1, &model.meshes[i].material.set, 0, nullptr);
+            vkCmdDrawIndexed(cmd_buffer[frame_index], model.meshes[i].vertex_count, 1, index_offset, 0, 0);
+            index_offset += model.meshes[i].vertex_count;
+        }
+    }
     
-    
-    */
+    { // end render pass & cmd buffer
+        vkCmdEndRenderPass(cmd_buffer[frame_index]);
 
-    vkCmdEndRenderPass(cmd_buffer[frame_index]);
-
-    VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
+        VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
+    }
 }

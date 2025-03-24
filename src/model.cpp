@@ -1,5 +1,4 @@
 #define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
 #define ARAWN_IMPLEMENTATION
 #include "model.h"
 #include "engine.h"
@@ -144,7 +143,7 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
             }
         }
         
-        {
+        { // get vertex groups for each mesh
             uint32_t vertex_count = 0;
             int curr_material = obj_model.mesh.material_ids[0];
 
@@ -411,20 +410,4 @@ Model& Model::operator=(Model&& other) {
     std::swap(meshes, other.meshes);
 
     return *this;
-}
-
-void Model::draw(VkCommandBuffer cmd_buffer, VkPipelineLayout layout, uint32_t frame_index) {
-       
-    VkBuffer vbos[] = { vertex_buffer };
-    VkDeviceSize offsets[] = { 0, 0 };
-    vkCmdBindVertexBuffers(cmd_buffer, 0, 2, vbos, offsets);
-    
-    uint32_t index_offset = 0;
-    vkCmdBindIndexBuffer(cmd_buffer, index_buffer, index_offset, VK_INDEX_TYPE_UINT32);
-
-    for (uint32_t i = 0; i < meshes.size(); ++i) {
-        vkCmdBindDescriptorSets(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &meshes[i].material.set, 0, nullptr);
-        vkCmdDrawIndexed(cmd_buffer, meshes[i].vertex_count, 1, index_offset, 0, 0);
-        index_offset += meshes[i].vertex_count;
-    }
 }
