@@ -6,8 +6,8 @@ layout (set = 0, binding = 0) uniform Object {
 
 layout (std140, set = 1, binding = 0) uniform Camera {
     mat4 projview;
-    vec3 position;
-} camera;
+    vec3 cam_position;
+};
 
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_colour;
@@ -23,8 +23,7 @@ layout(location = 3) out vec3 frag_position; // world position
 
 
 void main() {
-    mat4 mvp = camera.projview * model;
-    gl_Position = mvp * vec4(in_position, 1.0);
+    gl_Position = projview * model * vec4(in_position, 1.0);
     frag_colour = in_colour;
     frag_texcoord = in_texcoord;
     frag_normal = normalize(vec3(model * vec4(in_normal, 0.0)));

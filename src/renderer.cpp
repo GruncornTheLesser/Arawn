@@ -4,6 +4,7 @@
 #include "swapchain.h"
 #include "model.h"
 #include "vertex.h"
+#include "camera.h"
 #include <fstream>
 #include <numeric>
 bool z_prepass_enabled = false; // depth != NONE
@@ -376,7 +377,7 @@ Renderer::Renderer() {
         }
         
         { // create pipeline layout
-            std::array<VkDescriptorSetLayout, 2> sets = { engine.object_layout, engine.camera_layout };
+            std::array<VkDescriptorSetLayout, 2> sets = { engine.transform_layout, engine.camera_layout };
 
             VkPipelineLayoutCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -487,7 +488,7 @@ Renderer::Renderer() {
             rasterizer.rasterizerDiscardEnable = VK_FALSE;
             rasterizer.polygonMode = VK_POLYGON_MODE_FILL; // TODO: wireframe debug mode
             rasterizer.lineWidth = 1.0f; // only used when VK_POLYGON_MODE_LINE enabled
-            rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+            rasterizer.cullMode = VK_CULL_MODE_NONE; //VK_CULL_MODE_BACK_BIT;
             rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE; // COUNTER_
             rasterizer.depthBiasEnable = VK_FALSE;
 
@@ -498,7 +499,7 @@ Renderer::Renderer() {
 
             VkPipelineDepthStencilStateCreateInfo depth_stencil{};
             depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-            depth_stencil.depthTestEnable = VK_TRUE;
+            depth_stencil.depthTestEnable = VK_FALSE; // TODO: update me
             depth_stencil.depthWriteEnable = VK_TRUE;
             depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
             depth_stencil.depthBoundsTestEnable = VK_FALSE;
@@ -651,7 +652,7 @@ Renderer::Renderer() {
         }
 
         { // initialize pipeline layout
-            std::array<VkDescriptorSetLayout, 3> sets{ engine.object_layout, engine.camera_layout, engine.material_layout };
+            std::array<VkDescriptorSetLayout, 3> sets{ engine.camera_layout, engine.transform_layout, engine.material_layout };
             std::array<VkPushConstantRange, 1> ranges;
 
             ranges[0].size = sizeof(PushConstants);
@@ -1019,11 +1020,15 @@ Renderer::Renderer() {
             }
         }
     }
+
+    { // recreate camera view
+
+    }
+
+    
 }
 
 Renderer::~Renderer() {
-    vkDeviceWaitIdle(engine.device);
-
     if (z_prepass_enabled) { // destroy depth pass
         for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
             vkDestroyFramebuffer(engine.device, depth_pass.framebuffer[i], nullptr);
@@ -1071,7 +1076,11 @@ void Renderer::draw() {
     
     // update ubos
     {
-
+        camera.update(frame_index);
+        
+        for (auto& model : models) {
+            model.transform.update(frame_index);
+        }
     }
 
     VK_ASSERT(vkResetFences(engine.device, 1, &lighting_pass.in_flight[frame_index]));
@@ -1266,20 +1275,7 @@ void Renderer::DepthPass::record(uint32_t frame_index) {
         vkCmdSetScissor(cmd_buffer[frame_index], 0, 1, &scissor);
     }
 
-    for (Model& model : models) {
-        // TODO: bind transform descriptor set
-
-        VkDeviceSize offsets[] = { 0 };
-        vkCmdBindVertexBuffers(cmd_buffer[frame_index], 0, 1, &model.vertex_buffer, offsets);
-        
-        uint32_t index_offset = 0;
-        vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index_buffer, index_offset, VK_INDEX_TYPE_UINT32);
-
-        for (uint32_t i = 0; i < model.meshes.size(); ++i) {
-            vkCmdDrawIndexed(cmd_buffer[frame_index], model.meshes[i].vertex_count, 1, index_offset, 0, 0);
-            index_offset += model.meshes[i].vertex_count;
-        }
-    }
+       
     
     { // end renderpass & cmd buffer
         vkCmdEndRenderPass(cmd_buffer[frame_index]);
@@ -1330,10 +1326,12 @@ void Renderer::DeferredPass::record(uint32_t frame_index) {
     }
 
 
+    { // end renderpass & cmd_buffer
+        vkCmdEndRenderPass(cmd_buffer[frame_index]);
+        
+        VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
+    }
 
-    vkCmdEndRenderPass(cmd_buffer[frame_index]);
-    
-    VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
 }
 
 void Renderer::LightingPass::record(uint32_t frame_index) {
@@ -1379,19 +1377,30 @@ void Renderer::LightingPass::record(uint32_t frame_index) {
         vkCmdSetScissor(cmd_buffer[frame_index], 0, 1, &scissor);
     }
 
-    for (Model& model : models) {
-        //vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.set, 0, nullptr);
+    { // draw scene 
+        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].descriptor_set, 0, nullptr);
 
-        VkDeviceSize offsets[] = { 0 };
-        vkCmdBindVertexBuffers(cmd_buffer[frame_index], 0, 1, &model.vertex_buffer, offsets);
-        
-        uint32_t index_offset = 0;
-        vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index_buffer, index_offset, VK_INDEX_TYPE_UINT32);
+        for (Model& model : models) {
+            // bind vbo
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(cmd_buffer[frame_index], 0, 1, &model.vertex_buffer, offsets);
+            
+            // bind ibo
+            vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index_buffer, 0, VK_INDEX_TYPE_UINT32);
+            
+            // bind transform
+            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout,  1, 1, &model.transform.uniform[frame_index].descriptor_set, 0, nullptr);
 
-        for (uint32_t i = 0; i < model.meshes.size(); ++i) {
-            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2/*material set*/, 1, &model.meshes[i].material.set, 0, nullptr);
-            vkCmdDrawIndexed(cmd_buffer[frame_index], model.meshes[i].vertex_count, 1, index_offset, 0, 0);
-            index_offset += model.meshes[i].vertex_count;
+            uint32_t index_offset = 0;
+            for (auto& mesh : model.meshes) {
+                // bind material
+                vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout,  2, 1, &mesh.material.uniform.descriptor_set, 0, nullptr);
+
+                // draw mesh
+                vkCmdDrawIndexed(cmd_buffer[frame_index], mesh.vertex_count, 1, index_offset, 0, 0);
+                
+                index_offset += mesh.vertex_count;
+            }
         }
     }
     

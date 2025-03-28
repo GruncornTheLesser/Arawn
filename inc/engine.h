@@ -28,7 +28,7 @@ public:
     } graphics, compute;
 
     VK_TYPE(VkDescriptorPool) descriptor_pool;
-    VK_TYPE(VkDescriptorSetLayout) object_layout;
+    VK_TYPE(VkDescriptorSetLayout) transform_layout;
     VK_TYPE(VkDescriptorSetLayout) camera_layout;
     VK_TYPE(VkDescriptorSetLayout) light_layout;
     VK_TYPE(VkDescriptorSetLayout) material_layout;

@@ -39,9 +39,9 @@ layout(set = 2, binding = 2) uniform sampler metallic_map;
 layout(set = 2, binding = 3) uniform sampler roughness_map;
 layout(set = 2, binding = 4) uniform sampler normal_map;
 
-layout(std430, set = 3, binding = 0) buffer readonly ClusterArray {
-    Cluster clusters[];
-};
+//layout(std430, set = 3, binding = 0) buffer readonly ClusterArray {
+//    Cluster clusters[];
+//};
 
 layout(location = 0) in vec3 frag_colour;
 layout(location = 1) in vec2 frag_texcoord;

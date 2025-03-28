@@ -1,5 +1,6 @@
 #pragma once
 #include "vulkan.h"
+#include "uniform.h"
 #include <span>
 
 // TODO: work out padding/packing
@@ -17,13 +18,6 @@ struct Frustrum {
     int light_offset;
     glm::vec3 bb_max; // bounding box max
     uint32_t light_count;
-};
-
-struct Camera {
-    glm::mat4 projview;
-    glm::vec3 position;
-private:
-    float padding;
 };
 
 struct PushConstants {

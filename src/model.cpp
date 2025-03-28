@@ -83,17 +83,17 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
                     auto& vertex = vertices.emplace_back();
                     if (vertex_idx.vertex_index != -1) {
                         std::size_t position_index = vertex_idx.vertex_index * 3;
-                        vertex.position = { obj_attrib.texcoords[position_index + 0], 
-                                            obj_attrib.texcoords[position_index + 1], 
-                                            obj_attrib.texcoords[position_index + 2] 
+                        vertex.position = { obj_attrib.vertices[position_index + 0], 
+                                            obj_attrib.vertices[position_index + 1], 
+                                            obj_attrib.vertices[position_index + 2] 
                         };
                     }
 
                     if (vertex_idx.normal_index != -1) {
                         std::size_t normal_index = vertex_idx.normal_index * 2;
-                        vertex.normal = { obj_attrib.texcoords[normal_index + 0], 
-                                          obj_attrib.texcoords[normal_index + 1], 
-                                          obj_attrib.texcoords[normal_index + 2]
+                        vertex.normal = { obj_attrib.normals[normal_index + 0], 
+                                          obj_attrib.normals[normal_index + 1], 
+                                          obj_attrib.normals[normal_index + 2]
                         };
                     }
 
@@ -174,8 +174,7 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
 }
 
 Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& vertices, std::vector<Mesh>&& meshes) 
- : meshes(std::move(meshes))
-{
+ : meshes(std::move(meshes)) {
     VkDeviceSize vertex_buffer_size = sizeof(Vertex) * vertices.size();
     VkDeviceSize index_buffer_size = sizeof(uint32_t) * indices.size();
 
@@ -205,8 +204,6 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
 
         VK_ASSERT(vkCreateFence(engine.device, &info, nullptr, &cmd_finished));
     }
-
-
 
     { // create temporary vertex staging buffer
         VkBufferCreateInfo info{};
@@ -379,14 +376,12 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
     vkDestroyFence(engine.device, cmd_finished, nullptr);
 }
 
-Model::Model(Model&& other) {
+Model::Model(Model&& other) : transform(std::move(other.transform)), meshes(std::move(other.meshes))
+{
     vertex_buffer = other.vertex_buffer;
     vertex_memory = other.vertex_memory;
     index_buffer = other.index_buffer;
     index_memory = other.index_memory;
-    
-    //transform = std::move(other.transform);
-    meshes = std::move(other.meshes);
     
     other.vertex_buffer = nullptr;
 }
@@ -406,8 +401,22 @@ Model& Model::operator=(Model&& other) {
     std::swap(index_buffer, index_buffer);
     std::swap(index_memory, index_memory);
 
-    //std::swap(transform, other.transform);
+    std::swap(transform, other.transform);
     std::swap(meshes, other.meshes);
 
     return *this;
+}
+
+Model::Transform::Buffer::Buffer()  : UniformBuffer<glm::mat4>(nullptr), UniformSet(engine.transform_layout, std::array<Uniform*, 1>() = { this }) { }
+
+void Model::Transform::update(uint32_t frame_index) {
+    
+    
+    glm::mat4 T = glm::identity<glm::mat4>();
+    T = glm::scale(T, scale);
+    T = glm::mat4_cast(rotation) * T;
+    T = glm::translate(T, position);
+    // T = glm::inverse(T);
+    // T = glm::transpose(T);
+    uniform[frame_index].set(&T);
 }

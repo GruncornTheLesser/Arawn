@@ -13,6 +13,8 @@ public:
         Material material;
     };
 
+    
+
     static std::vector<Model> Load(std::filesystem::path fp);
     Model() { }
     Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& vertices, std::vector<Mesh>&& meshes);
@@ -23,7 +25,17 @@ public:
     Model& operator=(const Model& other) = delete;
     
 private:
-    std::array<UniformBuffer<glm::mat4>, MAX_FRAMES_IN_FLIGHT> transform_buffer;
+    struct Transform {
+        struct Buffer : UniformBuffer<glm::mat4>, UniformSet { 
+            Buffer();
+        };
+        void update(uint32_t frame_index);
+
+        glm::vec3 position;
+        glm::quat rotation;
+        glm::vec3 scale = { 1, 1, 1 };
+        std::array<Buffer, MAX_FRAMES_IN_FLIGHT> uniform;
+    } transform;
 
     VK_TYPE(VkBuffer) vertex_buffer = nullptr;
     VK_TYPE(VkDeviceMemory) vertex_memory;

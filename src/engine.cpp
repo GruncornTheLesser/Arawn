@@ -274,32 +274,31 @@ Engine::Engine() {
     }
 
     { // init descriptor pools
-        VkDescriptorPoolSize pool_sizes[3] = {
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 256 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 256 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 256 }, // for textures
+        std::array<VkDescriptorPoolSize, 2> pool_sizes = { 
+            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 65535 },
+            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 65535 } // for textures
         };
 
         VkDescriptorPoolCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         info.pNext = nullptr;
         info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        info.poolSizeCount = 3;
-        info.pPoolSizes = pool_sizes;
-        info.maxSets = 256;
+        info.poolSizeCount = pool_sizes.size();
+        info.pPoolSizes = pool_sizes.data();
+        info.maxSets = 65535;
 
         VK_ASSERT(vkCreateDescriptorPool(device, &info, nullptr, &descriptor_pool));
     }
 
     { // init descriptor set layouts
-        { // object layout
+        { // transform layout
             VkDescriptorSetLayoutBinding set_layout_binding[1];
 
             VkDescriptorSetLayoutBinding& transform_binding = set_layout_binding[0];
             transform_binding.binding = 0;
             transform_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             transform_binding.descriptorCount = 1;
-            transform_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            transform_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
             transform_binding.pImmutableSamplers = nullptr;
 
             VkDescriptorSetLayoutCreateInfo info{};
@@ -308,7 +307,7 @@ Engine::Engine() {
             info.bindingCount = 1;
             info.pBindings = set_layout_binding;
             
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &object_layout));
+            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &transform_layout));
         }
 
         { // camera layout
@@ -437,7 +436,7 @@ Engine::Engine() {
 Engine::~Engine() {
     vkDestroySampler(engine.device, sampler, nullptr);
 
-    vkDestroyDescriptorSetLayout(engine.device, object_layout, nullptr);
+    vkDestroyDescriptorSetLayout(engine.device, transform_layout, nullptr);
     vkDestroyDescriptorSetLayout(engine.device, camera_layout, nullptr);
     vkDestroyDescriptorSetLayout(engine.device, light_layout, nullptr);
     vkDestroyDescriptorSetLayout(engine.device, material_layout, nullptr);

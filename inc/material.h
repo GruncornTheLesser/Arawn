@@ -1,6 +1,5 @@
 #pragma once
 #include "vulkan.h"
-#include "texture.h"
 #include "uniform.h"
 
 #ifdef ARAWN_IMPLEMENTATION
@@ -10,7 +9,7 @@
 struct Material {
     enum Flags { ALBEDO_TEXTURE = 1, METALLIC_TEXTURE = 2, ROUGHNESS_TEXTURE = 4, NORMAL_TEXTURE = 8 };
     struct Data {
-        // note c++ alignas doesnt work the way alignas works for std140 standard glsl
+        // note c++ alignas doesnt work the way align works for std140 standard glsl
         glm::vec3 albedo;   // offset 0, align 12
         float metallic;     // offset 12, align 4
         float roughness;    // offset 16, align 4
@@ -19,13 +18,8 @@ struct Material {
     
     Material(); // default material
     Material(VK_TYPE(const tinyobj::material_t*) material);
-    ~Material();
-    Material(Material&& other);
-    Material& operator=(Material&& other);
-    Material(const Material& other) = delete;
-    Material& operator=(const Material& other) = delete;
 
-    Texture albedo_texture, metallic_texture, roughness_texture, normal_texture;
-    UniformBuffer<Data> uniform_buffer;
-    VK_TYPE(VkDescriptorSet) set = nullptr;
+    UniformBuffer<Data> buffer;
+    UniformTexture albedo_texture, metallic_texture, roughness_texture, normal_texture;
+    UniformSet uniform;
 };
