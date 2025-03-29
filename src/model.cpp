@@ -301,7 +301,7 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
     { // write to index buffer
         void* buffer_data;
         VK_ASSERT(vkMapMemory(engine.device, index_staging_memory, 0, index_buffer_size, 0 , &buffer_data));
-        memcpy(buffer_data, vertices.data(), index_buffer_size);
+        memcpy(buffer_data, indices.data(), index_buffer_size);
         vkUnmapMemory(engine.device, index_staging_memory);
     }
 
