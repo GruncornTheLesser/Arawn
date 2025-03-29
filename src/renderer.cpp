@@ -7,6 +7,7 @@
 #include "camera.h"
 #include <fstream>
 #include <numeric>
+
 bool z_prepass_enabled = false; // depth != NONE
 bool deferred_enabled = false;  // render_mode == DEFERRED
 bool culling_enabled = false;   // cull_mode != NONE
@@ -377,7 +378,7 @@ Renderer::Renderer() {
         }
         
         { // create pipeline layout
-            std::array<VkDescriptorSetLayout, 2> sets = { engine.transform_layout, engine.camera_layout };
+            std::array<VkDescriptorSetLayout, 2> sets = { engine.camera_layout, engine.transform_layout };
 
             VkPipelineLayoutCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -618,7 +619,7 @@ Renderer::Renderer() {
         }
     }
 
-    { // present pass
+    { // forward/present pass
         { // initialize cmd buffers
             VkCommandBufferAllocateInfo info{ };
             info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -673,7 +674,7 @@ Renderer::Renderer() {
 
         uint32_t attachment_count = 0;
         { // initialize renderpass
-            VkAttachmentDescription attachment_data[6]; // max 6: swapchain, msaa, depth, albedo, normal, specular  
+            std::array<VkAttachmentDescription, 6> attachment_info; // max 6: swapchain, msaa, depth, albedo, normal, specular  
             std::array<VkAttachmentReference, 3>  input_ref;
             std::array<VkAttachmentReference, 1>  colour_ref;
             VkAttachmentReference depth_ref, resolve_ref;
@@ -689,7 +690,7 @@ Renderer::Renderer() {
                 resolve_ref.attachment = attachment_count++;
                 resolve_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-                VkAttachmentDescription& swapchain_info = attachment_data[resolve_ref.attachment];
+                VkAttachmentDescription& swapchain_info = attachment_info[resolve_ref.attachment];
                 swapchain_info.flags = 0;
                 swapchain_info.format = swapchain.format;
                 swapchain_info.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -703,7 +704,7 @@ Renderer::Renderer() {
                 colour_ref[0].attachment = attachment_count++;
                 colour_ref[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-                VkAttachmentDescription& msaa_staging_info = attachment_data[colour_ref[0].attachment];
+                VkAttachmentDescription& msaa_staging_info = attachment_info[colour_ref[0].attachment];
                 msaa_staging_info.flags = 0;
                 msaa_staging_info.format = swapchain.format;
                 msaa_staging_info.samples = sample_count;
@@ -717,7 +718,7 @@ Renderer::Renderer() {
                 colour_ref[0].attachment = attachment_count++;
                 colour_ref[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-                VkAttachmentDescription& swapchain_info = attachment_data[colour_ref[0].attachment];
+                VkAttachmentDescription& swapchain_info = attachment_info[colour_ref[0].attachment];
                 swapchain_info.flags = 0;
                 swapchain_info.format = swapchain.format;
                 swapchain_info.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -733,7 +734,7 @@ Renderer::Renderer() {
                 depth_ref.attachment = attachment_count++;
                 depth_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-                VkAttachmentDescription& depth_info = attachment_data[depth_ref.attachment];
+                VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
                 depth_info.flags = 0;
                 depth_info.format = VK_FORMAT_D32_SFLOAT;
                 depth_info.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -750,7 +751,7 @@ Renderer::Renderer() {
                 depth_ref.attachment = attachment_count++;
                 depth_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-                VkAttachmentDescription& depth_info = attachment_data[depth_ref.attachment];
+                VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
                 depth_info.flags = 0;
                 depth_info.format = VK_FORMAT_D32_SFLOAT;
                 depth_info.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -764,7 +765,7 @@ Renderer::Renderer() {
 
             if (deferred_enabled) { // init albedo, normal, specular attachment(g-buffer)
                 input_ref[0].attachment = attachment_count++;
-                VkAttachmentDescription& albedo_info = attachment_data[input_ref[0].attachment];
+                VkAttachmentDescription& albedo_info = attachment_info[input_ref[0].attachment];
                 
                 albedo_info.flags = 0;
                 albedo_info.format = swapchain.format;
@@ -778,7 +779,7 @@ Renderer::Renderer() {
                 
 
                 input_ref[1].attachment = attachment_count++;
-                VkAttachmentDescription& normal_info = attachment_data[input_ref[1].attachment];
+                VkAttachmentDescription& normal_info = attachment_info[input_ref[1].attachment];
                 
                 normal_info.flags = 0;
                 normal_info.format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -791,7 +792,7 @@ Renderer::Renderer() {
                 normal_info.finalLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
 
                 input_ref[2].attachment = attachment_count++;
-                VkAttachmentDescription& specular_info = attachment_data[input_ref[1].attachment];
+                VkAttachmentDescription& specular_info = attachment_info[input_ref[1].attachment];
                 
                 specular_info.flags = 0;
                 specular_info.format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -803,8 +804,6 @@ Renderer::Renderer() {
                 specular_info.initialLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
                 specular_info.finalLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;            
             }
-
-            std::span<VkAttachmentDescription> attachments{ attachment_data, attachment_count };
 
             std::array<VkSubpassDescription, 1> subpass;
             subpass[0].flags = 0;
@@ -822,8 +821,8 @@ Renderer::Renderer() {
             info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
             info.pNext = nullptr;
             info.flags = 0;
-            info.attachmentCount = attachments.size();
-            info.pAttachments = attachments.data();
+            info.attachmentCount = attachment_count;
+            info.pAttachments = attachment_info.data();
             info.subpassCount = subpass.size();
             info.pSubpasses = subpass.data();
             info.dependencyCount = 0;
@@ -843,7 +842,7 @@ Renderer::Renderer() {
                 frag_module = create_shader_module("res/import/shaders/forward.frag.spv");
             }
 
-            VkPipelineShaderStageCreateInfo shader_stages[2];
+            std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages;
             shader_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             shader_stages[0].pNext = nullptr;
             shader_stages[0].flags = 0;
@@ -863,8 +862,8 @@ Renderer::Renderer() {
             uint32_t vertex_attrib_count = 0, vertex_binding_count = 0;
             std::array<VkVertexInputBindingDescription, 1> vertex_binding;
             std::array<VkVertexInputAttributeDescription, 4> vertex_attrib;
-            
-            if (!deferred_enabled) {
+
+            if (!deferred_enabled) { // TODO: FIX ME
                 vertex_binding[0].binding = 0;
                 vertex_binding[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
                 vertex_binding[0].stride = sizeof(Vertex);
@@ -929,9 +928,9 @@ Renderer::Renderer() {
 
             VkPipelineDepthStencilStateCreateInfo depth_stencil{};
             depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-            depth_stencil.depthTestEnable = VK_TRUE;
+            depth_stencil.depthTestEnable = VK_FALSE; //VK_TRUE;
             depth_stencil.depthWriteEnable = VK_TRUE;
-            depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
+            depth_stencil.depthCompareOp = VK_COMPARE_OP_ALWAYS; //VK_COMPARE_OP_LESS;
             depth_stencil.depthBoundsTestEnable = VK_FALSE;
             depth_stencil.stencilTestEnable = VK_FALSE;
 
@@ -959,8 +958,8 @@ Renderer::Renderer() {
 
             VkGraphicsPipelineCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-            info.stageCount = 2;
-            info.pStages = shader_stages;
+            info.stageCount = shader_stages.size();
+            info.pStages = shader_stages.data();
             info.pVertexInputState = &vertex_input;
             info.pInputAssemblyState = &assembly;
             info.pViewportState = &viewport_state;
@@ -1020,12 +1019,6 @@ Renderer::Renderer() {
             }
         }
     }
-
-    { // recreate camera view
-
-    }
-
-    
 }
 
 Renderer::~Renderer() {
@@ -1067,8 +1060,7 @@ void Renderer::draw() {
 
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
         swapchain.recreate();
-        // update texture
-        // framebuffers
+        // update texture, framebuffers ...
         return; 
     } else if (res != VK_SUBOPTIMAL_KHR) {
         VK_ASSERT(res);
@@ -1345,7 +1337,7 @@ void Renderer::LightingPass::record(uint32_t frame_index) {
 
     { // begin renderpass
         VkClearValue clear[1];
-        clear[0].color = { 0.05, 0.05, 0.05 };
+        clear[0].color = { 0.05, 0.01, 0.05 };
         
         VkRenderPassBeginInfo info{};
         info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -1378,6 +1370,7 @@ void Renderer::LightingPass::record(uint32_t frame_index) {
     }
 
     { // draw scene 
+        // bind camera
         vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].descriptor_set, 0, nullptr);
 
         for (Model& model : models) {
@@ -1389,12 +1382,12 @@ void Renderer::LightingPass::record(uint32_t frame_index) {
             vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index_buffer, 0, VK_INDEX_TYPE_UINT32);
             
             // bind transform
-            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout,  1, 1, &model.transform.uniform[frame_index].descriptor_set, 0, nullptr);
+            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.uniform[frame_index].descriptor_set, 0, nullptr);
 
             uint32_t index_offset = 0;
             for (auto& mesh : model.meshes) {
                 // bind material
-                vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout,  2, 1, &mesh.material.uniform.descriptor_set, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &mesh.material.uniform.descriptor_set, 0, nullptr);
 
                 // draw mesh
                 vkCmdDrawIndexed(cmd_buffer[frame_index], mesh.vertex_count, 1, index_offset, 0, 0);

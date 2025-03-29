@@ -11,8 +11,10 @@ struct UniformSetBuilder {
     std::vector<VK_TYPE(VkDescriptorImageInfo)> image_info;
 };
 
-struct Uniform { 
-    virtual void write_set(UniformSetBuilder& set_builder, uint32_t binding_location) = 0;
+struct Uniform {
+    friend class UniformSet;
+protected:
+    virtual void set_binding(UniformSetBuilder& set_builder, uint32_t binding_location) = 0;
 };
 
 template<typename T>
@@ -20,6 +22,7 @@ class UniformBuffer;
 
 template<>
 class UniformBuffer<void> : public Uniform {
+    friend class UniformSet;
 public:
     UniformBuffer() : buffer(nullptr) { }
     UniformBuffer(const void* data, uint32_t size);
@@ -29,19 +32,18 @@ public:
     UniformBuffer(const UniformBuffer& other) = delete;
     UniformBuffer& operator=(const UniformBuffer& other) = delete;
 
-    void set(const void* data, uint32_t size);
-    void* get() { return mapped_data; }
-    const void* get() const { return mapped_data; }
+    void set_value(const void* data, uint32_t size);
 
-    void write_set(UniformSetBuilder& set_builder, uint32_t binding_location, uint32_t size);
+protected:
+    void set_binding(UniformSetBuilder& set_builder, uint32_t binding_location, uint32_t size);
 
     VK_TYPE(VkBuffer) buffer = nullptr;
     VK_TYPE(VkDeviceMemory) memory;
-    void* mapped_data;
 };
 
 template<typename T>
 class UniformBuffer : public UniformBuffer<void> {
+    friend class UniformSet;
 public:
     UniformBuffer() : UniformBuffer<void>() { }
     UniformBuffer(const T* data) : UniformBuffer<void>(data, sizeof(T)) { }
@@ -51,17 +53,16 @@ public:
     UniformBuffer(const UniformBuffer& other) = delete;
     UniformBuffer& operator=(const UniformBuffer& other) = delete;
 
-    void set(T* data) { UniformBuffer<void>::set(data, sizeof(T)); }
-    T* get() { return reinterpret_cast<T*>(UniformBuffer<void>::get()); }
-    const T* get() const { return reinterpret_cast<const T*>(UniformBuffer<void>::get()); }
+    void set_value(T& data) { UniformBuffer<void>::set_value(&data, sizeof(T)); }
 
-    void write_set(UniformSetBuilder& set_builder, uint32_t binding_location) 
-    {
-        UniformBuffer<void>::write_set(set_builder, binding_location, sizeof(T));    
+protected:
+    void set_binding(UniformSetBuilder& set_builder, uint32_t binding_location) {
+        UniformBuffer<void>::set_binding(set_builder, binding_location, sizeof(T));
     }
 };
 
 class UniformTexture : public Uniform {
+    friend class UniformSet;
 public:
     UniformTexture() : image(nullptr) { }
     UniformTexture(std::filesystem::path fp);
@@ -71,9 +72,9 @@ public:
     UniformTexture(const UniformTexture& other) = delete;
     UniformTexture& operator=(const UniformTexture& other) = delete;
     
-    void write_set(UniformSetBuilder& set_builder, uint32_t binding_location);
+protected:
+    void set_binding(UniformSetBuilder& set_builder, uint32_t binding_location);
 
-private:
     VK_TYPE(VkImage) image = nullptr;
     VK_TYPE(VkDeviceMemory) memory;
     VK_TYPE(VkImageView) view;
@@ -82,14 +83,14 @@ private:
 class UniformSet {
 public:
     UniformSet() { }
-    UniformSet(VK_TYPE(VkDescriptorSetLayout) layout, std::span<Uniform*> binding);
+    UniformSet(VK_TYPE(VkDescriptorSetLayout) layout);
     ~UniformSet();
     UniformSet(UniformSet&&);
     UniformSet& operator=(UniformSet&&);
     UniformSet(const UniformSet&) = delete;
     UniformSet& operator=(const UniformSet&) = delete;
 
-    void bind(VK_TYPE(VkCommandBuffer) cmd_buffer, VK_TYPE(VkPipelineLayout) layout, uint32_t set_index, VK_ENUM(VkPipelineBindPoint) bind_point);
+    void set_bindings(std::span<Uniform*> binding);
 
     VK_TYPE(VkDescriptorSet) descriptor_set = nullptr;
 };

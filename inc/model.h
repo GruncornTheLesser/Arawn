@@ -26,15 +26,13 @@ public:
     
 private:
     struct Transform {
-        struct Buffer : UniformBuffer<glm::mat4>, UniformSet { 
-            Buffer();
-        };
+        struct UBO : UniformBuffer<glm::mat4>, UniformSet { UBO(); };
         void update(uint32_t frame_index);
 
         glm::vec3 position;
         glm::quat rotation;
         glm::vec3 scale = { 1, 1, 1 };
-        std::array<Buffer, MAX_FRAMES_IN_FLIGHT> uniform;
+        std::array<UBO, MAX_FRAMES_IN_FLIGHT> uniform;
     } transform;
 
     VK_TYPE(VkBuffer) vertex_buffer = nullptr;

@@ -25,6 +25,7 @@ public:
 
         uint32_t operator+=(Callback callback) { return dispatcher.attach(callback, filter, false); }
         uint32_t operator^=(Callback callback) { return dispatcher.attach(callback, filter, true); }
+        void operator -=(uint32_t handle) { dispatcher.detach(handle); }
 
         uint32_t attach(Callback callback, bool once=false) { return dispatcher.attach(callback, filter, once); }
         void detach(uint32_t handle) { dispatcher.detach(handle); }
@@ -35,6 +36,7 @@ public:
 
     uint32_t operator+=(Callback callback) { return attach(callback, nullptr, false); }
     uint32_t operator^=(Callback callback) { return attach(callback, nullptr, true); }
+    void operator-=(uint32_t handle) { detach(handle); }
 
     uint32_t attach(Callback callback, Filter filter=nullptr, bool once=false) {
         Listener* listener;
@@ -51,8 +53,8 @@ public:
 
     void detach(uint32_t handle) {
         auto end = data.begin() + active;
-        auto it = std::remove_if(data.begin(), end, [&](const auto& listener) { 
-            return listener.handle == handle;
+        auto it = std::partition(data.begin(), end, [&](const auto& listener) {
+            return listener.handle != handle;
         });
         
         if (it == end) return;
@@ -63,7 +65,6 @@ public:
         });
         
         active = it - data.begin();
-        
     }
 
     void clear() { 
@@ -73,18 +74,23 @@ public:
 
     void invoke(event_T event) {
         auto end = data.begin() + active;
-        auto it = std::remove_if(data.begin(), end, [&](const auto& listener) {
+        auto it = std::partition(data.begin(), end, [&](const auto& listener) {
             if (listener.filter == nullptr || listener.filter(event)) {
                 listener.callback(event);
-                return listener.once;
+                return !listener.once;
             }
-            return false;
+            return true;
         });
         std::for_each(it, data.begin() + active, [&](auto& listener) { 
+            // deallocate lambdas/functors
             listener.callback = nullptr;
             listener.filter = nullptr;
-        }); // note: must set callback to null to deallocate lambdas
+        });
         active = it - data.begin();
+    }
+
+    size_t size() const {
+        return active;
     }
 private:
     uint32_t active = 0;

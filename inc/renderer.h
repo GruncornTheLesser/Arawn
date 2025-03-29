@@ -100,7 +100,6 @@ private:
     BufferAttachment cluster_buffer;
 
     uint32_t frame_index = 0;
-    uint32_t image_index;
 
     struct DepthPass : GraphicPipeline {
         std::array<VK_TYPE(VkFramebuffer), MAX_FRAMES_IN_FLIGHT> framebuffer;

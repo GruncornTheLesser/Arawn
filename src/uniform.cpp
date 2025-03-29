@@ -1,10 +1,10 @@
-#include <cstring>
 #define ARAWN_IMPLEMENTATION
 #include "uniform.h"
 #include "engine.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+#include <cstring>
 
 UniformBuffer<void>::UniformBuffer(const void* data, uint32_t size) {
     { // create buffer
@@ -33,17 +33,14 @@ UniformBuffer<void>::UniformBuffer(const void* data, uint32_t size) {
         VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &memory)); 
 
         VK_ASSERT(vkBindBufferMemory(engine.device, buffer, memory, 0));
-    
-        VK_ASSERT(vkMapMemory(engine.device, memory, 0, size, 0, &mapped_data));
     }
 
-    if (data != nullptr) set(data, size);
+    if (data != nullptr) set_value(data, size);
 };
 
 UniformBuffer<void>::~UniformBuffer() {
     if (buffer == nullptr) return;
 
-    vkUnmapMemory(engine.device, memory);
     vkFreeMemory(engine.device, memory, nullptr);
     vkDestroyBuffer(engine.device, buffer, nullptr);
 }
@@ -53,7 +50,6 @@ UniformBuffer<void>::UniformBuffer(UniformBuffer&& other) {
 
     buffer = other.buffer;
     memory = other.memory;
-    mapped_data = other.mapped_data;
 
     other.buffer = nullptr;
 }
@@ -61,13 +57,15 @@ UniformBuffer<void>::UniformBuffer(UniformBuffer&& other) {
 UniformBuffer<void>& UniformBuffer<void>::operator=(UniformBuffer&& other) {
     std::swap(buffer, other.buffer);
     std::swap(memory, other.memory);
-    std::swap(mapped_data, other.mapped_data);
 
     return *this;
 }
 
-void UniformBuffer<void>::set(const void* data, uint32_t size) {
+void UniformBuffer<void>::set_value(const void* data, uint32_t size) {
+    void* mapped_data;
+    VK_ASSERT(vkMapMemory(engine.device, memory, 0, size, 0, &mapped_data));
     std::memcpy(mapped_data, data, size);
+    vkUnmapMemory(engine.device, memory);
 }
 
 UniformTexture::UniformTexture(std::filesystem::path fp) {
@@ -384,7 +382,7 @@ UniformTexture& UniformTexture::operator=(UniformTexture&& other) {
     return *this;
 }
 
-void UniformTexture::write_set(UniformSetBuilder& set_builder, uint32_t binding_location) {
+void UniformTexture::set_binding(UniformSetBuilder& set_builder, uint32_t binding_location) {
     if (image != nullptr) {
         auto& image_desc = set_builder.image_info.emplace_back();
         image_desc.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -404,7 +402,7 @@ void UniformTexture::write_set(UniformSetBuilder& set_builder, uint32_t binding_
     }
 }
 
-void UniformBuffer<void>::write_set(UniformSetBuilder& set_builder, uint32_t binding_location, uint32_t size) {
+void UniformBuffer<void>::set_binding(UniformSetBuilder& set_builder, uint32_t binding_location, uint32_t size) {
     if (buffer != nullptr) {
         auto& buffer_desc = set_builder.buffer_info.emplace_back();
         buffer_desc.buffer = buffer;
@@ -423,7 +421,7 @@ void UniformBuffer<void>::write_set(UniformSetBuilder& set_builder, uint32_t bin
     }
 }
 
-UniformSet::UniformSet(VkDescriptorSetLayout layout, std::span<Uniform*> bindings) {
+UniformSet::UniformSet(VkDescriptorSetLayout layout) {
     { // allocate descriptor set
         VkDescriptorSetAllocateInfo info{};
         info.pNext = nullptr;
@@ -434,17 +432,18 @@ UniformSet::UniformSet(VkDescriptorSetLayout layout, std::span<Uniform*> binding
         
         VK_ASSERT(vkAllocateDescriptorSets(engine.device, &info, &descriptor_set));
     }
+}
 
-    { // write descriptor set
-        UniformSetBuilder set_builder;
-        set_builder.set = descriptor_set;
+void UniformSet::set_bindings(std::span<Uniform*> bindings) {
+    // write descriptor set
+    UniformSetBuilder set_builder;
+    set_builder.set = descriptor_set;
 
-        for (uint32_t i = 0; i < bindings.size(); ++i) {
-            bindings[i]->write_set(set_builder, i);
-        }
-
-        vkUpdateDescriptorSets(engine.device, set_builder.desc_writes.size(), set_builder.desc_writes.data(), 0, nullptr);
+    for (uint32_t i = 0; i < bindings.size(); ++i) {
+        bindings[i]->set_binding(set_builder, i);
     }
+
+    vkUpdateDescriptorSets(engine.device, set_builder.desc_writes.size(), set_builder.desc_writes.data(), 0, nullptr);
 }
 
 UniformSet::~UniformSet() {
@@ -465,6 +464,6 @@ UniformSet& UniformSet::operator=(UniformSet&& other) {
     return *this;
 }
 
-void UniformSet::bind(VkCommandBuffer cmd_buffer, VkPipelineLayout layout, uint32_t set_index, VkPipelineBindPoint bind_point) {
-    vkCmdBindDescriptorSets(cmd_buffer, bind_point, layout, set_index, 1, &descriptor_set, 0, nullptr);
-}
+//void UniformSet::set_bindings(VkCommandBuffer cmd_buffer, VkPipelineLayout layout, uint32_t set_index, VkPipelineBindPoint bind_point) {
+//    vkCmdBindDescriptorSets(cmd_buffer, bind_point, layout, set_index, 1, &descriptor_set, 0, nullptr);
+//}

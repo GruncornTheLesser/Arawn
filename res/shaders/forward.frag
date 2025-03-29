@@ -39,18 +39,17 @@ layout(set = 2, binding = 2) uniform sampler metallic_map;
 layout(set = 2, binding = 3) uniform sampler roughness_map;
 layout(set = 2, binding = 4) uniform sampler normal_map;
 
-//layout(std430, set = 3, binding = 0) buffer readonly ClusterArray {
-//    Cluster clusters[];
-//};
+layout(std430, set = 3, binding = 0) buffer readonly ClusterArray {
+    Cluster clusters[];
+};
 
-layout(location = 0) in vec3 frag_colour;
+layout(location = 0) in vec3 frag_position; // world position
 layout(location = 1) in vec2 frag_texcoord;
-//layout(location = 2) in vec3 frag_normal;
-layout(location = 3) in vec3 frag_position; // world position
+layout(location = 2) in vec3 frag_normal;
 
 layout(location = 0) out vec4 out_colour;
 
 void main() {
-    out_colour = vec4(frag_colour, 1.0);
+    out_colour = vec4(1.0, 0.0, 0.0, 1.0);
 
 }

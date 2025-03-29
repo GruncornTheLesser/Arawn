@@ -217,3 +217,5 @@ struct MouseScrollDown {
     using event_type = Mouse::Event;
     bool operator()(const event_type& event) { return event.state == Mouse::DOWN && event.code == Mouse::SCROLL; }
 };
+
+struct Update { double delta; operator double() { return delta; } };

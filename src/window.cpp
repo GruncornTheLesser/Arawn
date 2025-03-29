@@ -2,6 +2,7 @@
 #include "window.h"
 #include <algorithm>
 
+
 void key_callback(VK_TYPE(GLFWwindow*) glfwWindow, int key, int scancode, int action, int mods);
 void char_callback(VK_TYPE(GLFWwindow*) glfwWindow, unsigned int codepoint);
 void mouse_move_callback(VK_TYPE(GLFWwindow*) glfwWindow, double xpos, double ypos);
@@ -47,6 +48,8 @@ Window::Window()
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 
     set_display_mode(settings.display_mode);
+
+    previous_frame = std::chrono::high_resolution_clock::now();
 }
 
 Window::~Window() {
@@ -149,12 +152,14 @@ auto Window::enum_display_modes() const -> std::vector<DisplayMode> {
     return { DisplayMode::WINDOWED, DisplayMode::FULLSCREEN, DisplayMode::EXCLUSIVE };
 }
 
-auto Window::closed() const -> bool {
-    // only single window is being supported so this is fine, 
-    // this is for all all glfwWindows, 
-    // if multiple windows initialized this will skip events
+void Window::update() {
     glfwPollEvents();
-    
+    time_point current_frame = std::chrono::high_resolution_clock::now();
+    Dispatcher<Update>::invoke(Update{ std::chrono::duration<float, std::chrono::seconds::period>(current_frame - previous_frame).count() });
+    previous_frame = current_frame;
+}
+
+auto Window::closed() const -> bool {
     return glfwWindowShouldClose(window);
 }
 

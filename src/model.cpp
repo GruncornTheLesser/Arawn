@@ -159,13 +159,12 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
                 }
             }
             
+            // note only need to check if last default material becuse sorted by material_id
             if (curr_material == -1) {  // default material
                 meshes.emplace_back(vertex_count);
-                // note only need to check if last default material becuse sorted by material_id
             } else {
                 meshes.emplace_back(vertex_count, Material{ &obj_materials[curr_material] });
             }
-
         }
 
         models.emplace_back(indices, vertices, std::move(meshes));
@@ -185,6 +184,17 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
     VkDeviceMemory vertex_staging_memory;
     VkBuffer index_staging_buffer;
     VkDeviceMemory index_staging_memory;
+
+    /*
+    create 4 buffers, 2 staging + vertex + index
+    create temporary cmd buffer + fence
+    begin command
+    copy staging buffer to vertex buffer
+    copy staging buffer to index buffer
+    end command
+    wait for fence
+    destroy temporary 2 staging buffers + command buffers + fence
+    */
 
     { // allocate temporary cmd buffer
         VkCommandBufferAllocateInfo info{};
@@ -233,7 +243,7 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
         VK_ASSERT(vkBindBufferMemory(engine.device, vertex_staging_buffer, vertex_staging_memory, 0));
     }
 
-    { // write to vertex buffer
+    { // write to temporary vertex buffer
         void* buffer_data;
         VK_ASSERT(vkMapMemory(engine.device, vertex_staging_memory, 0, vertex_buffer_size, 0 , &buffer_data));
         memcpy(buffer_data, vertices.data(), vertex_buffer_size);
@@ -267,8 +277,6 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
 
         VK_ASSERT(vkBindBufferMemory(engine.device, vertex_buffer, vertex_memory, 0));
     }
-
-
 
     { // create temporary index staging buffer
         VkBufferCreateInfo info{};
@@ -332,8 +340,6 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
     
         VK_ASSERT(vkBindBufferMemory(engine.device, index_buffer, index_memory, 0));
     }
-
-
 
     { // begin cmd buffer
         VkCommandBufferBeginInfo info{};
@@ -407,16 +413,14 @@ Model& Model::operator=(Model&& other) {
     return *this;
 }
 
-Model::Transform::Buffer::Buffer()  : UniformBuffer<glm::mat4>(nullptr), UniformSet(engine.transform_layout, std::array<Uniform*, 1>() = { this }) { }
+Model::Transform::UBO::UBO() : UniformBuffer<glm::mat4>(nullptr), UniformSet(engine.transform_layout) { set_bindings(std::array<Uniform*, 1>() = { this }); }
 
 void Model::Transform::update(uint32_t frame_index) {
     
-    
     glm::mat4 T = glm::identity<glm::mat4>();
-    T = glm::scale(T, scale);
-    T = glm::mat4_cast(rotation) * T;
-    T = glm::translate(T, position);
-    // T = glm::inverse(T);
-    // T = glm::transpose(T);
-    uniform[frame_index].set(&T);
+    //T = glm::scale(T, scale);
+    //T = glm::mat4_cast(rotation) * T;
+    //T = glm::translate(T, position);
+
+    uniform[frame_index].set_value(T);
 }

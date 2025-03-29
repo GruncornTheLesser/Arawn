@@ -2,13 +2,14 @@
 #include "vulkan.h"
 #include "settings.h"
 #include "dispatcher.h"
-#include "input.h"
+#include "events.h"
 
 #include <vector>
+#include <chrono>
 
-
-class Window : public Dispatcher<Key::Event, Mouse::Event> 
+class Window : public Dispatcher<Key::Event, Mouse::Event, Update> 
 {
+    using time_point = std::chrono::time_point<std::chrono::high_resolution_clock, std::chrono::nanoseconds>;
     friend class Swapchain;
 public:
     Window();
@@ -30,12 +31,15 @@ public:
     auto get_display_mode() const -> DisplayMode;
     auto enum_display_modes() const -> std::vector<DisplayMode>;
 
+    void update();
+
     // attributes
     auto closed() const -> bool;
     auto minimized() const -> bool;
 
 private:
     VK_TYPE(GLFWwindow*) window = nullptr;
+    time_point previous_frame;
 };
 
 extern Window window;

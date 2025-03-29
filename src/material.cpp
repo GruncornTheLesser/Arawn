@@ -26,31 +26,20 @@ Material::Material(const tinyobj::material_t* info)
    metallic_texture(info->metallic_texname), 
    roughness_texture(info->roughness_texname), 
    normal_texture(info->normal_texname),
-   uniform(engine.material_layout, std::array<Uniform*, 5>() = { &buffer, &albedo_texture, &metallic_texture, &roughness_texture, &normal_texture })
+   uniform(engine.material_layout)
 {
-    Data* mapped_data = buffer.get();
+    std::array<Uniform*, 5> bindings{ &buffer, &albedo_texture, &metallic_texture, &roughness_texture, &normal_texture };
+    uniform.set_bindings(bindings);
+    
+    Data data;
+    data.albedo = { info->diffuse[0], info->diffuse[1], info->diffuse[2] };
+    data.metallic = info->metallic;
+    data.roughness = info->roughness;
 
-    mapped_data->albedo = { info->diffuse[0], info->diffuse[1], info->diffuse[2] };
-    mapped_data->metallic = info->metallic;
-    mapped_data->roughness = info->roughness;
+    if (!info->diffuse_texname.empty()) data.flags |= Material::ALBEDO_TEXTURE;
+    if (!info->metallic_texname.empty()) data.flags |= Material::METALLIC_TEXTURE;
+    if (!info->roughness_texname.empty()) data.flags |= Material::ROUGHNESS_TEXTURE;
+    if (!info->normal_texname.empty()) data.flags |= Material::NORMAL_TEXTURE;
 
-    if (!info->diffuse_texname.empty()) {
-        mapped_data->flags |= Material::ALBEDO_TEXTURE;
-        albedo_texture = { info->diffuse_texname };
-    }
-
-    if (!info->metallic_texname.empty()) {
-        mapped_data->flags |= Material::METALLIC_TEXTURE;
-        metallic_texture = { info->metallic_texname };
-    }
-
-    if (!info->roughness_texname.empty()) {
-        mapped_data->flags |= Material::ROUGHNESS_TEXTURE;
-        roughness_texture = { info->roughness_texname };
-    }
-
-    if (!info->normal_texname.empty()) {
-        mapped_data->flags |= Material::NORMAL_TEXTURE;
-        normal_texture = { info->normal_texname };
-    }
+    buffer.set_value(data);
 }
