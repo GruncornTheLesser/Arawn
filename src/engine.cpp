@@ -17,8 +17,8 @@
 Engine::Engine() {
     std::vector<const char*> inst_layers =     { "VK_LAYER_KHRONOS_validation"   };
     std::vector<const char*> device_layers =   { "VK_LAYER_KHRONOS_validation"   };
-    std::vector<const char*> inst_extensions   { VK_KHR_SURFACE_EXTENSION_NAME   };
-    std::vector<const char*> device_extensions { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+    std::vector<const char*> inst_extensions = { VK_KHR_SURFACE_EXTENSION_NAME   };
+    std::vector<const char*> device_extensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME };
 
     { // init glfw
         GLFW_ASSERT(glfwInit() == GLFW_TRUE);
@@ -50,7 +50,7 @@ Engine::Engine() {
     { // init instance
         VkApplicationInfo app_info {};
         app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        app_info.apiVersion = VK_API_VERSION_1_0;     
+        app_info.apiVersion = VK_API_VERSION_1_4;     
         app_info.pApplicationName = "Arawn";
         app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
         app_info.pEngineName = "Arawn-engine";
@@ -121,6 +121,24 @@ Engine::Engine() {
             if (it == available.end())
                 throw std::runtime_error("device extension not available");
         }
+    }
+
+    { // check device feature support
+        VkPhysicalDeviceDescriptorIndexingFeatures indexing_features{};
+        indexing_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+        indexing_features.pNext = nullptr;
+
+        VkPhysicalDeviceFeatures2 supported{};
+        supported.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        supported.pNext = &indexing_features;
+
+        vkGetPhysicalDeviceFeatures2(gpu, &supported);
+
+        if (!supported.features.samplerAnisotropy) 
+            throw std::runtime_error("gpu does not support sampler anisotropy feature");
+
+        if (!indexing_features.descriptorBindingPartiallyBound)
+            throw std::runtime_error("gpu does not support descriptor partial binding");
     }
 
     { // select queues
@@ -228,18 +246,23 @@ Engine::Engine() {
             }
         }
         
-        VkPhysicalDeviceFeatures features{};
-        features.samplerAnisotropy = VK_TRUE;
+        VkPhysicalDeviceDescriptorIndexingFeatures indexing_features{};
+        indexing_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+        indexing_features.descriptorBindingPartiallyBound = VK_TRUE;
+
+        VkPhysicalDeviceFeatures core_features{};
+        core_features.samplerAnisotropy = VK_TRUE;
 
         VkDeviceCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        info.pNext = &indexing_features;
         info.queueCreateInfoCount = static_cast<uint32_t>(queues.size());
         info.pQueueCreateInfos = queues.data();
         info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
         info.ppEnabledExtensionNames = device_extensions.data();
         info.enabledLayerCount = static_cast<uint32_t>(device_layers.size());
         info.ppEnabledLayerNames = device_layers.data();
-        info.pEnabledFeatures = &features;
+        info.pEnabledFeatures = &core_features;
 
         VK_ASSERT(vkCreateDevice(gpu, &info, nullptr, &device));
     }
@@ -258,7 +281,7 @@ Engine::Engine() {
         info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         for (uint32_t i = 0; i < family_set_count; ++i) {
             info.queueFamilyIndex = family_set_data[i];
-            vkCreateCommandPool(device, &info, nullptr, cmd_pools + i);
+            VK_ASSERT(vkCreateCommandPool(device, &info, nullptr, cmd_pools + i));
         }
 
         // get command pool from queue family 
@@ -290,123 +313,6 @@ Engine::Engine() {
         VK_ASSERT(vkCreateDescriptorPool(device, &info, nullptr, &descriptor_pool));
     }
 
-    { // init descriptor set layouts
-        { // transform layout
-            VkDescriptorSetLayoutBinding set_layout_binding[1];
-
-            VkDescriptorSetLayoutBinding& transform_binding = set_layout_binding[0];
-            transform_binding.binding = 0;
-            transform_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            transform_binding.descriptorCount = 1;
-            transform_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            transform_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.bindingCount = 1;
-            info.pBindings = set_layout_binding;
-            
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &transform_layout));
-        }
-
-        { // camera layout
-            VkDescriptorSetLayoutBinding set_layout_binding[1];
-
-            VkDescriptorSetLayoutBinding& camera_binding = set_layout_binding[0];
-            camera_binding.binding = 0;
-            camera_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            camera_binding.descriptorCount = 1;
-            camera_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            camera_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.bindingCount = 1;
-            info.pBindings = set_layout_binding;
-
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &camera_layout));
-        }
-
-        { // material layout
-            VkDescriptorSetLayoutBinding set_layout_binding[5];
-
-            VkDescriptorSetLayoutBinding& mat_binding = set_layout_binding[0];
-            mat_binding.binding = 0;
-            mat_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            mat_binding.descriptorCount = 1;
-            mat_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            mat_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutBinding& albedo_binding = set_layout_binding[1];
-            albedo_binding.binding = 1;
-            albedo_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            albedo_binding.descriptorCount = 1;
-            albedo_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            albedo_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutBinding& roughness_binding = set_layout_binding[2];
-            roughness_binding.binding = 2;
-            roughness_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            roughness_binding.descriptorCount = 1;
-            roughness_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            roughness_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutBinding& metallic_binding = set_layout_binding[3];
-            metallic_binding.binding = 3;
-            metallic_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            metallic_binding.descriptorCount = 1;
-            metallic_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            metallic_binding.pImmutableSamplers = nullptr;
-
-
-            VkDescriptorSetLayoutBinding& normal_binding = set_layout_binding[4];
-            normal_binding.binding = 4;
-            normal_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            normal_binding.descriptorCount = 1;
-            normal_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            normal_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.bindingCount = 5;
-            info.pBindings = set_layout_binding;
-            
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &material_layout));
-        
-        }
-
-        { // lights/clusters layout
-            VkDescriptorSetLayoutBinding set_layout_binding[2];
-            
-            VkDescriptorSetLayoutBinding& light_binding = set_layout_binding[0];
-            light_binding.binding = 0;
-            light_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            light_binding.descriptorCount = 1;
-            light_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            light_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutBinding& cluster_binding = set_layout_binding[1];
-            cluster_binding.binding = 1;
-            cluster_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            cluster_binding.descriptorCount = 1;
-            cluster_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            cluster_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.bindingCount = 2;
-            info.pBindings = set_layout_binding;
-
-
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &light_layout));
-            
-        }
-    }
-
     { // create sampler
         VkPhysicalDeviceProperties properties;
         vkGetPhysicalDeviceProperties(engine.gpu, &properties);
@@ -430,6 +336,142 @@ Engine::Engine() {
         info.mipLodBias = 0.0f;
 
         VK_ASSERT(vkCreateSampler(engine.device, &info, nullptr, &sampler));
+    }
+
+    { // init descriptor set layouts
+        { // transform layout
+            std::array<VkDescriptorSetLayoutBinding, 1> set_layout_binding;
+
+            VkDescriptorSetLayoutBinding& transform_binding = set_layout_binding[0];
+            transform_binding.binding = 0;
+            transform_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            transform_binding.descriptorCount = 1;
+            transform_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+            transform_binding.pImmutableSamplers = nullptr;
+
+            VkDescriptorSetLayoutCreateInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            info.pNext = nullptr;
+            info.bindingCount = set_layout_binding.size();
+            info.pBindings = set_layout_binding.data();
+            
+            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &transform_layout));
+        }
+
+        { // camera layout
+            std::array<VkDescriptorSetLayoutBinding, 1> set_layout_binding;
+
+            VkDescriptorSetLayoutBinding& camera_binding = set_layout_binding[0];
+            camera_binding.binding = 0;
+            camera_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            camera_binding.descriptorCount = 1;
+            camera_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+            camera_binding.pImmutableSamplers = nullptr;
+
+            VkDescriptorSetLayoutCreateInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            info.pNext = nullptr;
+            info.bindingCount = set_layout_binding.size();
+            info.pBindings = set_layout_binding.data();
+
+            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &camera_layout));
+        }
+
+        { // material layout
+            std::array<VkDescriptorSetLayoutBinding, 5> set_layout_binding;
+            std::array<VkDescriptorBindingFlags, 5> binding_flags;
+
+            VkDescriptorSetLayoutBinding& mat_binding = set_layout_binding[0];
+            mat_binding.binding = 0;
+            mat_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            mat_binding.descriptorCount = 1;
+            mat_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            mat_binding.pImmutableSamplers = nullptr;
+
+            VkDescriptorBindingFlags& mat_binding_flags = binding_flags[0];
+            mat_binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+
+            VkDescriptorSetLayoutBinding& albedo_binding = set_layout_binding[1];
+            albedo_binding.binding = 1;
+            albedo_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            albedo_binding.descriptorCount = 1;
+            albedo_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            albedo_binding.pImmutableSamplers = nullptr;
+
+            VkDescriptorBindingFlags& albedo_binding_flags = binding_flags[1];
+            albedo_binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+
+            VkDescriptorSetLayoutBinding& roughness_binding = set_layout_binding[2];
+            roughness_binding.binding = 2;
+            roughness_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            roughness_binding.descriptorCount = 1;
+            roughness_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            roughness_binding.pImmutableSamplers = nullptr;
+
+            VkDescriptorBindingFlags& roughness_binding_flags = binding_flags[2];
+            roughness_binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+
+            VkDescriptorSetLayoutBinding& metallic_binding = set_layout_binding[3];
+            metallic_binding.binding = 3;
+            metallic_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            metallic_binding.descriptorCount = 1;
+            metallic_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            metallic_binding.pImmutableSamplers = nullptr;
+
+            VkDescriptorBindingFlags& metallic_binding_flags = binding_flags[3];
+            metallic_binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+
+            VkDescriptorSetLayoutBinding& normal_binding = set_layout_binding[4];
+            normal_binding.binding = 4;
+            normal_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            normal_binding.descriptorCount = 1;
+            normal_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            normal_binding.pImmutableSamplers = nullptr;
+
+            VkDescriptorBindingFlags& normal_binding_flags = binding_flags[4];
+            normal_binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+
+            VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info{};
+            binding_flags_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+            binding_flags_info.pNext = nullptr;
+            binding_flags_info.pBindingFlags = binding_flags.data();
+            binding_flags_info.bindingCount = binding_flags.size();
+
+            VkDescriptorSetLayoutCreateInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            info.pNext = &binding_flags_info;
+            info.bindingCount = set_layout_binding.size();
+            info.pBindings = set_layout_binding.data();
+            
+            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &material_layout));
+        }
+
+        { // lights/clusters layout
+            std::array<VkDescriptorSetLayoutBinding, 2> set_layout_binding;
+            
+            VkDescriptorSetLayoutBinding& light_binding = set_layout_binding[0];
+            light_binding.binding = 0;
+            light_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            light_binding.descriptorCount = 1;
+            light_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+            light_binding.pImmutableSamplers = nullptr;
+
+            VkDescriptorSetLayoutBinding& cluster_binding = set_layout_binding[1];
+            cluster_binding.binding = 1;
+            cluster_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            cluster_binding.descriptorCount = 1;
+            cluster_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+            cluster_binding.pImmutableSamplers = nullptr;
+
+            VkDescriptorSetLayoutCreateInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            info.pNext = nullptr;
+            info.bindingCount = set_layout_binding.size();
+            info.pBindings = set_layout_binding.data();
+
+            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &light_layout));
+            
+        }
     }
 }
 

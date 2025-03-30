@@ -24,16 +24,22 @@ public:
     Model(const Model& other) = delete;
     Model& operator=(const Model& other) = delete;
     
-private:
     struct Transform {
-        struct UBO : UniformBuffer<glm::mat4>, UniformSet { UBO(); };
+        struct Uniform { 
+            UniformBuffer buffer;
+            UniformSet set; 
+            Uniform();
+        };
+
         void update(uint32_t frame_index);
 
         glm::vec3 position;
         glm::quat rotation;
         glm::vec3 scale = { 1, 1, 1 };
-        std::array<UBO, MAX_FRAMES_IN_FLIGHT> uniform;
+        
+        std::array<Uniform, MAX_FRAMES_IN_FLIGHT> uniform;
     } transform;
+private:
 
     VK_TYPE(VkBuffer) vertex_buffer = nullptr;
     VK_TYPE(VkDeviceMemory) vertex_memory;

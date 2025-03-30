@@ -105,7 +105,7 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
                     }
                 }
             }
-                
+            
             for (; vertex_index < next_face; ++vertex_index) { // polygon
                 // redraw final line of last triangle
                 indices.push_back(*(indices.end() - 3)); // { a, b, c }, { a, c, d }
@@ -413,14 +413,14 @@ Model& Model::operator=(Model&& other) {
     return *this;
 }
 
-Model::Transform::UBO::UBO() : UniformBuffer<glm::mat4>(nullptr), UniformSet(engine.transform_layout) { set_bindings(std::array<Uniform*, 1>() = { this }); }
+Model::Transform::Uniform::Uniform() : buffer(nullptr, sizeof(glm::mat4)), set(engine.transform_layout, std::array<std::variant<UniformBuffer*, UniformTexture*>, 1>() = { &buffer }) { }
 
 void Model::Transform::update(uint32_t frame_index) {
     
-    glm::mat4 T = glm::identity<glm::mat4>();
-    //T = glm::scale(T, scale);
-    //T = glm::mat4_cast(rotation) * T;
-    //T = glm::translate(T, position);
+    glm::mat4 transform = glm::identity<glm::mat4>();
+    transform = glm::mat4_cast(rotation);
+    transform = glm::scale(transform, scale);
+    transform = glm::translate(transform, position);
 
-    uniform[frame_index].set_value(T);
+    uniform[frame_index].buffer.set_value(&transform);
 }

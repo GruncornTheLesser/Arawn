@@ -489,7 +489,7 @@ Renderer::Renderer() {
             rasterizer.rasterizerDiscardEnable = VK_FALSE;
             rasterizer.polygonMode = VK_POLYGON_MODE_FILL; // TODO: wireframe debug mode
             rasterizer.lineWidth = 1.0f; // only used when VK_POLYGON_MODE_LINE enabled
-            rasterizer.cullMode = VK_CULL_MODE_NONE; //VK_CULL_MODE_BACK_BIT;
+            rasterizer.cullMode = VK_CULL_MODE_BACK_BIT; //;
             rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE; // COUNTER_
             rasterizer.depthBiasEnable = VK_FALSE;
 
@@ -679,28 +679,18 @@ Renderer::Renderer() {
             std::array<VkAttachmentReference, 1>  colour_ref;
             VkAttachmentReference depth_ref, resolve_ref;
 
+            /*
+            attachment 0 always colour attachment, -> can be msaa_staging_attachment or swapchain image depending if msaa enabled
+            attachment 1 always depth attachment,
+            */
+
             // bindings
             if (msaa_enabled) { // init swapchain image and msaa staging attachment attachment                 
-                /* 
+                /*
                 when msaa enabled, the renderpass writes first to the colour attachment and then resolves the 
                 multi sampling into the resolve attachment. I want to write to the colour attachment and 
                 resolve onto the screen. swapchain image always bound to attachment 0.
                 */
-                
-                resolve_ref.attachment = attachment_count++;
-                resolve_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-                VkAttachmentDescription& swapchain_info = attachment_info[resolve_ref.attachment];
-                swapchain_info.flags = 0;
-                swapchain_info.format = swapchain.format;
-                swapchain_info.samples = VK_SAMPLE_COUNT_1_BIT;
-                swapchain_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-                swapchain_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-                swapchain_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                swapchain_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                swapchain_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                swapchain_info.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
                 colour_ref[0].attachment = attachment_count++;
                 colour_ref[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
@@ -713,7 +703,10 @@ Renderer::Renderer() {
                 msaa_staging_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
                 msaa_staging_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
                 msaa_staging_info.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                msaa_staging_info.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;                
+                msaa_staging_info.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;      
+
+                resolve_ref.attachment = attachment_count++;
+                resolve_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             } else {
                 colour_ref[0].attachment = attachment_count++;
                 colour_ref[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -755,13 +748,26 @@ Renderer::Renderer() {
                 depth_info.flags = 0;
                 depth_info.format = VK_FORMAT_D32_SFLOAT;
                 depth_info.samples = VK_SAMPLE_COUNT_1_BIT;
-                depth_info.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+                depth_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // clears to 1.0f
                 depth_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
                 depth_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
                 depth_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
                 depth_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
                 depth_info.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            }   
+            }
+
+            if (msaa_enabled) {
+                VkAttachmentDescription& swapchain_info = attachment_info[resolve_ref.attachment];
+                swapchain_info.flags = 0;
+                swapchain_info.format = swapchain.format;
+                swapchain_info.samples = VK_SAMPLE_COUNT_1_BIT;
+                swapchain_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                swapchain_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                swapchain_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+                swapchain_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                swapchain_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                swapchain_info.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            }
 
             if (deferred_enabled) { // init albedo, normal, specular attachment(g-buffer)
                 input_ref[0].attachment = attachment_count++;
@@ -843,6 +849,7 @@ Renderer::Renderer() {
             }
 
             std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages;
+            // vertex stage
             shader_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             shader_stages[0].pNext = nullptr;
             shader_stages[0].flags = 0;
@@ -850,7 +857,7 @@ Renderer::Renderer() {
             shader_stages[0].module = vert_module;
             shader_stages[0].pName = "main";
             shader_stages[0].pSpecializationInfo = nullptr;
-
+            // fragment stage
             shader_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             shader_stages[1].pNext = nullptr;
             shader_stages[1].flags = 0;
@@ -863,7 +870,7 @@ Renderer::Renderer() {
             std::array<VkVertexInputBindingDescription, 1> vertex_binding;
             std::array<VkVertexInputAttributeDescription, 4> vertex_attrib;
 
-            if (!deferred_enabled) { // TODO: FIX ME
+            if (!deferred_enabled) {
                 vertex_binding[0].binding = 0;
                 vertex_binding[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
                 vertex_binding[0].stride = sizeof(Vertex);
@@ -928,9 +935,9 @@ Renderer::Renderer() {
 
             VkPipelineDepthStencilStateCreateInfo depth_stencil{};
             depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-            depth_stencil.depthTestEnable = VK_FALSE; //VK_TRUE;
+            depth_stencil.depthTestEnable = VK_TRUE; // FIX ME: update me
             depth_stencil.depthWriteEnable = VK_TRUE;
-            depth_stencil.depthCompareOp = VK_COMPARE_OP_ALWAYS; //VK_COMPARE_OP_LESS;
+            depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
             depth_stencil.depthBoundsTestEnable = VK_FALSE;
             depth_stencil.stencilTestEnable = VK_FALSE;
 
@@ -979,8 +986,7 @@ Renderer::Renderer() {
         }
 
         { // initialize framebuffers
-            VkImageView attachment_data[6];
-            std::span<VkImageView> attachments { attachment_data, attachment_count };
+            VkImageView attachments[6];
 
             VkFramebufferCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -990,8 +996,8 @@ Renderer::Renderer() {
             info.renderPass = lighting_pass.renderpass;
             info.width = swapchain.extent.x;
             info.height = swapchain.extent.y;                
-            info.pAttachments = attachments.data();
-            info.attachmentCount = attachments.size();
+            info.pAttachments = attachments;
+            info.attachmentCount = attachment_count;
 
             lighting_pass.framebuffer.resize(std::lcm(swapchain.frame_count, swapchain.image_count));
 
@@ -1001,18 +1007,23 @@ Renderer::Renderer() {
                 uint32_t image_i = i % swapchain.image_count;
                 
                 uint32_t attachment_index = 0;
-                attachments[attachment_index] = swapchain.views[image_i];
-                
-                if (msaa_enabled) {
-                    attachments[++attachment_index] = msaa_attachment.view[frame_i];
+                if (msaa_enabled) { // colour attachment
+                    attachments[attachment_index++] = msaa_attachment.view[frame_i];
+                } else {
+                    attachments[attachment_index++] = swapchain.views[image_i];
                 }
 
-                attachments[++attachment_index] = depth_attachment.view[frame_i];
+                // depth attachment
+                attachments[attachment_index++] = depth_attachment.view[frame_i];
                 
+                if (msaa_enabled) {
+                    attachments[attachment_index++] = swapchain.views[image_i];
+                }
+
                 if (deferred_enabled) {
-                    attachments[++attachment_index] = albedo_attachment.view[frame_i];
-                    attachments[++attachment_index] = normal_attachment.view[frame_i];
-                    attachments[++attachment_index] = specular_attachment.view[frame_i];
+                    attachments[attachment_index++] = albedo_attachment.view[frame_i];
+                    attachments[attachment_index++] = normal_attachment.view[frame_i];
+                    attachments[attachment_index++] = specular_attachment.view[frame_i];
                 }
 
                 VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &lighting_pass.framebuffer[i]));
@@ -1237,6 +1248,7 @@ void Renderer::DepthPass::record(uint32_t frame_index) {
     { // begin renderpass
         VkClearValue clear = { 1.0f };
         
+        
         VkRenderPassBeginInfo info{};
         info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         info.renderPass = renderpass;
@@ -1336,17 +1348,18 @@ void Renderer::LightingPass::record(uint32_t frame_index) {
     }
 
     { // begin renderpass
-        VkClearValue clear[1];
+        std::array<VkClearValue, 2> clear;
         clear[0].color = { 0.05, 0.01, 0.05 };
-        
+        clear[1].depthStencil = { 1.0f, 0 };
+
         VkRenderPassBeginInfo info{};
         info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         info.renderPass = renderpass;
         info.renderArea.offset = { 0, 0 };
         info.renderArea.extent = { swapchain.extent.x, swapchain.extent.y };
         info.framebuffer = framebuffer[frame_index];
-        info.pClearValues = clear;
-        info.clearValueCount = 1;
+        info.pClearValues = clear.data();
+        info.clearValueCount = clear.size();
 
         vkCmdBeginRenderPass(cmd_buffer[frame_index], &info, VK_SUBPASS_CONTENTS_INLINE);
     }
@@ -1371,7 +1384,7 @@ void Renderer::LightingPass::record(uint32_t frame_index) {
 
     { // draw scene 
         // bind camera
-        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].descriptor_set, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].set.descriptor_set, 0, nullptr);
 
         for (Model& model : models) {
             // bind vbo
@@ -1382,12 +1395,12 @@ void Renderer::LightingPass::record(uint32_t frame_index) {
             vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index_buffer, 0, VK_INDEX_TYPE_UINT32);
             
             // bind transform
-            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.uniform[frame_index].descriptor_set, 0, nullptr);
+            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.uniform[frame_index].set.descriptor_set, 0, nullptr);
 
             uint32_t index_offset = 0;
             for (auto& mesh : model.meshes) {
                 // bind material
-                vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &mesh.material.uniform.descriptor_set, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &mesh.material.set.descriptor_set, 0, nullptr);
 
                 // draw mesh
                 vkCmdDrawIndexed(cmd_buffer[frame_index], mesh.vertex_count, 1, index_offset, 0, 0);

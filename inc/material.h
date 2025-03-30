@@ -19,7 +19,7 @@ struct Material {
     Material(); // default material
     Material(VK_TYPE(const tinyobj::material_t*) material);
 
-    UniformBuffer<Data> buffer;
+    UniformBuffer buffer;
     UniformTexture albedo_texture, metallic_texture, roughness_texture, normal_texture;
-    UniformSet uniform;
+    UniformSet set;
 };

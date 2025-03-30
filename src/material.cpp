@@ -21,16 +21,13 @@ Material::Material() {
 }
 
 Material::Material(const tinyobj::material_t* info)
- : buffer(nullptr), // initialize with no data
+ : buffer(nullptr, sizeof(Data)),
    albedo_texture(info->diffuse_texname), 
    metallic_texture(info->metallic_texname), 
    roughness_texture(info->roughness_texname), 
    normal_texture(info->normal_texname),
-   uniform(engine.material_layout)
+   set(engine.material_layout, std::array<std::variant<UniformBuffer*, UniformTexture*>, 5>() = { &buffer, &albedo_texture, &metallic_texture, &roughness_texture, &normal_texture })
 {
-    std::array<Uniform*, 5> bindings{ &buffer, &albedo_texture, &metallic_texture, &roughness_texture, &normal_texture };
-    uniform.set_bindings(bindings);
-    
     Data data;
     data.albedo = { info->diffuse[0], info->diffuse[1], info->diffuse[2] };
     data.metallic = info->metallic;
@@ -41,5 +38,5 @@ Material::Material(const tinyobj::material_t* info)
     if (!info->roughness_texname.empty()) data.flags |= Material::ROUGHNESS_TEXTURE;
     if (!info->normal_texname.empty()) data.flags |= Material::NORMAL_TEXTURE;
 
-    buffer.set_value(data);
+    buffer.set_value(&data);
 }

@@ -6,7 +6,7 @@
 #include <stb_image.h>
 #include <cstring>
 
-UniformBuffer<void>::UniformBuffer(const void* data, uint32_t size) {
+UniformBuffer::UniformBuffer(const void* data, uint32_t size) : size(size) {
     { // create buffer
         VkBufferCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -35,38 +35,42 @@ UniformBuffer<void>::UniformBuffer(const void* data, uint32_t size) {
         VK_ASSERT(vkBindBufferMemory(engine.device, buffer, memory, 0));
     }
 
-    if (data != nullptr) set_value(data, size);
+    if (data != nullptr) set_value(data);
 };
 
-UniformBuffer<void>::~UniformBuffer() {
+UniformBuffer::~UniformBuffer() {
     if (buffer == nullptr) return;
 
     vkFreeMemory(engine.device, memory, nullptr);
     vkDestroyBuffer(engine.device, buffer, nullptr);
 }
 
-UniformBuffer<void>::UniformBuffer(UniformBuffer&& other) {
+UniformBuffer::UniformBuffer(UniformBuffer&& other) {
     if (this == &other) return;
 
     buffer = other.buffer;
     memory = other.memory;
+    size = other.size;
 
     other.buffer = nullptr;
 }
 
-UniformBuffer<void>& UniformBuffer<void>::operator=(UniformBuffer&& other) {
+UniformBuffer& UniformBuffer::operator=(UniformBuffer&& other) {
     std::swap(buffer, other.buffer);
     std::swap(memory, other.memory);
+    std::swap(size, other.size);
 
     return *this;
 }
 
-void UniformBuffer<void>::set_value(const void* data, uint32_t size) {
+void UniformBuffer::set_value(const void* data) {
     void* mapped_data;
     VK_ASSERT(vkMapMemory(engine.device, memory, 0, size, 0, &mapped_data));
     std::memcpy(mapped_data, data, size);
     vkUnmapMemory(engine.device, memory);
 }
+
+
 
 UniformTexture::UniformTexture(std::filesystem::path fp) {
     int width, height, channels;
@@ -84,6 +88,62 @@ UniformTexture::UniformTexture(std::filesystem::path fp) {
 
     VkDeviceSize buffer_size = width * height * 4;
     uint32_t mip_levels = std::min<uint32_t>(MAX_MIPMAP_LEVEL, static_cast<uint32_t>(std::log2(std::max(width, height)) + 1));
+
+    { // create image
+        VkImageCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        info.pNext = nullptr;
+        info.flags = 0;
+        info.imageType = VK_IMAGE_TYPE_2D;
+        info.format = VK_FORMAT_R8G8B8A8_UNORM;
+        info.extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
+        info.mipLevels = mip_levels;
+        info.arrayLayers = 1;
+        info.samples = VK_SAMPLE_COUNT_1_BIT;
+        info.tiling = VK_IMAGE_TILING_OPTIMAL;
+        info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        info.pQueueFamilyIndices = &engine.graphics.family;
+        info.queueFamilyIndexCount = 1;
+        
+        VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &image));
+    }
+
+    { // allocate memory
+        VkMemoryRequirements requirements;
+        vkGetImageMemoryRequirements(engine.device, image, &requirements);
+
+        VkMemoryAllocateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        info.allocationSize = requirements.size;
+        info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &memory));
+
+        VK_ASSERT(vkBindImageMemory(engine.device, image, memory, 0));   
+    }
+
+    { // create view
+        VkImageViewCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        info.pNext = nullptr;
+        info.flags = 0;
+        info.image = image;
+        info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        info.format = VK_FORMAT_R8G8B8A8_UNORM;
+        info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        info.subresourceRange.baseMipLevel = 0;
+        info.subresourceRange.levelCount = mip_levels;
+        info.subresourceRange.baseArrayLayer = 0;
+        info.subresourceRange.layerCount = 1;
+
+        VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &view));
+    }
 
     VkCommandBuffer cmd_buffer;
     VkFence finished;
@@ -147,41 +207,6 @@ UniformTexture::UniformTexture(std::filesystem::path fp) {
         stbi_image_free(data);
     }
 
-    { // create image
-        VkImageCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        info.pNext = nullptr;
-        info.flags = 0;
-        info.imageType = VK_IMAGE_TYPE_2D;
-        info.format = VK_FORMAT_R8G8B8A8_UNORM;
-        info.extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
-        info.mipLevels = mip_levels;
-        info.arrayLayers = 1;
-        info.samples = VK_SAMPLE_COUNT_1_BIT;
-        info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        info.pQueueFamilyIndices = &engine.graphics.family;
-        info.queueFamilyIndexCount = 1;
-        
-        VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &image));
-    }
-
-    { // allocate memory
-        VkMemoryRequirements requirements;
-        vkGetImageMemoryRequirements(engine.device, image, &requirements);
-
-        VkMemoryAllocateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        info.allocationSize = requirements.size;
-        info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &memory));
-
-        VK_ASSERT(vkBindImageMemory(engine.device, image, memory, 0));   
-    }
-
     { // begin command 
         VkCommandBufferBeginInfo info{};
         info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -189,7 +214,7 @@ UniformTexture::UniformTexture(std::filesystem::path fp) {
 
         VK_ASSERT(vkBeginCommandBuffer(cmd_buffer, &info));
     }
-
+    
     { // change layout from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
         VkImageMemoryBarrier barrier{};
 
@@ -333,27 +358,6 @@ UniformTexture::UniformTexture(std::filesystem::path fp) {
         vkFreeMemory(engine.device, staging_memory, nullptr);
         vkDestroyFence(engine.device, finished, nullptr);        
     }
-
-    { // create view
-        VkImageViewCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        info.pNext = nullptr;
-        info.flags = 0;
-        info.image = image;
-        info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-        info.format = VK_FORMAT_R8G8B8A8_UNORM;
-        info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        info.subresourceRange.baseMipLevel = 0;
-        info.subresourceRange.levelCount = mip_levels;
-        info.subresourceRange.baseArrayLayer = 0;
-        info.subresourceRange.layerCount = 1;
-
-        VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &view));
-    }
 }
 
 UniformTexture::~UniformTexture() {
@@ -382,68 +386,69 @@ UniformTexture& UniformTexture::operator=(UniformTexture&& other) {
     return *this;
 }
 
-void UniformTexture::set_binding(UniformSetBuilder& set_builder, uint32_t binding_location) {
-    if (image != nullptr) {
-        auto& image_desc = set_builder.image_info.emplace_back();
-        image_desc.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        image_desc.imageView = view;
-        image_desc.sampler = engine.sampler;
-
-        auto& image_write = set_builder.desc_writes.emplace_back();
-        image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        image_write.pNext = nullptr;
-        image_write.dstSet = set_builder.set;
-        image_write.dstBinding = binding_location;
-        image_write.dstArrayElement = 0;
-        image_write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        image_write.descriptorCount = 1;
-        image_write.pImageInfo = &image_desc;
-        image_write.pBufferInfo = nullptr;
-    }
-}
-
-void UniformBuffer<void>::set_binding(UniformSetBuilder& set_builder, uint32_t binding_location, uint32_t size) {
-    if (buffer != nullptr) {
-        auto& buffer_desc = set_builder.buffer_info.emplace_back();
-        buffer_desc.buffer = buffer;
-        buffer_desc.offset = 0;
-        buffer_desc.range = size;
-
-        auto& buffer_info = set_builder.desc_writes.emplace_back();
-        buffer_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        buffer_info.pNext = nullptr;
-        buffer_info.dstSet = set_builder.set;
-        buffer_info.dstBinding = binding_location;
-        buffer_info.dstArrayElement = 0;
-        buffer_info.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        buffer_info.descriptorCount = 1;
-        buffer_info.pBufferInfo = &buffer_desc;
-    }
-}
-
-UniformSet::UniformSet(VkDescriptorSetLayout layout) {
+UniformSet::UniformSet(VkDescriptorSetLayout layout, std::span<std::variant<UniformBuffer*, UniformTexture*>> bindings) {
     { // allocate descriptor set
         VkDescriptorSetAllocateInfo info{};
         info.pNext = nullptr;
         info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        
         info.descriptorSetCount = 1;
         info.descriptorPool = engine.descriptor_pool;
         info.pSetLayouts = &layout;
         
         VK_ASSERT(vkAllocateDescriptorSets(engine.device, &info, &descriptor_set));
     }
-}
 
-void UniformSet::set_bindings(std::span<Uniform*> bindings) {
-    // write descriptor set
-    UniformSetBuilder set_builder;
-    set_builder.set = descriptor_set;
+    { // write descriptor set
+        std::vector<VkWriteDescriptorSet> write_infos;
+        std::vector<VkDescriptorBufferInfo> buffer_infos;
+        std::vector<VkDescriptorImageInfo> image_infos;
 
-    for (uint32_t i = 0; i < bindings.size(); ++i) {
-        bindings[i]->set_binding(set_builder, i);
+        for (uint32_t i = 0; i < bindings.size(); ++i) {
+            if (std::holds_alternative<UniformBuffer*>(bindings[i])) {
+                UniformBuffer& uniform_buffer = *std::get<UniformBuffer*>(bindings[i]);
+
+                if (uniform_buffer.buffer != nullptr) {
+                    auto& buffer_info = buffer_infos.emplace_back();
+                    buffer_info.buffer = uniform_buffer.buffer;
+                    buffer_info.offset = 0;
+                    buffer_info.range = uniform_buffer.size;
+
+                    auto& write_info = write_infos.emplace_back();
+                    write_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    write_info.pNext = nullptr;
+                    write_info.dstSet = descriptor_set;
+                    write_info.dstBinding = i;
+                    write_info.dstArrayElement = 0;
+                    write_info.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                    write_info.descriptorCount = 1;
+                    write_info.pBufferInfo = &buffer_info;
+                }
+            } else { // std::holds_alternative<UniformTexture*>(bindings[i])
+                UniformTexture& uniform_texture = *std::get<UniformTexture*>(bindings[i]);
+
+                if (uniform_texture.image != nullptr) {
+                    auto& image_info = image_infos.emplace_back();
+                    image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    image_info.sampler = engine.sampler;
+                    image_info.imageView = uniform_texture.view;
+
+                    auto& write_info = write_infos.emplace_back();
+                    write_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    write_info.pNext = nullptr;
+                    write_info.dstSet = descriptor_set;
+                    write_info.dstBinding = i;
+                    write_info.dstArrayElement = 0;
+                    write_info.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                    write_info.descriptorCount = 1;
+                    write_info.pImageInfo = &image_info;
+                    write_info.pBufferInfo = nullptr;
+                }
+            }
+        }
+
+        vkUpdateDescriptorSets(engine.device, write_infos.size(), write_infos.data(), 0, nullptr);
     }
-
-    vkUpdateDescriptorSets(engine.device, set_builder.desc_writes.size(), set_builder.desc_writes.data(), 0, nullptr);
 }
 
 UniformSet::~UniformSet() {
