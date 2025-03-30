@@ -24,34 +24,34 @@ TODOLIST:
 */
 
 float camera_speed = 5.0f;
-void camera_move_forward(const Update& event) { 
+void move_camera_forward(const Update& event) { 
     
     camera.position += glm::inverse(camera.rotation) * glm::vec3(0, 0, event.delta * camera_speed);
 }
 
-void camera_move_left(const Update& event) { 
+void move_camera_left(const Update& event) { 
     camera.position += glm::inverse(camera.rotation) * glm::vec3(event.delta * camera_speed, 0, 0);
 }
 
-void camera_move_backward(const Update& event) { 
+void move_camera_backward(const Update& event) { 
     camera.position += glm::inverse(camera.rotation) * glm::vec3(0, 0, event.delta * -camera_speed);
 }
 
-void camera_move_right(const Update& event) { 
+void move_camera_right(const Update& event) { 
     camera.position += glm::inverse(camera.rotation) * glm::vec3(event.delta * -camera_speed, 0, 0);
 }
 
-void camera_move_up(const Update& event) { 
+void move_camera_up(const Update& event) { 
     camera.position += glm::inverse(camera.rotation) * glm::vec3(0.0, event.delta * camera_speed, 0);
 }
 
-void camera_move_down(const Update& event) { 
+void move_camera_down(const Update& event) { 
     camera.position += glm::inverse(camera.rotation) * glm::vec3(0.0, event.delta * -camera_speed, 0);
 }
 
 glm::vec2 rotate_camera_point;
 glm::quat rotate_camera_rotation;
-void camera_rotate(const Update& event) {
+void rotate_camera(const Update& event) {
     glm::vec2 delta = window.mouse_position() - rotate_camera_point;
     camera.rotation = rotate_camera_rotation;
     
@@ -97,53 +97,53 @@ int main() {
     
     // camera position controls
     
-    uint32_t camera_move_forward_event_handle;
-    uint32_t camera_move_left_event_handle;
-    uint32_t camera_move_backward_event_handle;
-    uint32_t camera_move_right_event_handle;
-    uint32_t camera_move_up_event_handle;
-    uint32_t camera_move_down_event_handle;
+    uint32_t move_camera_forward_event_handle;
+    uint32_t move_camera_left_event_handle;
+    uint32_t move_camera_backward_event_handle;
+    uint32_t move_camera_right_event_handle;
+    uint32_t move_camera_up_event_handle;
+    uint32_t move_camera_down_event_handle;
     
     window.on(KeyUp{ Key::W }) += [&](auto& event) { 
-        window.on<Update>() -= camera_move_forward_event_handle;
+        window.on<Update>() -= move_camera_forward_event_handle;
     };
     window.on(KeyDown{ Key::W }) += [&](auto& event) { 
-        camera_move_forward_event_handle = window.on<Update>() += camera_move_forward;
+        move_camera_forward_event_handle = window.on<Update>() += move_camera_forward;
     };
 
     window.on(KeyUp{ Key::A }) += [&](auto& event) { 
-        window.on<Update>() -= camera_move_left_event_handle;
+        window.on<Update>() -= move_camera_left_event_handle;
     };
     window.on(KeyDown{ Key::A }) += [&](auto& event) { 
-        camera_move_left_event_handle = window.on<Update>() += camera_move_left;
+        move_camera_left_event_handle = window.on<Update>() += move_camera_left;
     };
 
     window.on(KeyUp{ Key::S }) += [&](auto& event) { 
-        window.on<Update>() -= camera_move_backward_event_handle;
+        window.on<Update>() -= move_camera_backward_event_handle;
     };
     window.on(KeyDown{ Key::S }) += [&](auto& event) { 
-        camera_move_backward_event_handle = window.on<Update>() += camera_move_backward;
+        move_camera_backward_event_handle = window.on<Update>() += move_camera_backward;
     };
 
     window.on(KeyUp{ Key::D }) += [&](auto& event) { 
-        window.on<Update>() -= camera_move_right_event_handle; 
+        window.on<Update>() -= move_camera_right_event_handle; 
     };
     window.on(KeyDown{ Key::D }) += [&](auto& event) { 
-        camera_move_right_event_handle = window.on<Update>() += camera_move_right;
+        move_camera_right_event_handle = window.on<Update>() += move_camera_right;
     };
 
     window.on(KeyUp{ Key::SPACE }) += [&](auto& event) { 
-        window.on<Update>() -= camera_move_up_event_handle; 
+        window.on<Update>() -= move_camera_up_event_handle; 
     };
     window.on(KeyDown{ Key::SPACE }) += [&](auto& event) { 
-        camera_move_up_event_handle = window.on<Update>() += camera_move_up;
+        move_camera_up_event_handle = window.on<Update>() += move_camera_up;
     };
 
     window.on(KeyUp{ Key::L_SHIFT }) += [&](auto& event) { 
-        window.on<Update>() -= camera_move_down_event_handle; 
+        window.on<Update>() -= move_camera_down_event_handle; 
     };
     window.on(KeyDown{ Key::L_SHIFT }) += [&](auto& event) { 
-        camera_move_down_event_handle = window.on<Update>() += camera_move_down;
+        move_camera_down_event_handle = window.on<Update>() += move_camera_down;
     };
 
     window.on(KeyDown{ Key::L_CTRL }) += [&](auto& event) { 
@@ -153,14 +153,14 @@ int main() {
         camera_speed /= 5;
     };
     
-    uint32_t camera_rotate_handle_event;
+    uint32_t rotate_camera_event_handle;
     window.on(MouseButtonUp{ Mouse::BUTTON_LEFT }) += [&](auto& event) { 
-        window.on<Update>() -= camera_rotate_handle_event;
+        window.on<Update>() -= rotate_camera_event_handle;
     };
     window.on(MouseButtonDown{ Mouse::BUTTON_LEFT }) += [&](auto& event) {
         rotate_camera_point = window.mouse_position();
         rotate_camera_rotation = camera.rotation;
-        camera_rotate_handle_event = window.on<Update>() += camera_rotate;
+        rotate_camera_event_handle = window.on<Update>() += rotate_camera;
     };
 
     std::ranges::for_each(models, [&](Model& model) { model.transform.scale = glm::vec3(0.1, 0.1, 0.1); });

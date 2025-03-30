@@ -17,7 +17,7 @@ struct Material {
     };
     
     Material(); // default material
-    Material(VK_TYPE(const tinyobj::material_t*) material);
+    Material(VK_TYPE(const tinyobj::material_t*) material, std::filesystem::path dir);
 
     UniformBuffer buffer;
     UniformTexture albedo_texture, metallic_texture, roughness_texture, normal_texture;

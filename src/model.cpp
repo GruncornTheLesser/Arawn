@@ -33,7 +33,9 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
     
     std::string warn, err;
 
-    if (!tinyobj::LoadObj(&obj_attrib, &obj_models, &obj_materials, &warn, &err, fp.string().c_str())) {
+    auto dir = fp.parent_path();
+
+    if (!tinyobj::LoadObj(&obj_attrib, &obj_models, &obj_materials, &warn, &err, fp.string().c_str(),  dir.string().c_str(), true)) {
         throw std::runtime_error(warn + err);
     }
     
@@ -58,7 +60,7 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
             }
         ), face_indices.end());
         
-        // sorts by material id
+        // sorts by material_id
         std::ranges::sort(face_indices, [&](uint32_t lhs, uint32_t rhs) {
             return obj_model.mesh.material_ids[lhs] > obj_model.mesh.material_ids[rhs];
         });
@@ -69,6 +71,7 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
             face_offsets[i] = face_offsets[i - 1] + obj_model.mesh.num_face_vertices[face_indices[i - 1]];
         }
         
+        // generate triangle faces
         for (uint32_t face_index : face_indices) {
             uint32_t vertex_index = face_offsets[face_index]; // obj data vertex index
             uint32_t next_triangle = vertex_index + obj_model.mesh.num_face_vertices[face_index];
@@ -105,42 +108,6 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
                     }
                 }
             }
-            
-            for (; vertex_index < next_face; ++vertex_index) { // polygon
-                // redraw final line of last triangle
-                indices.push_back(*(indices.end() - 3)); // { a, b, c }, { a, c, d }
-                indices.push_back(*(indices.end() - 2));
-                
-                auto& vertex_idx = obj_model.mesh.indices[vertex_index];
-                auto res = unique_vertices.try_emplace(vertex_idx, vertices.size());
-                indices.push_back(res.first->second);
-
-                if (res.second) { // if new vertices
-                    auto& vertex = vertices.emplace_back();
-                    if (vertex_idx.vertex_index != -1) {
-                        std::size_t position_index = vertex_idx.vertex_index * 3;
-                        vertex.position = { obj_attrib.texcoords[position_index + 0], 
-                                            obj_attrib.texcoords[position_index + 1], 
-                                            obj_attrib.texcoords[position_index + 2] 
-                        };
-                    }
-
-                    if (vertex_idx.normal_index != -1) {
-                        std::size_t normal_index = vertex_idx.normal_index * 2;
-                        vertex.normal = { obj_attrib.texcoords[normal_index + 0], 
-                                          obj_attrib.texcoords[normal_index + 1], 
-                                          obj_attrib.texcoords[normal_index + 2]
-                        };
-                    }
-
-                    if (vertex_idx.texcoord_index != -1) {
-                        std::size_t texcoord_index = vertex_idx.texcoord_index * 2;
-                        vertex.texcoord = { obj_attrib.texcoords[texcoord_index + 0], 
-                                     1.0f - obj_attrib.texcoords[texcoord_index + 1]
-                        };
-                    }
-                }
-            }
         }
         
         { // get vertex groups for each mesh
@@ -152,7 +119,7 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
                 int next_material = obj_model.mesh.material_ids[face_index];
                 
                 if (next_material != curr_material) { // for each new material
-                    meshes.emplace_back(vertex_count, Material{ &obj_materials[curr_material] });
+                    meshes.emplace_back(vertex_count, Material{ &obj_materials[curr_material], dir });
                     
                     vertex_count = 0;
                     curr_material = next_material;
@@ -163,7 +130,7 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
             if (curr_material == -1) {  // default material
                 meshes.emplace_back(vertex_count);
             } else {
-                meshes.emplace_back(vertex_count, Material{ &obj_materials[curr_material] });
+                meshes.emplace_back(vertex_count, Material{ &obj_materials[curr_material], dir });
             }
         }
 

@@ -75,11 +75,11 @@ void UniformBuffer::set_value(const void* data) {
 UniformTexture::UniformTexture(std::filesystem::path fp) {
     int width, height, channels;
 
-    if (fp.empty()) {
+    if (!fp.has_extension()) {
         image = nullptr;
         return;
     }
-
+    
     void* data = stbi_load(fp.string().c_str(), &width, &height,  &channels, 4);
 
     if (width == 0 || height == 0) {

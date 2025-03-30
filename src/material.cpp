@@ -17,15 +17,15 @@ Material::Material() {
     default_material.metallic_texname = "";
     default_material.normal_texname = "";
 
-    *this = Material(&default_material);
+    *this = Material(&default_material, "");
 }
 
-Material::Material(const tinyobj::material_t* info)
+Material::Material(const tinyobj::material_t* info, std::filesystem::path dir)
  : buffer(nullptr, sizeof(Data)),
-   albedo_texture(info->diffuse_texname), 
-   metallic_texture(info->metallic_texname), 
-   roughness_texture(info->roughness_texname), 
-   normal_texture(info->normal_texname),
+   albedo_texture(dir /= std::filesystem::path(info->diffuse_texname)), 
+   metallic_texture(dir /= std::filesystem::path(info->metallic_texname)), 
+   roughness_texture(dir /= std::filesystem::path(info->roughness_texname)), 
+   normal_texture(dir /= std::filesystem::path(info->normal_texname)),
    set(engine.material_layout, std::array<std::variant<UniformBuffer*, UniformTexture*>, 5>() = { &buffer, &albedo_texture, &metallic_texture, &roughness_texture, &normal_texture })
 {
     Data data;

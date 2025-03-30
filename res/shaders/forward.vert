@@ -19,6 +19,7 @@ layout(location = 0) out vec3 frag_position; // world position
 layout(location = 1) out vec2 frag_texcoord;
 layout(location = 2) out vec3 frag_normal;
 
+
 void main() {
     gl_Position = proj * view * model * vec4(in_position, 1.0);
 

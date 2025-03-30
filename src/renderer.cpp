@@ -935,7 +935,7 @@ Renderer::Renderer() {
 
             VkPipelineDepthStencilStateCreateInfo depth_stencil{};
             depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-            depth_stencil.depthTestEnable = VK_TRUE; // FIX ME: update me
+            depth_stencil.depthTestEnable = VK_TRUE;
             depth_stencil.depthWriteEnable = VK_TRUE;
             depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
             depth_stencil.depthBoundsTestEnable = VK_FALSE;
