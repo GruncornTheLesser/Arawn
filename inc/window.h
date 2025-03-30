@@ -37,6 +37,8 @@ public:
     auto closed() const -> bool;
     auto minimized() const -> bool;
 
+    auto mouse_position() const -> glm::vec2;
+
 private:
     VK_TYPE(GLFWwindow*) window = nullptr;
     time_point previous_frame;

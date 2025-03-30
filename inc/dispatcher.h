@@ -53,7 +53,7 @@ public:
 
     void detach(uint32_t handle) {
         auto end = data.begin() + active;
-        auto it = std::partition(data.begin(), end, [&](const auto& listener) {
+        auto it = std::stable_partition(data.begin(), end, [&](const auto& listener) {
             return listener.handle != handle;
         });
         
@@ -74,7 +74,7 @@ public:
 
     void invoke(event_T event) {
         auto end = data.begin() + active;
-        auto it = std::partition(data.begin(), end, [&](const auto& listener) {
+        auto it = std::stable_partition(data.begin(), end, [&](const auto& listener) {
             if (listener.filter == nullptr || listener.filter(event)) {
                 listener.callback(event);
                 return !listener.once;

@@ -169,6 +169,12 @@ auto Window::minimized() const -> bool {
     return x == 0 || y == 0;
 }
 
+auto Window::mouse_position() const -> glm::vec2 {
+    double x, y;
+    glfwGetCursorPos(window, &x, &y);
+    return { x, y };
+}
+
 
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) { 
@@ -187,7 +193,7 @@ void mouse_move_callback(GLFWwindow* window, double xpos, double ypos) {
 	double x, y;
     auto& wnd = *static_cast<Window*>(glfwGetWindowUserPointer(window));
 	glfwGetCursorPos(window, &x, &y);
-    wnd.template on<Mouse::Event>().invoke({ 0, 0, static_cast<int>(x), static_cast<int>(y) });
+    wnd.template on<Mouse::Event>().invoke({ Mouse::NONE, 0, static_cast<int>(x), static_cast<int>(y) });
 }
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) { 

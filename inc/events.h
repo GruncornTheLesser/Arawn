@@ -132,7 +132,8 @@ struct Key {
 
     enum State : int {
         UP = 0,
-        DOWN = 1
+        DOWN = 1,
+        NONE
     };
     
     enum Mod : int {
@@ -159,6 +160,7 @@ namespace Mouse {
         BUTTON_7 = 6,
         BUTTON_8 = 7,
         SCROLL = 8,
+        NONE,
         BUTTON_LAST = BUTTON_8,
         BUTTON_LEFT = BUTTON_1,
         BUTTON_RIGHT = BUTTON_2,
@@ -187,7 +189,7 @@ struct KeyUp {
 
 struct MouseMove {
     using event_type = Mouse::Event;
-    bool operator()(const event_type& event) { return event.state == 0 && event.code == 0; }
+    bool operator()(const event_type& event) { return event.code == Mouse::NONE; }
 };
 
 
