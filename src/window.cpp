@@ -40,6 +40,8 @@ Window::Window()
     
     window = glfwCreateWindow(settings.resolution.x, settings.resolution.y, "", nullptr, nullptr);
     
+    assert(window);
+
     glfwSetWindowUserPointer(window, this);
 	glfwSetKeyCallback(window, key_callback);
 	//glfwSetCharCallback(window, char_callback);

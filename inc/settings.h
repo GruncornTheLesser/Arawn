@@ -14,6 +14,11 @@ enum class VsyncMode {
     ON              // FIFO/MAILBOX
 };
 
+enum class RenderMode {
+    FORWARD,
+    DEFERRED
+};
+
 enum class AntiAlias { 
     NONE,       // VK_SAMPLE_COUNT_1
     MSAA_2,     // VK_SAMPLE_COUNT_2
@@ -36,47 +41,26 @@ enum class AspectRatio {
     // generate aspect ratio by aspect_ratio / AspectRatio::Square
 };
 
-enum class RenderMode {
-    FORWARD,        // standard object to screen rendering
-    DEFERRED,       // separate geometry and shading calculations
-};
-
-enum class CullMode {
-    NONE,           // no light culling
-    TILED,          // light culled against tiled(x, y) bounding box
-    CLUSTERED,      // light culled against clustered(x, y, z) bounding box
-};
-
-enum class DepthMode {
-    NONE,
-    PARALLEL,
-    PRE_PASS
-};
-
-
 struct Settings {
     Settings(std::filesystem::path fp);    
     void save(std::filesystem::path fp);
 
+    bool msaa_enabled() const;
+    bool z_prepass_enabled() const;
+    bool cluster_pass_enabled() const;
+    bool deferred_pass_enabled() const;
+    VK_ENUM(VkSampleCountFlagBits) sample_count() const;
+
     // engine
     std::string device;
-    
-    // window
     glm::uvec2 resolution;
     DisplayMode display_mode;
-    
-    // swapchain
     uint32_t    frame_count;
     VsyncMode   vsync_mode;
     AntiAlias   anti_alias;
-
-    // renderer
+    bool z_prepass;
     RenderMode render_mode;
-    CullMode   cull_mode;
-    DepthMode  depth_mode;
-
-    
-
+    glm::uvec3 cluster_count;
 };
 
 extern Settings settings;

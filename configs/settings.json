@@ -4,6 +4,7 @@
     "aspect ratio" : "16:9",
     "display mode" : "windowed",
     "frame count" : 2,
-    "vsync mode" : "off",
-    "anti alias" : "msaa2"
+    "vsync mode" : "on",
+    "anti alias" : "msaa8",
+    "z prepass" : true
 }

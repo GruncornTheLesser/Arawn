@@ -40,7 +40,7 @@ public:
         std::array<Uniform, MAX_FRAMES_IN_FLIGHT> uniform;
     } transform;
 private:
-
+    uint32_t vertex_count;
     VK_TYPE(VkBuffer) vertex_buffer = nullptr;
     VK_TYPE(VkDeviceMemory) vertex_memory;
 

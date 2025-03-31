@@ -72,7 +72,7 @@ Window      window;
 Swapchain   swapchain;
 Renderer    renderer;
 Camera      camera;
-std::vector<Model> models = Model::Load("res/model/sponza/sponza.obj"); // "res/model/cube/cube.obj"
+std::vector<Model> models = Model::Load("res/model/cube/cube.obj");
 
 int main() {
     // toggle fullscreen hotkey
@@ -164,6 +164,8 @@ int main() {
     };
 
     std::ranges::for_each(models, [&](Model& model) { model.transform.scale = glm::vec3(0.1, 0.1, 0.1); });
+
+    vkDeviceWaitIdle(engine.device);
 
     while (!window.closed()) { 
         window.update();

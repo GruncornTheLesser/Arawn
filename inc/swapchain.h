@@ -18,9 +18,6 @@ public:
         
     void set_anti_alias(AntiAlias mode);
     std::vector<AntiAlias> enum_anti_alias() const;
-    
-    void set_depth_mode(DepthMode value);
-    bool get_depth_mode() const;
 
     void recreate();
 

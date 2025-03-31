@@ -140,7 +140,7 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
 }
 
 Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& vertices, std::vector<Mesh>&& meshes) 
- : meshes(std::move(meshes)) {
+ : meshes(std::move(meshes)), vertex_count(indices.size()) {
     VkDeviceSize vertex_buffer_size = sizeof(Vertex) * vertices.size();
     VkDeviceSize index_buffer_size = sizeof(uint32_t) * indices.size();
 

@@ -8,13 +8,6 @@
 #include <fstream>
 #include <numeric>
 
-bool z_prepass_enabled = false; // depth != NONE
-bool deferred_enabled = false;  // render_mode == DEFERRED
-bool culling_enabled = false;   // cull_mode != NONE
-VkSampleCountFlagBits sample_count = VK_SAMPLE_COUNT_1_BIT;
-bool msaa_enabled = sample_count == VK_SAMPLE_COUNT_1_BIT;
-
-
 VkShaderModule create_shader_module(std::filesystem::path fp) {
     std::ifstream file(fp, std::ios::ate | std::ios::binary);
     if (!file.is_open()) throw std::runtime_error("could not open file: " + fp.string());
@@ -36,7 +29,7 @@ VkShaderModule create_shader_module(std::filesystem::path fp) {
 
 Renderer::Renderer() {
     { // init textures
-        { // init msaa attachment
+        { // init msaa staging attachment
             { // image
                 VkImageCreateInfo info{};
                 info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -47,7 +40,7 @@ Renderer::Renderer() {
                 info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
                 info.mipLevels = 1;
                 info.arrayLayers = 1;
-                info.samples = sample_count; // !!!
+                info.samples = settings.sample_count(); // !!!
                 info.tiling = VK_IMAGE_TILING_OPTIMAL;
                 info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // !!!
                 info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -113,7 +106,7 @@ Renderer::Renderer() {
                 info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
                 info.mipLevels = 1;
                 info.arrayLayers = 1;
-                info.samples = VK_SAMPLE_COUNT_1_BIT;
+                info.samples = settings.sample_count();
                 info.tiling = VK_IMAGE_TILING_OPTIMAL;
                 info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
                 info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -165,198 +158,200 @@ Renderer::Renderer() {
             }
         }
 
-        if (deferred_enabled) { // albedo attachment
-            { // image
-                VkImageCreateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-                info.pNext = nullptr;
-                info.flags = 0;
-                info.imageType = VK_IMAGE_TYPE_2D;
-                info.format = VK_FORMAT_R8G8B8A8_UNORM; // !!!
-                info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
-                info.mipLevels = 1;
-                info.arrayLayers = 1;
-                info.samples = VK_SAMPLE_COUNT_1_BIT; // !!!
-                info.tiling = VK_IMAGE_TILING_OPTIMAL;
-                info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // !!!
-                info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // !!!
-                info.pQueueFamilyIndices = nullptr;
-                info.queueFamilyIndexCount = 0;
+        if (settings.deferred_pass_enabled()) {
+            { // albedo attachment
+                { // image
+                    VkImageCreateInfo info{};
+                    info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+                    info.pNext = nullptr;
+                    info.flags = 0;
+                    info.imageType = VK_IMAGE_TYPE_2D;
+                    info.format = VK_FORMAT_R8G8B8A8_UNORM; // !!!
+                    info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
+                    info.mipLevels = 1;
+                    info.arrayLayers = 1;
+                    info.samples = VK_SAMPLE_COUNT_1_BIT; // !!!
+                    info.tiling = VK_IMAGE_TILING_OPTIMAL;
+                    info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // !!!
+                    info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                    info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // !!!
+                    info.pQueueFamilyIndices = nullptr;
+                    info.queueFamilyIndexCount = 0;
 
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i)
-                    VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &albedo_attachment.image[i]));
-            }
+                    for (uint32_t i = 0; i < swapchain.frame_count; ++i)
+                        VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &albedo_attachment.image[i]));
+                }
 
-            { // memory
-                VkMemoryRequirements requirements;
-                vkGetImageMemoryRequirements(engine.device, albedo_attachment.image[0], &requirements);
+                { // memory
+                    VkMemoryRequirements requirements;
+                    vkGetImageMemoryRequirements(engine.device, albedo_attachment.image[0], &requirements);
 
-                VkMemoryAllocateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-                info.pNext = nullptr;
-                info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-                info.allocationSize = requirements.size;
-                
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                    VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &albedo_attachment.memory[i]));
-                    VK_ASSERT(vkBindImageMemory(engine.device, albedo_attachment.image[i], albedo_attachment.memory[i], 0));
+                    VkMemoryAllocateInfo info{};
+                    info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+                    info.pNext = nullptr;
+                    info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                    info.allocationSize = requirements.size;
+                    
+                    for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
+                        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &albedo_attachment.memory[i]));
+                        VK_ASSERT(vkBindImageMemory(engine.device, albedo_attachment.image[i], albedo_attachment.memory[i], 0));
+                    }
+                }
+
+                { // view
+                    VkImageViewCreateInfo info{};
+                    info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                    info.pNext = nullptr;
+                    info.flags = 0;
+                    info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                    info.format = VK_FORMAT_R8G8B8A8_UNORM; // !!!
+                    info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+                    info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+                    info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+                    info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+                    info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // !!!
+                    info.subresourceRange.baseMipLevel = 0;
+                    info.subresourceRange.levelCount = 1;
+                    info.subresourceRange.baseArrayLayer = 0;
+                    info.subresourceRange.layerCount = 1;
+
+                    for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
+                        info.image = albedo_attachment.image[i];
+                        VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &albedo_attachment.view[i]));
+                    }
                 }
             }
 
-            { // view
-                VkImageViewCreateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-                info.pNext = nullptr;
-                info.flags = 0;
-                info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                info.format = VK_FORMAT_R8G8B8A8_UNORM; // !!!
-                info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // !!!
-                info.subresourceRange.baseMipLevel = 0;
-                info.subresourceRange.levelCount = 1;
-                info.subresourceRange.baseArrayLayer = 0;
-                info.subresourceRange.layerCount = 1;
+            { // normal attachment
+                { // image
+                    VkImageCreateInfo info{};
+                    info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+                    info.pNext = nullptr;
+                    info.flags = 0;
+                    info.imageType = VK_IMAGE_TYPE_2D;
+                    info.format = VK_FORMAT_R32G32B32_SFLOAT; // !!!
+                    info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
+                    info.mipLevels = 1;
+                    info.arrayLayers = 1;
+                    info.samples = VK_SAMPLE_COUNT_1_BIT; // !!!
+                    info.tiling = VK_IMAGE_TILING_OPTIMAL;
+                    info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // !!!
+                    info.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // !!!
+                    info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // !!!
+                    info.pQueueFamilyIndices = nullptr;
+                    info.queueFamilyIndexCount = 0;
 
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                    info.image = albedo_attachment.image[i];
-                    VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &albedo_attachment.view[i]));
+                    for (uint32_t i = 0; i < swapchain.frame_count; ++i)
+                        VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &normal_attachment.image[i]));
                 }
-            }
-        }
 
-        if (deferred_enabled) { // normal attachment
-            { // image
-                VkImageCreateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-                info.pNext = nullptr;
-                info.flags = 0;
-                info.imageType = VK_IMAGE_TYPE_2D;
-                info.format = VK_FORMAT_R32G32B32_SFLOAT; // !!!
-                info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
-                info.mipLevels = 1;
-                info.arrayLayers = 1;
-                info.samples = VK_SAMPLE_COUNT_1_BIT; // !!!
-                info.tiling = VK_IMAGE_TILING_OPTIMAL;
-                info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // !!!
-                info.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // !!!
-                info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // !!!
-                info.pQueueFamilyIndices = nullptr;
-                info.queueFamilyIndexCount = 0;
+                { // memory
+                    VkMemoryRequirements requirements;
+                    vkGetImageMemoryRequirements(engine.device, normal_attachment.image[0], &requirements);
 
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i)
-                    VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &normal_attachment.image[i]));
-            }
-
-            { // memory
-                VkMemoryRequirements requirements;
-                vkGetImageMemoryRequirements(engine.device, normal_attachment.image[0], &requirements);
-
-                VkMemoryAllocateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-                info.pNext = nullptr;
-                info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-                info.allocationSize = requirements.size;
-                
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                    VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &normal_attachment.memory[i]));
-                    VK_ASSERT(vkBindImageMemory(engine.device, normal_attachment.image[i], normal_attachment.memory[i], 0));
+                    VkMemoryAllocateInfo info{};
+                    info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+                    info.pNext = nullptr;
+                    info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                    info.allocationSize = requirements.size;
+                    
+                    for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
+                        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &normal_attachment.memory[i]));
+                        VK_ASSERT(vkBindImageMemory(engine.device, normal_attachment.image[i], normal_attachment.memory[i], 0));
+                    }
                 }
-            }
 
-            { // view
-                VkImageViewCreateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-                info.pNext = nullptr;
-                info.flags = 0;
-                info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                info.format = VK_FORMAT_R32G32B32_SFLOAT; // !!!
-                info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // !!!
-                info.subresourceRange.baseMipLevel = 0;
-                info.subresourceRange.levelCount = 1;
-                info.subresourceRange.baseArrayLayer = 0;
-                info.subresourceRange.layerCount = 1;
+                { // view
+                    VkImageViewCreateInfo info{};
+                    info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                    info.pNext = nullptr;
+                    info.flags = 0;
+                    info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                    info.format = VK_FORMAT_R32G32B32_SFLOAT; // !!!
+                    info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+                    info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+                    info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+                    info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+                    info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // !!!
+                    info.subresourceRange.baseMipLevel = 0;
+                    info.subresourceRange.levelCount = 1;
+                    info.subresourceRange.baseArrayLayer = 0;
+                    info.subresourceRange.layerCount = 1;
 
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                    info.image = normal_attachment.image[i];
-                    VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &normal_attachment.view[i]));
-                }
-            }
-        }
-
-        if (deferred_enabled) { // specular attachment
-            { // image
-                VkImageCreateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-                info.pNext = nullptr;
-                info.flags = 0;
-                info.imageType = VK_IMAGE_TYPE_2D;
-                info.format = VK_FORMAT_R8G8B8A8_UNORM; // !!!
-                info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
-                info.mipLevels = 1;
-                info.arrayLayers = 1;
-                info.samples = VK_SAMPLE_COUNT_1_BIT; // !!!
-                info.tiling = VK_IMAGE_TILING_OPTIMAL;
-                info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // !!!
-                info.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // !!!
-                info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // !!!
-                info.pQueueFamilyIndices = nullptr;
-                info.queueFamilyIndexCount = 0;
-
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i)
-                    VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &specular_attachment.image[i]));
-            }
-
-            { // memory
-                VkMemoryRequirements requirements;
-                vkGetImageMemoryRequirements(engine.device, specular_attachment.image[0], &requirements);
-
-                VkMemoryAllocateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-                info.pNext = nullptr;
-                info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-                info.allocationSize = requirements.size;
-                
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                    VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &specular_attachment.memory[i]));
-                    VK_ASSERT(vkBindImageMemory(engine.device, specular_attachment.image[i], specular_attachment.memory[i], 0));
+                    for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
+                        info.image = normal_attachment.image[i];
+                        VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &normal_attachment.view[i]));
+                    }
                 }
             }
 
-            { // view
-                VkImageViewCreateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-                info.pNext = nullptr;
-                info.flags = 0;
-                info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                info.format = VK_FORMAT_R8G8B8A8_UNORM; // !!!
-                info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // !!!
-                info.subresourceRange.baseMipLevel = 0;
-                info.subresourceRange.levelCount = 1;
-                info.subresourceRange.baseArrayLayer = 0;
-                info.subresourceRange.layerCount = 1;
+            { // specular attachment
+                { // image
+                    VkImageCreateInfo info{};
+                    info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+                    info.pNext = nullptr;
+                    info.flags = 0;
+                    info.imageType = VK_IMAGE_TYPE_2D;
+                    info.format = VK_FORMAT_R8G8B8A8_UNORM; // !!!
+                    info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
+                    info.mipLevels = 1;
+                    info.arrayLayers = 1;
+                    info.samples = VK_SAMPLE_COUNT_1_BIT; // !!!
+                    info.tiling = VK_IMAGE_TILING_OPTIMAL;
+                    info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // !!!
+                    info.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // !!!
+                    info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // !!!
+                    info.pQueueFamilyIndices = nullptr;
+                    info.queueFamilyIndexCount = 0;
 
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                    info.image = specular_attachment.image[i];
-                    VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &specular_attachment.view[i]));
+                    for (uint32_t i = 0; i < swapchain.frame_count; ++i)
+                        VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &specular_attachment.image[i]));
+                }
+
+                { // memory
+                    VkMemoryRequirements requirements;
+                    vkGetImageMemoryRequirements(engine.device, specular_attachment.image[0], &requirements);
+
+                    VkMemoryAllocateInfo info{};
+                    info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+                    info.pNext = nullptr;
+                    info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                    info.allocationSize = requirements.size;
+                    
+                    for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
+                        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &specular_attachment.memory[i]));
+                        VK_ASSERT(vkBindImageMemory(engine.device, specular_attachment.image[i], specular_attachment.memory[i], 0));
+                    }
+                }
+
+                { // view
+                    VkImageViewCreateInfo info{};
+                    info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                    info.pNext = nullptr;
+                    info.flags = 0;
+                    info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                    info.format = VK_FORMAT_R8G8B8A8_UNORM; // !!!
+                    info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+                    info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+                    info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+                    info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+                    info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // !!!
+                    info.subresourceRange.baseMipLevel = 0;
+                    info.subresourceRange.levelCount = 1;
+                    info.subresourceRange.baseArrayLayer = 0;
+                    info.subresourceRange.layerCount = 1;
+
+                    for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
+                        info.image = specular_attachment.image[i];
+                        VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &specular_attachment.view[i]));
+                    }
                 }
             }
         }
     }
 
-    if (z_prepass_enabled) { // depth pass
-        { // initialize cmd buffers
+    if (settings.z_prepass_enabled()) { // depth pass
+        { // create cmd buffers
             VkCommandBufferAllocateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
             info.pNext = nullptr;
@@ -364,10 +359,10 @@ Renderer::Renderer() {
             info.commandBufferCount = swapchain.frame_count;
             info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 
-            VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, &depth_pass.cmd_buffer[0]));    
+            VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, &depth_pass.cmd_buffer[0]));
         }
 
-        { // initialize semaphores
+        { // create semaphores
             VkSemaphoreCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
             info.flags = 0;
@@ -487,10 +482,10 @@ Renderer::Renderer() {
             rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
             rasterizer.depthClampEnable = VK_FALSE;
             rasterizer.rasterizerDiscardEnable = VK_FALSE;
-            rasterizer.polygonMode = VK_POLYGON_MODE_FILL; // TODO: wireframe debug mode
+            rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
             rasterizer.lineWidth = 1.0f; // only used when VK_POLYGON_MODE_LINE enabled
-            rasterizer.cullMode = VK_CULL_MODE_BACK_BIT; //;
-            rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE; // COUNTER_
+            rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+            rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
             rasterizer.depthBiasEnable = VK_FALSE;
 
             VkPipelineMultisampleStateCreateInfo multisampling{};
@@ -500,7 +495,7 @@ Renderer::Renderer() {
 
             VkPipelineDepthStencilStateCreateInfo depth_stencil{};
             depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-            depth_stencil.depthTestEnable = VK_FALSE; // TODO: update me
+            depth_stencil.depthTestEnable = VK_TRUE;
             depth_stencil.depthWriteEnable = VK_TRUE;
             depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
             depth_stencil.depthBoundsTestEnable = VK_FALSE;
@@ -550,7 +545,7 @@ Renderer::Renderer() {
             vkDestroyShaderModule(engine.device, frag_module, nullptr);
         }
 
-        { // initialize framebuffers
+        { // create framebuffers
             std::array<VkImageView, 1> attachments;
 
             VkFramebufferCreateInfo info{};
@@ -571,46 +566,46 @@ Renderer::Renderer() {
         }
     }
 
-    if (culling_enabled) { // TODO: cluster pass
-        { // initialize cmd_buffers
+    if (settings.cluster_pass_enabled()) { // TODO: cluster pass
+        { // create cmd_buffers
 
         }
 
-        { // initialize semaphores
+        { // create semaphores
 
         }
 
-        { // initialize layouts
+        { // create layouts
 
         }
 
-        { // initialize pipeline
+        { // create pipeline
 
         }
     }
 
-    if (deferred_enabled) { // TODO: deferred pass
-        { // initialize cmd_buffers
+    if (settings.deferred_pass_enabled()) { // TODO: deferred pass
+        { // create cmd_buffers
 
         }
 
-        { // initialize semaphores
+        { // create semaphores
 
         }
 
-        { // initialize fences
+        { // create fences
 
         }
 
-        { // initialize layouts
+        { // create layouts
 
         }
 
-        { // initialize renderpass
+        { // create renderpass
             
         }
 
-        { // initialize pipeline
+        { // create pipeline
 
         }
 
@@ -620,7 +615,7 @@ Renderer::Renderer() {
     }
 
     { // forward/present pass
-        { // initialize cmd buffers
+        { // create cmd buffers
             VkCommandBufferAllocateInfo info{ };
             info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
             info.pNext = nullptr;
@@ -631,7 +626,7 @@ Renderer::Renderer() {
             VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, lighting_pass.cmd_buffer.data()));
         }
 
-        { // initialize semaphores
+        { // create semaphores
             VkSemaphoreCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
             info.flags = 0;
@@ -643,7 +638,7 @@ Renderer::Renderer() {
             }
         }
 
-        { // initialize fences
+        { // create fences
             VkFenceCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
             info.pNext = nullptr;
@@ -652,7 +647,7 @@ Renderer::Renderer() {
                 vkCreateFence(engine.device, &info, nullptr, &lighting_pass.in_flight[i]);
         }
 
-        { // initialize pipeline layout
+        { // create pipeline layout
             std::array<VkDescriptorSetLayout, 3> sets{ engine.camera_layout, engine.transform_layout, engine.material_layout };
             std::array<VkPushConstantRange, 1> ranges;
 
@@ -673,103 +668,86 @@ Renderer::Renderer() {
         }
 
         uint32_t attachment_count = 0;
-        { // initialize renderpass
+        { // create renderpass
             std::array<VkAttachmentDescription, 6> attachment_info; // max 6: swapchain, msaa, depth, albedo, normal, specular  
+            VkAttachmentReference colour_ref, depth_ref, resolve_ref;
             std::array<VkAttachmentReference, 3>  input_ref;
-            std::array<VkAttachmentReference, 1>  colour_ref;
-            VkAttachmentReference depth_ref, resolve_ref;
 
             /*
             attachment 0 always colour attachment, -> can be msaa_staging_attachment or swapchain image depending if msaa enabled
             attachment 1 always depth attachment,
+            attachment 2 swapchain if msaa_enabled
+            attachment 3+ input attachments 
             */
 
             // bindings
-            if (msaa_enabled) { // init swapchain image and msaa staging attachment attachment                 
+            { // create colour attachment
                 /*
                 when msaa enabled, the renderpass writes first to the colour attachment and then resolves the 
-                multi sampling into the resolve attachment. I want to write to the colour attachment and 
-                resolve onto the screen. swapchain image always bound to attachment 0.
+                multi sampling into the resolve attachment. So, when msaa is enabled, renderpass maps the colour 
+                to a msaa staging attachment and the resolve to the swapchain image
                 */
-                colour_ref[0].attachment = attachment_count++;
-                colour_ref[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                colour_ref.attachment = attachment_count++;
+                colour_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-                VkAttachmentDescription& msaa_staging_info = attachment_info[colour_ref[0].attachment];
-                msaa_staging_info.flags = 0;
-                msaa_staging_info.format = swapchain.format;
-                msaa_staging_info.samples = sample_count;
-                msaa_staging_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-                msaa_staging_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-                msaa_staging_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                msaa_staging_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                msaa_staging_info.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                msaa_staging_info.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;      
+                VkAttachmentDescription& colour_info = attachment_info[colour_ref.attachment];
+                colour_info.flags = 0;
+                colour_info.format = swapchain.format;
+                colour_info.samples = settings.sample_count();
+                colour_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                colour_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                colour_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+                colour_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                colour_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                if (settings.msaa_enabled()) {
+                    colour_info.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                } else {
+                    colour_info.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                }
 
+            }
+
+            { // create depth attachment reference
+                depth_ref.attachment = attachment_count++;
+                depth_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+                VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
+                depth_info.flags = 0;
+                depth_info.format = VK_FORMAT_D32_SFLOAT;
+                depth_info.samples = settings.sample_count();
+                depth_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+                depth_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                if (settings.z_prepass_enabled()) {
+                    depth_info.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+                    depth_info.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                    depth_info.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                    depth_info.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                } else {
+                    depth_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                    depth_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                    depth_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                    depth_info.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                }
+
+            }
+
+            if (settings.msaa_enabled()) { // create resolve attachment
                 resolve_ref.attachment = attachment_count++;
                 resolve_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            } else {
-                colour_ref[0].attachment = attachment_count++;
-                colour_ref[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-                VkAttachmentDescription& swapchain_info = attachment_info[colour_ref[0].attachment];
-                swapchain_info.flags = 0;
-                swapchain_info.format = swapchain.format;
-                swapchain_info.samples = VK_SAMPLE_COUNT_1_BIT;
-                swapchain_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-                swapchain_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-                swapchain_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                swapchain_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                swapchain_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                swapchain_info.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                
+                VkAttachmentDescription& resolve_info = attachment_info[resolve_ref.attachment];
+                resolve_info.flags = 0;
+                resolve_info.format = swapchain.format;
+                resolve_info.samples = VK_SAMPLE_COUNT_1_BIT;
+                resolve_info.loadOp = VK_ATTACHMENT_LOAD_OP_NONE;
+                resolve_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                resolve_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+                resolve_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                resolve_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                resolve_info.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
             }
 
-            if (z_prepass_enabled) { // init depth attachment(read only)
-                depth_ref.attachment = attachment_count++;
-                depth_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-                VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
-                depth_info.flags = 0;
-                depth_info.format = VK_FORMAT_D32_SFLOAT;
-                depth_info.samples = VK_SAMPLE_COUNT_1_BIT;
-                depth_info.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-                depth_info.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                depth_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                depth_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                depth_info.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                depth_info.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-
-            }
-            else { // init depth attachment(read write)
-                depth_ref.attachment = attachment_count++;
-                depth_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-                VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
-                depth_info.flags = 0;
-                depth_info.format = VK_FORMAT_D32_SFLOAT;
-                depth_info.samples = VK_SAMPLE_COUNT_1_BIT;
-                depth_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // clears to 1.0f
-                depth_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-                depth_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                depth_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                depth_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                depth_info.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            }
-
-            if (msaa_enabled) {
-                VkAttachmentDescription& swapchain_info = attachment_info[resolve_ref.attachment];
-                swapchain_info.flags = 0;
-                swapchain_info.format = swapchain.format;
-                swapchain_info.samples = VK_SAMPLE_COUNT_1_BIT;
-                swapchain_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-                swapchain_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-                swapchain_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                swapchain_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                swapchain_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                swapchain_info.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            }
-
-            if (deferred_enabled) { // init albedo, normal, specular attachment(g-buffer)
+            if (settings.deferred_pass_enabled()) { // create input attachments
                 input_ref[0].attachment = attachment_count++;
                 VkAttachmentDescription& albedo_info = attachment_info[input_ref[0].attachment];
                 
@@ -816,12 +794,23 @@ Renderer::Renderer() {
             subpass[0].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             subpass[0].pPreserveAttachments = nullptr;
             subpass[0].preserveAttachmentCount = 0;
-            subpass[0].inputAttachmentCount = deferred_enabled ? input_ref.size() : 0;
             subpass[0].pInputAttachments = input_ref.data();
-            subpass[0].colorAttachmentCount = colour_ref.size();
-            subpass[0].pColorAttachments = colour_ref.data();
-            subpass[0].pResolveAttachments = msaa_enabled ? &resolve_ref : nullptr;
+            subpass[0].colorAttachmentCount = 1;
+            subpass[0].pColorAttachments = &colour_ref;
             subpass[0].pDepthStencilAttachment = &depth_ref;
+
+            if (settings.deferred_pass_enabled()) {
+                subpass[0].inputAttachmentCount = input_ref.size();
+            } else {
+                subpass[0].inputAttachmentCount = 0;
+            }
+
+            if (settings.msaa_enabled()) {
+                subpass[0].pResolveAttachments = &resolve_ref;
+            } else {
+                subpass[0].pResolveAttachments = nullptr;
+            }
+            
 
             VkRenderPassCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -837,10 +826,10 @@ Renderer::Renderer() {
             VK_ASSERT(vkCreateRenderPass(engine.device, &info, nullptr, &lighting_pass.renderpass));
         }
 
-        { // initialize pipeline
+        { // create pipeline
             VkShaderModule vert_module;
             VkShaderModule frag_module;
-            if (deferred_enabled) {
+            if (settings.deferred_pass_enabled()) {
                 vert_module = create_shader_module("res/import/shaders/present.vert.spv");
                 frag_module = create_shader_module("res/import/shaders/present.frag.spv");
             } else {
@@ -870,7 +859,7 @@ Renderer::Renderer() {
             std::array<VkVertexInputBindingDescription, 1> vertex_binding;
             std::array<VkVertexInputAttributeDescription, 4> vertex_attrib;
 
-            if (!deferred_enabled) {
+            if (settings.render_mode == RenderMode::FORWARD) {
                 vertex_binding[0].binding = 0;
                 vertex_binding[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
                 vertex_binding[0].stride = sizeof(Vertex);
@@ -931,7 +920,7 @@ Renderer::Renderer() {
             VkPipelineMultisampleStateCreateInfo multisampling{};
             multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
             multisampling.sampleShadingEnable = VK_FALSE; // ? I dont understand what this does at all
-            multisampling.rasterizationSamples = sample_count;
+            multisampling.rasterizationSamples = settings.sample_count();
 
             VkPipelineDepthStencilStateCreateInfo depth_stencil{};
             depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
@@ -985,7 +974,7 @@ Renderer::Renderer() {
             vkDestroyShaderModule(engine.device, frag_module, nullptr);
         }
 
-        { // initialize framebuffers
+        { // create framebuffers
             VkImageView attachments[6];
 
             VkFramebufferCreateInfo info{};
@@ -1007,7 +996,7 @@ Renderer::Renderer() {
                 uint32_t image_i = i % swapchain.image_count;
                 
                 uint32_t attachment_index = 0;
-                if (msaa_enabled) { // colour attachment
+                if (settings.msaa_enabled()) { // colour attachment
                     attachments[attachment_index++] = msaa_attachment.view[frame_i];
                 } else {
                     attachments[attachment_index++] = swapchain.views[image_i];
@@ -1016,11 +1005,13 @@ Renderer::Renderer() {
                 // depth attachment
                 attachments[attachment_index++] = depth_attachment.view[frame_i];
                 
-                if (msaa_enabled) {
+                // resolve attachment
+                if (settings.msaa_enabled()) {
                     attachments[attachment_index++] = swapchain.views[image_i];
                 }
 
-                if (deferred_enabled) {
+                // input attachments
+                if (settings.deferred_pass_enabled()) {
                     attachments[attachment_index++] = albedo_attachment.view[frame_i];
                     attachments[attachment_index++] = normal_attachment.view[frame_i];
                     attachments[attachment_index++] = specular_attachment.view[frame_i];
@@ -1033,19 +1024,19 @@ Renderer::Renderer() {
 }
 
 Renderer::~Renderer() {
-    if (z_prepass_enabled) { // destroy depth pass
+    if (settings.z_prepass_enabled()) { // destroy depth pass
         for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
             vkDestroyFramebuffer(engine.device, depth_pass.framebuffer[i], nullptr);
         }
     }
 
-    if (deferred_enabled) { // destroy deferred pass
+    if (settings.deferred_pass_enabled()) { // destroy deferred pass
         for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
             vkDestroyFramebuffer(engine.device, deferred_pass.framebuffer[i], nullptr);
         }
     }
 
-    if (culling_enabled) { // destroy culling pass
+    if (settings.cluster_count.x > 1 || settings.cluster_count.y > 1 || settings.cluster_count.z > 1) { // destroy culling pass
 
     }
 
@@ -1088,12 +1079,23 @@ void Renderer::draw() {
 
     VK_ASSERT(vkResetFences(engine.device, 1, &lighting_pass.in_flight[frame_index]));
     
-    if (z_prepass_enabled) {
+    if (settings.z_prepass_enabled()) {
         depth_pass.record(frame_index);
-        depth_pass.submit(frame_index);
+        
+        uint32_t wait_count = 0;
+        VkSemaphore semaphores[1];
+        VkPipelineStageFlags stages[1];
+        
+        { // wait on image available
+            stages[wait_count] =  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; 
+            semaphores[wait_count] = lighting_pass.image_available[frame_index];
+            ++wait_count;
+        }
+        
+        depth_pass.submit(frame_index, { semaphores, wait_count }, { stages, wait_count });
     }
     
-    if (deferred_enabled) { // deferred pass 
+    if (settings.deferred_pass_enabled()) { // deferred pass 
         deferred_pass.record(frame_index);
 
         VkSemaphore wait_semaphore[] = { depth_pass.finished[frame_index] }; // wait on depth pass
@@ -1101,7 +1103,7 @@ void Renderer::draw() {
         deferred_pass.submit(frame_index, wait_semaphore, wait_stages, nullptr);
     }
 
-    if (culling_enabled) { // cluster pass
+    if (settings.cluster_count.x > 1 || settings.cluster_count.y > 1 || settings.cluster_count.z > 1) { // cluster pass
         culling_pass.record(frame_index);
 
         VkSemaphore wait_semaphore[] = { depth_pass.finished[frame_index] }; // wait on depth pass
@@ -1112,14 +1114,32 @@ void Renderer::draw() {
     { // lighting pass
         lighting_pass.record(frame_index);
 
-        VkSemaphore semaphores[] = { deferred_pass.finished[frame_index], lighting_pass.image_available[frame_index], culling_pass.finished[frame_index] };
-        VkPipelineStageFlags stages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT };
+        uint32_t wait_count = 0;
+        std::array<VkSemaphore, 3> semaphores;
+        std::array<VkPipelineStageFlags, 3> stages;
+
+        // note: deferred pass either waits on z_prepass or populates the depth_pass itself
+        if (settings.deferred_pass_enabled()) { // wait on deferred pass
+            stages[wait_count] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            semaphores[wait_count] = deferred_pass.finished[frame_index];
+            ++wait_count;
+        } else if (settings.z_prepass_enabled()) { // wait on depth pass
+            stages[wait_count] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            semaphores[wait_count] = depth_pass.finished[frame_index];
+            ++wait_count;
+        } else {
+            stages[wait_count] =  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; 
+            semaphores[wait_count] = lighting_pass.image_available[frame_index];
+            ++wait_count;
+        }
         
-        // skip waits on deferred & culling if not enabled
-        std::span<VkSemaphore> wait_semaphores = { semaphores + (!deferred_enabled), semaphores + 3 - (!culling_enabled) };
-        std::span<VkPipelineStageFlags> wait_stages = { stages + (!deferred_enabled), stages + 3 - (!culling_enabled) };
-        
-        lighting_pass.submit(frame_index, wait_semaphores, wait_stages, lighting_pass.in_flight[frame_index]);
+        if (settings.cluster_count.x > 1 || settings.cluster_count.y > 1 || settings.cluster_count.z > 1) { // wait on culling pass
+            stages[wait_count] = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            semaphores[wait_count] = culling_pass.finished[frame_index];
+            ++wait_count;
+        }
+
+        lighting_pass.submit(frame_index, { semaphores.data(), wait_count }, { stages.data(), wait_count }, lighting_pass.in_flight[frame_index]);
     }
     
     { // present to screen
@@ -1279,7 +1299,24 @@ void Renderer::DepthPass::record(uint32_t frame_index) {
         vkCmdSetScissor(cmd_buffer[frame_index], 0, 1, &scissor);
     }
 
-       
+    { // draw scene 
+        // bind camera
+        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].set.descriptor_set, 0, nullptr);
+
+        for (Model& model : models) {
+            // bind vbo
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(cmd_buffer[frame_index], 0, 1, &model.vertex_buffer, offsets);
+            
+            // bind ibo
+            vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index_buffer, 0, VK_INDEX_TYPE_UINT32);
+            
+            // bind transform
+            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.uniform[frame_index].set.descriptor_set, 0, nullptr);
+
+            vkCmdDrawIndexed(cmd_buffer[frame_index], model.vertex_count, 1, 0, 0, 0);
+        }
+    }
     
     { // end renderpass & cmd buffer
         vkCmdEndRenderPass(cmd_buffer[frame_index]);
