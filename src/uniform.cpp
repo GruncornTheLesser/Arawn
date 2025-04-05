@@ -364,8 +364,10 @@ UniformTexture::~UniformTexture() {
     if (image == nullptr) return;
 
     vkDestroyImageView(engine.device, view, nullptr);
-    vkDestroyImage(engine.device, image, nullptr);
     vkFreeMemory(engine.device, memory, nullptr);
+    vkDestroyImage(engine.device, image, nullptr);
+
+    image = nullptr;
 }
 
 UniformTexture::UniformTexture(UniformTexture&& other) {
@@ -379,9 +381,19 @@ UniformTexture::UniformTexture(UniformTexture&& other) {
 }
 
 UniformTexture& UniformTexture::operator=(UniformTexture&& other) {
-    std::swap(image, other.image);
-    std::swap(memory, other.memory);
-    std::swap(view, other.view);
+    if (this == &other) return *this;
+
+    if (image != nullptr) {
+        vkDestroyImageView(engine.device, view, nullptr);
+        vkFreeMemory(engine.device, memory, nullptr);
+        vkDestroyImage(engine.device, image, nullptr);
+    } 
+
+    image = other.image;
+    memory = other.memory;
+    view = other.view;
+
+    other.image = nullptr;
 
     return *this;
 }
@@ -452,8 +464,10 @@ UniformSet::UniformSet(VkDescriptorSetLayout layout, std::span<std::variant<Unif
 }
 
 UniformSet::~UniformSet() {
-    if (descriptor_set != nullptr)
-        vkFreeDescriptorSets(engine.device, engine.descriptor_pool, 1, &descriptor_set);
+    if (descriptor_set == nullptr) return;
+    
+    vkFreeDescriptorSets(engine.device, engine.descriptor_pool, 1, &descriptor_set);
+    descriptor_set = nullptr;
 }
 
 UniformSet::UniformSet(UniformSet&& other) {
@@ -464,11 +478,14 @@ UniformSet::UniformSet(UniformSet&& other) {
 }
 
 UniformSet& UniformSet::operator=(UniformSet&& other) {
-    std::swap(descriptor_set, other.descriptor_set);
+    if (this == &other) return *this;
+
+    if (descriptor_set != nullptr) {
+        vkFreeDescriptorSets(engine.device, engine.descriptor_pool, 1, &descriptor_set);
+    }
+
+    descriptor_set = other.descriptor_set;
+    other.descriptor_set = nullptr;
 
     return *this;
 }
-
-//void UniformSet::set_bindings(VkCommandBuffer cmd_buffer, VkPipelineLayout layout, uint32_t set_index, VkPipelineBindPoint bind_point) {
-//    vkCmdBindDescriptorSets(cmd_buffer, bind_point, layout, set_index, 1, &descriptor_set, 0, nullptr);
-//}

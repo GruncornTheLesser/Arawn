@@ -33,22 +33,15 @@ enum class AntiAlias {
     */
 };
 
-enum class AspectRatio { 
-    SQUARE = 9,      //  1:1 = 9:9 = 1
-    STANDARD = 12,   //  3:4 = 12:9 = 1.333...
-    WIDESCREEN = 16, // 16:9 = 16:9 = 1.777...
-    CINEMA = 21,     // 21:9 = 21:9 = 2.333...
-    // generate aspect ratio by aspect_ratio / AspectRatio::Square
-};
-
 struct Settings {
-    Settings(std::filesystem::path fp);    
-    void save(std::filesystem::path fp);
+    Settings(std::filesystem::path fp);
+    //void save(std::filesystem::path fp);
 
     // engine
     std::string device;
     glm::uvec2 resolution;
     DisplayMode display_mode;
+    float       aspect_ratio;
     uint32_t    frame_count;
     VsyncMode   vsync_mode;
     AntiAlias   anti_alias;

@@ -1,3 +1,4 @@
+#include <charconv>
 #define ARAWN_IMPLEMENTATION
 #include "settings.h"
 #include <fstream>
@@ -23,14 +24,26 @@ Settings::Settings(std::filesystem::path fp) {
         device = "";
     }
 
-    try {
+    try { // parse resolution
         Json::IntBuffer res = settings["resolution"];
         resolution = { res[0], res[1] };
     } catch (Json::ParseException e) { 
         resolution = { 800, 600 };
     }
 
-    try {
+    try { // parse aspect ratio
+        Json::String res = settings["aspect ratio"];
+        size_t pos = res.find(':');
+        int x, y;
+        if (std::from_chars(res.begin(), res.begin() + pos,   x).ec != std::errc{}) throw Json::ParseException();
+        if (std::from_chars(res.begin() + pos + 1, res.end(), y).ec != std::errc{}) throw Json::ParseException();
+        
+        aspect_ratio = float(x) / y;
+    } catch(Json::ParseException e) {
+        aspect_ratio = float(resolution.x) / resolution.y;
+    }
+    
+    try { // parse display mode
         std::string_view display_str = settings["display mode"];
         
         if      (display_str == "windowed") display_mode = DisplayMode::WINDOWED;
@@ -41,13 +54,13 @@ Settings::Settings(std::filesystem::path fp) {
         display_mode = DisplayMode::WINDOWED;
     }
 
-    try {
+    try { // parse frame count
         frame_count = std::min<uint32_t>(settings["frame count"], MAX_FRAMES_IN_FLIGHT);    
     } catch (Json::ParseException e) { 
         frame_count = 2; // default 2
     }
 
-    try {
+    try { // parse vsync mode
         std::string_view vsync_str = settings["vsync mode"];
         
         if      (vsync_str == "off") vsync_mode = VsyncMode::OFF; 
@@ -58,7 +71,7 @@ Settings::Settings(std::filesystem::path fp) {
         vsync_mode = VsyncMode::OFF;
     }
 
-    try {
+    try { // parse anti alias mode
         std::string_view anti_alias_str = settings["anti alias"];
 
         if      (anti_alias_str == "none") anti_alias = AntiAlias::NONE;
@@ -72,24 +85,24 @@ Settings::Settings(std::filesystem::path fp) {
         anti_alias = AntiAlias::NONE;
     }
 
-    try {
+    try { // parse z pre pass enabled
         z_prepass_enabled = settings["z prepass"];
     } catch (Json::ParseException) {
         z_prepass_enabled = false;
     }
 
-    try {
+    try { // parse render mode
         std::string_view render_mode_str = settings["render mode"];
 
-        if (render_mode_str == "forward") render_mode = RenderMode::FORWARD;
-        if (render_mode_str == "deferred") render_mode = RenderMode::DEFERRED;
+        if      (render_mode_str == "forward") render_mode = RenderMode::FORWARD;
+        else if (render_mode_str == "deferred") render_mode = RenderMode::DEFERRED;
         else throw Json::ParseException{};
 
     } catch (Json::ParseException) {
-        z_prepass_enabled = false;
+        render_mode = RenderMode::FORWARD;
     }
 
-    try {
+    try { // parse cluster culling count
         Json::IntBuffer cluster = settings["cluster count"];
         cluster_count = { 
             std::max<uint32_t>(1, cluster[0]),

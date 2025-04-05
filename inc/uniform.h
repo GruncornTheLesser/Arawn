@@ -43,7 +43,7 @@ private:
 
 class UniformSet {
 public:
-    UniformSet() { }
+    UniformSet() : descriptor_set(nullptr) { }
     UniformSet(VK_TYPE(VkDescriptorSetLayout) layout, std::span<std::variant<UniformBuffer*, UniformTexture*>> bindings);
     ~UniformSet();
     UniformSet(UniformSet&&);
@@ -53,5 +53,5 @@ public:
 
     void bind();
 
-    VK_TYPE(VkDescriptorSet) descriptor_set = nullptr;
+    VK_TYPE(VkDescriptorSet) descriptor_set;
 };

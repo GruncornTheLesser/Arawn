@@ -89,9 +89,9 @@ TextureAttachment::~TextureAttachment() {
 TextureAttachment::TextureAttachment(TextureAttachment&& other) {
     if (this == &other) return;
 
-    image = std::move(other.image);
-    memory = std::move(other.memory);
-    view = std::move(other.view);
+    image = other.image;
+    memory = other.memory;
+    view = other.view;
 
     other.image[0] = nullptr;
 }
@@ -99,9 +99,19 @@ TextureAttachment::TextureAttachment(TextureAttachment&& other) {
 TextureAttachment& TextureAttachment::operator=(TextureAttachment&& other) {
     if (this == &other) return *this;
     
-    std::swap(image, other.image);
-    std::swap(memory, other.memory);
-    std::swap(view, other.view);
+    if (image[0] != nullptr) { 
+        for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT && image[i]; ++i) {
+            vkDestroyImage(engine.device, image[i], nullptr);
+            vkDestroyImageView(engine.device, view[i], nullptr);
+            vkFreeMemory(engine.device, memory[i], nullptr);
+        }
+    }
+
+    image = other.image;
+    memory = other.memory;
+    view = other.view;
+
+    other.image[0] = nullptr;
 
     return *this;
 }

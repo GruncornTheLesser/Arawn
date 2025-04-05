@@ -15,8 +15,8 @@ public:
 
     
 
-    static std::vector<Model> Load(std::filesystem::path fp);
-    Model() { }
+    static void Load(std::filesystem::path fp);
+    Model() : vertex_buffer(nullptr) { }
     Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& vertices, std::vector<Mesh>&& meshes);
     ~Model();
     Model(Model&& other);
@@ -40,7 +40,7 @@ public:
         std::array<Uniform, MAX_FRAMES_IN_FLIGHT> uniform;
     } transform;
 private:
-    uint32_t vertex_count;
+    uint32_t vertex_count = 0;
     VK_TYPE(VkBuffer) vertex_buffer = nullptr;
     VK_TYPE(VkDeviceMemory) vertex_memory;
 

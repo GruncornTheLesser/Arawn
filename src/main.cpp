@@ -32,13 +32,18 @@ Renderer    renderer;
 Camera      camera;
 Controller  controller;
 
-std::vector<Model> models = Model::Load("res/model/cube/cube.obj");
+std::vector<Model> models{};
 
 int main() {
+    Model::Load("res/model/sponza/sponza.obj");
+    Model::Load("res/model/cube/cube.obj");
+    
     std::ranges::for_each(models, [&](Model& model) { 
         model.transform.scale = glm::vec3(0.1, 0.1, 0.1);
     });
 
+    models[0].transform.position = glm::vec3(2, 0, 0);
+    
     while (!window.closed()) {
         window.update();
         renderer.draw();

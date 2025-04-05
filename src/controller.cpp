@@ -2,6 +2,7 @@
 #include "window.h"
 #include "swapchain.h"
 #include "camera.h"
+#include "renderer.h"
 
 Controller::Controller() {
     window.on(KeyUp{ Key::W })   += [&](auto& event) { window.on<Update>() -= move_forward_event_handle; };
@@ -36,19 +37,22 @@ Controller::Controller() {
         window.set_display_mode(static_cast<DisplayMode>((static_cast<uint32_t>(window.get_display_mode()) + 1) % 3));
     };
     
-    // switch resolution
-    size_t index = 0;
-    auto resolutions = window.enum_resolutions(4.0f / 3.0f);
-    
     // resolution controls
     window.on(KeyDown{ Key::PLUS }) += [&](auto& event) { // increase resolution
-        if (index == resolutions.size() - 1) return;
-        window.set_resolution(resolutions[++index]);
+        auto resolutions = window.enum_resolutions(settings.aspect_ratio);
+        resolution_index = (++resolution_index + resolutions.size()) % resolutions.size();
+        window.set_resolution(resolutions[resolution_index]);
     };
 
     window.on(KeyDown{ Key::MINUS }) += [&](auto& event) { // decrease resolution
-        if(index == 0) return;
-        window.set_resolution(resolutions[--index]);
+        auto resolutions = window.enum_resolutions(settings.aspect_ratio);
+        resolution_index = (--resolution_index + resolutions.size()) % resolutions.size();
+        window.set_resolution(resolutions[resolution_index]);
+    };
+
+    window.on(KeyDown{ Key::R }) += [&](auto& event) { // decrease resolution
+        settings = Settings("configs/settings.json");
+        renderer.recreate();
     };
 }
 

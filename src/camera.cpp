@@ -4,7 +4,8 @@
 #include "swapchain.h"
 
 Camera::Uniform::Uniform()
- : buffer(nullptr, sizeof(Data)), set(engine.camera_layout, std::array<std::variant<UniformBuffer*, UniformTexture*>, 1>() = { &buffer }) { }
+ : buffer(nullptr, sizeof(Data)), set(engine.camera_layout, std::array<std::variant<UniformBuffer*, UniformTexture*>, 1>() = { &buffer }) 
+{ }
 
 void Camera::update(uint32_t frame_index) {
     Data data;

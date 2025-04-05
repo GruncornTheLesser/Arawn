@@ -7,8 +7,6 @@
 #include <unordered_map>
 #include <numeric>
 
-
-
 namespace tinyobj {
     bool operator==(const tinyobj::index_t& lhs, const tinyobj::index_t& rhs) { 
         return lhs.vertex_index ==   rhs.vertex_index && 
@@ -26,7 +24,7 @@ namespace std {
     };
 }
 
-std::vector<Model> Model::Load(std::filesystem::path fp) {
+void Model::Load(std::filesystem::path fp) {
     tinyobj::attrib_t obj_attrib;
     std::vector<tinyobj::shape_t> obj_models;
     std::vector<tinyobj::material_t> obj_materials;
@@ -38,9 +36,8 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
     if (!tinyobj::LoadObj(&obj_attrib, &obj_models, &obj_materials, &warn, &err, fp.string().c_str(),  dir.string().c_str(), true)) {
         throw std::runtime_error(warn + err);
     }
-    
-    std::vector<Model> models;
 
+    
     for (const auto& obj_model : obj_models) {
         std::vector<uint32_t> face_indices;
         std::vector<uint32_t> face_offsets;
@@ -48,7 +45,7 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
         std::unordered_map<tinyobj::index_t, uint32_t> unique_vertices;
-
+        
         // initialize // { 0, 1 ... n }
         face_indices.resize(obj_model.mesh.num_face_vertices.size());
         std::ranges::iota(face_indices, 0); 
@@ -112,6 +109,7 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
         
         { // get vertex groups for each mesh
             uint32_t vertex_count = 0;
+            
             int curr_material = obj_model.mesh.material_ids[0];
 
             for (uint32_t face_index : face_indices) {
@@ -136,7 +134,6 @@ std::vector<Model> Model::Load(std::filesystem::path fp) {
 
         models.emplace_back(indices, vertices, std::move(meshes));
     }
-    return models;    
 }
 
 Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& vertices, std::vector<Mesh>&& meshes) 
@@ -349,16 +346,6 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
     vkDestroyFence(engine.device, cmd_finished, nullptr);
 }
 
-Model::Model(Model&& other) : transform(std::move(other.transform)), meshes(std::move(other.meshes))
-{
-    vertex_buffer = other.vertex_buffer;
-    vertex_memory = other.vertex_memory;
-    index_buffer = other.index_buffer;
-    index_memory = other.index_memory;
-    
-    other.vertex_buffer = nullptr;
-}
-
 Model::~Model() {
     if (vertex_buffer == nullptr) return;
 
@@ -366,21 +353,52 @@ Model::~Model() {
     vkFreeMemory(engine.device, vertex_memory, nullptr);
     vkDestroyBuffer(engine.device, index_buffer, nullptr);
     vkFreeMemory(engine.device, index_memory, nullptr);
+
+    vertex_buffer = nullptr;
+}
+
+Model::Model(Model&& other) {
+    if (this == &other) return;
+
+    transform = std::move(other.transform);
+    meshes = std::move(other.meshes);
+    
+    vertex_buffer = other.vertex_buffer;
+    vertex_memory = other.vertex_memory;
+    index_buffer = other.index_buffer;
+    index_memory = other.index_memory;
+    vertex_count = other.vertex_count;
+
+    other.vertex_buffer = nullptr;
 }
 
 Model& Model::operator=(Model&& other) {
-    std::swap(vertex_buffer, vertex_buffer);
-    std::swap(vertex_memory, vertex_memory);
-    std::swap(index_buffer, index_buffer);
-    std::swap(index_memory, index_memory);
+    if (this == &other) return *this;
+    
+    if (vertex_buffer != nullptr) {
+        vkDestroyBuffer(engine.device, vertex_buffer, nullptr);
+        vkFreeMemory(engine.device, vertex_memory, nullptr);
+        vkDestroyBuffer(engine.device, index_buffer, nullptr);
+        vkFreeMemory(engine.device, index_memory, nullptr);
+    }
 
-    std::swap(transform, other.transform);
-    std::swap(meshes, other.meshes);
+    transform = std::move(other.transform);
+    meshes = std::move(other.meshes);
+
+    vertex_buffer = other.vertex_buffer;
+    vertex_memory = other.vertex_memory;
+    index_buffer = other.index_buffer;
+    index_memory = other.index_memory;
+    vertex_count = other.vertex_count;
+
+    other.vertex_buffer = nullptr;
 
     return *this;
 }
 
-Model::Transform::Uniform::Uniform() : buffer(nullptr, sizeof(glm::mat4)), set(engine.transform_layout, std::array<std::variant<UniformBuffer*, UniformTexture*>, 1>() = { &buffer }) { }
+Model::Transform::Uniform::Uniform()
+ : buffer(nullptr, sizeof(glm::mat4)), 
+   set(engine.transform_layout, std::array<std::variant<UniformBuffer*, UniformTexture*>, 1>() = { &buffer }) { }
 
 void Model::Transform::update(uint32_t frame_index) {
     
