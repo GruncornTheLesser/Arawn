@@ -7,7 +7,8 @@ TextureAttachment::TextureAttachment(
     VkImageUsageFlags usage, 
     VkFormat format, 
     VkImageAspectFlagBits aspect, 
-    VkSampleCountFlagBits sample_count, 
+    VkSampleCountFlagBits sample_count,
+    VkMemoryPropertyFlags memory_property, 
     std::span<uint32_t> queue_families
 ) {
     { // image
@@ -42,7 +43,7 @@ TextureAttachment::TextureAttachment(
         VkMemoryAllocateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         info.pNext = nullptr;
-        info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        info.memoryTypeIndex = engine.memory_type_index(requirements, memory_property);
         info.allocationSize = requirements.size;
         
         for (uint32_t i = 0; i < settings.frame_count; ++i) {

@@ -42,14 +42,6 @@ private:
     struct GraphicPipeline {
         ~GraphicPipeline();
 
-        void bind(VK_TYPE(VkCommandBuffer) cmd_buffer);
-
-        void submit(uint32_t frame_index, 
-            std::span<VK_TYPE(VkSemaphore)> wait_semaphore = { }, 
-            std::span<VK_ENUM(VkPipelineStageFlags)> wait_stages = { }, 
-            VK_TYPE(VkFence) signal_fence = nullptr
-        );
-
         std::array<VK_TYPE(VkCommandBuffer), MAX_FRAMES_IN_FLIGHT> cmd_buffer;
         std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> finished;
         VK_TYPE(VkPipeline) pipeline;
@@ -60,14 +52,6 @@ private:
 
     struct ComputePipeline {
         ~ComputePipeline();
-
-        void bind(VK_TYPE(VkCommandBuffer) cmd_buffer);
-
-        void submit(uint32_t frame_index, 
-            std::span<VK_TYPE(VkSemaphore)> wait_semaphore = { }, 
-            std::span<VK_ENUM(VkPipelineStageFlags)> wait_stages = { }, 
-            VK_TYPE(VkFence) signal_fence = nullptr
-        );
 
         std::array<VK_TYPE(VkCommandBuffer), MAX_FRAMES_IN_FLIGHT> cmd_buffer{};
         std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> finished;
@@ -80,6 +64,7 @@ private:
     TextureAttachment albedo_attachment;    // enabled when render mode DEFERRED
     TextureAttachment normal_attachment;    // enabled when render mode DEFERRED
     TextureAttachment specular_attachment;  // enabled when render mode DEFERRED
+
 
     // BufferAttachment light_buffer;
     // BufferAttachment cluster_buffer;
@@ -98,7 +83,7 @@ private:
 
     struct DeferredPass : GraphicPipeline { 
         std::array<VK_TYPE(VkFramebuffer), MAX_FRAMES_IN_FLIGHT> framebuffer;
-        
+        std::array<VK_TYPE(VkDescriptorSet), MAX_FRAMES_IN_FLIGHT> attachment_set;
         void record(uint32_t frame_index);
     } deferred_pass;
 

@@ -10,6 +10,7 @@ struct TextureAttachment {
         VK_ENUM(VkFormat) format, 
         VK_ENUM(VkImageAspectFlagBits) aspect, 
         VK_ENUM(VkSampleCountFlagBits) sample_count, 
+        VK_ENUM(VkMemoryPropertyFlags) memory_property,
         std::span<uint32_t> queue_families = { }
     );
     ~TextureAttachment();
