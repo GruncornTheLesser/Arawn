@@ -21,7 +21,7 @@ Swapchain::~Swapchain() {
     vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, nullptr);
 
     for (uint32_t i = 0; i < image_count; ++i) 
-        vkDestroyImageView(engine.device, views[i], nullptr);
+        vkDestroyImageView(engine.device, view[i], nullptr);
     
     vkDestroySwapchainKHR(engine.device, swapchain, nullptr);
  
@@ -98,7 +98,7 @@ void Swapchain::recreate() {
     }
 
     { // get frame count
-        frame_count = std::clamp(settings.frame_count, capabilities.minImageCount, capabilities.maxImageCount);
+        settings.frame_count = std::clamp(settings.frame_count, capabilities.minImageCount, capabilities.maxImageCount);
     }
     
     { // get present mode
@@ -145,7 +145,7 @@ void Swapchain::recreate() {
         info.pNext = nullptr;
         info.flags = 0;
         info.surface = surface;
-        info.minImageCount = frame_count;
+        info.minImageCount = settings.frame_count;
         info.imageFormat = format;
         info.imageColorSpace = colour_space;
         info.imageExtent = { extent.x, extent.y };
@@ -170,17 +170,17 @@ void Swapchain::recreate() {
         VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, old_swapchain, &old_image_count, nullptr));
 
         for (uint32_t i = 0; i < old_image_count; ++i) 
-            vkDestroyImageView(engine.device, views[i], nullptr);
+            vkDestroyImageView(engine.device, view[i], nullptr);
         
         vkDestroySwapchainKHR(engine.device, old_swapchain, nullptr);
     }
 
-    { // init swapchain views
+    { // init swapchain view
         VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, nullptr));
         std::vector<VkImage> images(image_count);
         VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, images.data()));
         
-        views.resize(image_count);
+        view.resize(image_count);
 
         VkImageViewCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -200,7 +200,7 @@ void Swapchain::recreate() {
         
         for (uint32_t i = 0; i < images.size(); ++i) {
             info.image = images[i];
-            VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &views[i]));
+            VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &view[i]));
         }
     }
     

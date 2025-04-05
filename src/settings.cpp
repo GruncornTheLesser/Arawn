@@ -73,9 +73,9 @@ Settings::Settings(std::filesystem::path fp) {
     }
 
     try {
-        z_prepass = settings["z prepass"];
+        z_prepass_enabled = settings["z prepass"];
     } catch (Json::ParseException) {
-        z_prepass = false;
+        z_prepass_enabled = false;
     }
 
     try {
@@ -86,7 +86,7 @@ Settings::Settings(std::filesystem::path fp) {
         else throw Json::ParseException{};
 
     } catch (Json::ParseException) {
-        z_prepass = false;
+        z_prepass_enabled = false;
     }
 
     try {
@@ -99,27 +99,15 @@ Settings::Settings(std::filesystem::path fp) {
     } catch (Json::ParseException e) {
         cluster_count = { 1, 1, 1 };
     }
-}
 
-bool Settings::z_prepass_enabled() const {
-    return z_prepass;
-}
-bool Settings::cluster_pass_enabled() const {
-    return settings.cluster_count.x > 1 || settings.cluster_count.y > 1 || settings.cluster_count.z > 1;
-}
-bool Settings::deferred_pass_enabled() const {
-    return settings.render_mode == RenderMode::DEFERRED;
-}
-VkSampleCountFlagBits Settings::sample_count() const {
-    switch (settings.anti_alias) {
-    case AntiAlias::MSAA_2:  return VK_SAMPLE_COUNT_2_BIT;
-    case AntiAlias::MSAA_4:  return VK_SAMPLE_COUNT_4_BIT;
-    case AntiAlias::MSAA_8:  return VK_SAMPLE_COUNT_8_BIT;
-    case AntiAlias::MSAA_16: return VK_SAMPLE_COUNT_16_BIT;
-    default:                 return VK_SAMPLE_COUNT_1_BIT;
+    culling_pass_enabled = cluster_count.x > 1 || cluster_count.y > 1 || cluster_count.z > 1;
+    deferred_pass_enabled = render_mode == RenderMode::DEFERRED;
+    switch (anti_alias) {
+    case AntiAlias::MSAA_2:  sample_count = VK_SAMPLE_COUNT_2_BIT; break;
+    case AntiAlias::MSAA_4:  sample_count = VK_SAMPLE_COUNT_4_BIT; break;
+    case AntiAlias::MSAA_8:  sample_count = VK_SAMPLE_COUNT_8_BIT; break;
+    case AntiAlias::MSAA_16: sample_count = VK_SAMPLE_COUNT_16_BIT; break;
+    default:                 sample_count = VK_SAMPLE_COUNT_1_BIT; break;
     }
-}
-
-bool Settings::msaa_enabled() const {
-    return sample_count() != VK_SAMPLE_COUNT_1_BIT;
+    msaa_enabled = sample_count != VK_SAMPLE_COUNT_1_BIT;
 }

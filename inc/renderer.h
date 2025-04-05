@@ -2,6 +2,7 @@
 #include "vulkan.h"
 #include "uniform.h"
 #include <span>
+#include "attachments.h"
 
 // TODO: work out padding/packing
 
@@ -38,22 +39,6 @@ public:
     void draw();
 
 private:
-    struct TextureAttachment {
-        ~TextureAttachment();
-
-        std::array<VK_TYPE(VkImage), MAX_FRAMES_IN_FLIGHT> image;
-        std::array<VK_TYPE(VkImageView), MAX_FRAMES_IN_FLIGHT> view;
-        std::array<VK_TYPE(VkDeviceMemory), MAX_FRAMES_IN_FLIGHT> memory;
-    };
-
-    struct BufferAttachment {
-        ~BufferAttachment();
-        
-        std::array<VK_TYPE(VkBuffer), MAX_FRAMES_IN_FLIGHT> buffer;
-        std::array<VK_TYPE(VkDeviceMemory), MAX_FRAMES_IN_FLIGHT> memory;
-    };
-
-
     struct GraphicPipeline {
         ~GraphicPipeline();
 
@@ -96,8 +81,8 @@ private:
     TextureAttachment normal_attachment;    // enabled when render mode DEFERRED
     TextureAttachment specular_attachment;  // enabled when render mode DEFERRED
 
-    BufferAttachment light_buffer;
-    BufferAttachment cluster_buffer;
+    // BufferAttachment light_buffer;
+    // BufferAttachment cluster_buffer;
 
     uint32_t frame_index = 0;
 
@@ -107,7 +92,7 @@ private:
         void record(uint32_t frame_index);
     } depth_pass;
 
-    struct ClusterPass : ComputePipeline { 
+    struct CullingPass : ComputePipeline { 
         void record(uint32_t frame_index);
     } culling_pass;
 
@@ -117,13 +102,13 @@ private:
         void record(uint32_t frame_index);
     } deferred_pass;
 
-    struct LightingPass : GraphicPipeline { 
+    struct ForwardPass : GraphicPipeline { 
         std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> image_available;
         std::array<VK_TYPE(VkFence), MAX_FRAMES_IN_FLIGHT> in_flight;
         std::vector<VK_TYPE(VkFramebuffer)> framebuffer;
         
         void record(uint32_t frame_index);
-    } lighting_pass;
+    } forward_pass;
 };
 
 extern Renderer renderer;

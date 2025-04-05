@@ -50,7 +50,7 @@ Engine::Engine() {
     { // init instance
         VkApplicationInfo app_info {};
         app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        app_info.apiVersion = VK_API_VERSION_1_4;     
+        app_info.apiVersion = VK_API_VERSION_1_2;
         app_info.pApplicationName = "Arawn";
         app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
         app_info.pEngineName = "Arawn-engine";

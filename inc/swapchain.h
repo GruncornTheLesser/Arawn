@@ -23,7 +23,6 @@ public:
 
     glm::uvec2 extent;
     uint32_t image_count;
-    uint32_t frame_count;
     
     VK_ENUM(VkFormat) format;
     VK_ENUM(VkColorSpaceKHR) colour_space;
@@ -31,7 +30,7 @@ public:
 
     VK_TYPE(VkSurfaceKHR) surface;
     VK_TYPE(VkSwapchainKHR) swapchain;
-    std::vector<VK_TYPE(VkImageView)> views;  // array of image views
+    std::vector<VK_TYPE(VkImageView)> view;
 };
 
 extern Swapchain swapchain;

@@ -45,12 +45,6 @@ struct Settings {
     Settings(std::filesystem::path fp);    
     void save(std::filesystem::path fp);
 
-    bool msaa_enabled() const;
-    bool z_prepass_enabled() const;
-    bool cluster_pass_enabled() const;
-    bool deferred_pass_enabled() const;
-    VK_ENUM(VkSampleCountFlagBits) sample_count() const;
-
     // engine
     std::string device;
     glm::uvec2 resolution;
@@ -58,9 +52,15 @@ struct Settings {
     uint32_t    frame_count;
     VsyncMode   vsync_mode;
     AntiAlias   anti_alias;
-    bool z_prepass;
+    bool z_prepass_enabled;
     RenderMode render_mode;
     glm::uvec3 cluster_count;
+
+    bool culling_pass_enabled;
+    bool deferred_pass_enabled;
+    VK_ENUM(VkSampleCountFlagBits) sample_count;
+    bool msaa_enabled;
+    
 };
 
 extern Settings settings;

@@ -80,7 +80,7 @@ void main() {
     }
 
     
-    vec3 normal;
+    //vec3 normal;
     //if ((material.flags & normal_texture_flag) == normal_texture_flag) {
     //    normal = texture(normal_map, frag_texcoord).rgb;
     //}

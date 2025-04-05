@@ -28,517 +28,180 @@ VkShaderModule create_shader_module(std::filesystem::path fp) {
 }
 
 Renderer::Renderer() {
-    { // init textures
-        { // init msaa staging attachment
-            { // image
-                VkImageCreateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-                info.pNext = nullptr;
-                info.flags = 0;
-                info.imageType = VK_IMAGE_TYPE_2D;
-                info.format = swapchain.format; // !!!
-                info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
-                info.mipLevels = 1;
-                info.arrayLayers = 1;
-                info.samples = settings.sample_count(); // !!!
-                info.tiling = VK_IMAGE_TILING_OPTIMAL;
-                info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // !!!
-                info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // !!!
-                info.pQueueFamilyIndices = nullptr;
-                info.queueFamilyIndexCount = 0;
-
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i)
-                    VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &msaa_attachment.image[i]));
-            }
-
-            { // memory
-                VkMemoryRequirements requirements;
-                vkGetImageMemoryRequirements(engine.device, msaa_attachment.image[0], &requirements);
-
-                VkMemoryAllocateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-                info.pNext = nullptr;
-                info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-                info.allocationSize = requirements.size;
-                
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                    VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &msaa_attachment.memory[i]));
-                    VK_ASSERT(vkBindImageMemory(engine.device, msaa_attachment.image[i], msaa_attachment.memory[i], 0));
-                }
-            }
-
-            { // view
-                VkImageViewCreateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-                info.pNext = nullptr;
-                info.flags = 0;
-                info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                info.format = swapchain.format; // !!!
-                info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // !!!
-                info.subresourceRange.baseMipLevel = 0;
-                info.subresourceRange.levelCount = 1;
-                info.subresourceRange.baseArrayLayer = 0;
-                info.subresourceRange.layerCount = 1;
-
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                    info.image = msaa_attachment.image[i];
-                    VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &msaa_attachment.view[i]));
-                }
-            }
+    { // recreate attachments
+        if (settings.culling_pass_enabled && engine.compute.family != engine.graphics.family) {
+            depth_attachment = TextureAttachment(
+                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 
+                VK_FORMAT_D32_SFLOAT, 
+                VK_IMAGE_ASPECT_DEPTH_BIT, 
+                settings.sample_count,
+                std::array<uint32_t, 2>{} = { engine.compute.family, engine.graphics.family }
+            );
+        } else {
+            depth_attachment = TextureAttachment(
+                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 
+                VK_FORMAT_D32_SFLOAT, 
+                VK_IMAGE_ASPECT_DEPTH_BIT, 
+                settings.sample_count,
+                { }
+            );
         }
 
-        { // depth_attachment
-            { // image
-                std::array<uint32_t, 2> queue_set = { engine.compute.family, engine.graphics.family };
-                bool shared_memory = queue_set[0] == queue_set[1];
-            
-                VkImageCreateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-                info.pNext = nullptr;
-                info.flags = 0;
-                info.imageType = VK_IMAGE_TYPE_2D;
-                info.format = VK_FORMAT_D32_SFLOAT;
-                info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
-                info.mipLevels = 1;
-                info.arrayLayers = 1;
-                info.samples = settings.sample_count();
-                info.tiling = VK_IMAGE_TILING_OPTIMAL;
-                info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-                info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                info.sharingMode = shared_memory ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
-                info.pQueueFamilyIndices = queue_set.data();
-                info.queueFamilyIndexCount = shared_memory ? 0 : 2;
-
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i)
-                    VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &depth_attachment.image[i]));
-            }
-
-            { // memory
-                VkMemoryRequirements requirements;
-                vkGetImageMemoryRequirements(engine.device, depth_attachment.image[0], &requirements);
-
-                VkMemoryAllocateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-                info.pNext = nullptr;
-                info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-                info.allocationSize = requirements.size;
-                
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                    VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &depth_attachment.memory[i]));
-                    VK_ASSERT(vkBindImageMemory(engine.device, depth_attachment.image[i], depth_attachment.memory[i], 0));
-                }
-            }
-
-            { // view
-                VkImageViewCreateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-                info.pNext = nullptr;
-                info.flags = 0;
-                info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                info.format = VK_FORMAT_D32_SFLOAT; // !!!
-                info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-                info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT; // !!!
-                info.subresourceRange.baseMipLevel = 0;
-                info.subresourceRange.levelCount = 1;
-                info.subresourceRange.baseArrayLayer = 0;
-                info.subresourceRange.layerCount = 1;
-
-                for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                    info.image = depth_attachment.image[i];
-                    VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &depth_attachment.view[i]));
-                }
-            }
+        if (settings.msaa_enabled) {
+            msaa_attachment = TextureAttachment(
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, 
+                swapchain.format, 
+                VK_IMAGE_ASPECT_COLOR_BIT, 
+                settings.sample_count,
+                { }
+            );
+        } else {
+            msaa_attachment = TextureAttachment();
         }
 
-        if (settings.deferred_pass_enabled()) {
-            { // albedo attachment
-                { // image
-                    VkImageCreateInfo info{};
-                    info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-                    info.pNext = nullptr;
-                    info.flags = 0;
-                    info.imageType = VK_IMAGE_TYPE_2D;
-                    info.format = VK_FORMAT_R8G8B8A8_UNORM; // !!!
-                    info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
-                    info.mipLevels = 1;
-                    info.arrayLayers = 1;
-                    info.samples = VK_SAMPLE_COUNT_1_BIT; // !!!
-                    info.tiling = VK_IMAGE_TILING_OPTIMAL;
-                    info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // !!!
-                    info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // !!!
-                    info.pQueueFamilyIndices = nullptr;
-                    info.queueFamilyIndexCount = 0;
+        if (settings.deferred_pass_enabled) {
+            albedo_attachment = TextureAttachment(
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 
+                VK_FORMAT_R8G8B8A8_UNORM, 
+                VK_IMAGE_ASPECT_COLOR_BIT, 
+                settings.sample_count,
+                { }
+            );
 
-                    for (uint32_t i = 0; i < swapchain.frame_count; ++i)
-                        VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &albedo_attachment.image[i]));
-                }
+            normal_attachment = TextureAttachment(
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 
+                VK_FORMAT_R8G8B8A8_UNORM,
+                VK_IMAGE_ASPECT_COLOR_BIT, 
+                settings.sample_count,
+                { }
+            );
 
-                { // memory
-                    VkMemoryRequirements requirements;
-                    vkGetImageMemoryRequirements(engine.device, albedo_attachment.image[0], &requirements);
-
-                    VkMemoryAllocateInfo info{};
-                    info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-                    info.pNext = nullptr;
-                    info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-                    info.allocationSize = requirements.size;
-                    
-                    for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &albedo_attachment.memory[i]));
-                        VK_ASSERT(vkBindImageMemory(engine.device, albedo_attachment.image[i], albedo_attachment.memory[i], 0));
-                    }
-                }
-
-                { // view
-                    VkImageViewCreateInfo info{};
-                    info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-                    info.pNext = nullptr;
-                    info.flags = 0;
-                    info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                    info.format = VK_FORMAT_R8G8B8A8_UNORM; // !!!
-                    info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-                    info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-                    info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-                    info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-                    info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // !!!
-                    info.subresourceRange.baseMipLevel = 0;
-                    info.subresourceRange.levelCount = 1;
-                    info.subresourceRange.baseArrayLayer = 0;
-                    info.subresourceRange.layerCount = 1;
-
-                    for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                        info.image = albedo_attachment.image[i];
-                        VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &albedo_attachment.view[i]));
-                    }
-                }
-            }
-
-            { // normal attachment
-                { // image
-                    VkImageCreateInfo info{};
-                    info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-                    info.pNext = nullptr;
-                    info.flags = 0;
-                    info.imageType = VK_IMAGE_TYPE_2D;
-                    info.format = VK_FORMAT_R32G32B32_SFLOAT; // !!!
-                    info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
-                    info.mipLevels = 1;
-                    info.arrayLayers = 1;
-                    info.samples = VK_SAMPLE_COUNT_1_BIT; // !!!
-                    info.tiling = VK_IMAGE_TILING_OPTIMAL;
-                    info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // !!!
-                    info.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // !!!
-                    info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // !!!
-                    info.pQueueFamilyIndices = nullptr;
-                    info.queueFamilyIndexCount = 0;
-
-                    for (uint32_t i = 0; i < swapchain.frame_count; ++i)
-                        VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &normal_attachment.image[i]));
-                }
-
-                { // memory
-                    VkMemoryRequirements requirements;
-                    vkGetImageMemoryRequirements(engine.device, normal_attachment.image[0], &requirements);
-
-                    VkMemoryAllocateInfo info{};
-                    info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-                    info.pNext = nullptr;
-                    info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-                    info.allocationSize = requirements.size;
-                    
-                    for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &normal_attachment.memory[i]));
-                        VK_ASSERT(vkBindImageMemory(engine.device, normal_attachment.image[i], normal_attachment.memory[i], 0));
-                    }
-                }
-
-                { // view
-                    VkImageViewCreateInfo info{};
-                    info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-                    info.pNext = nullptr;
-                    info.flags = 0;
-                    info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                    info.format = VK_FORMAT_R32G32B32_SFLOAT; // !!!
-                    info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-                    info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-                    info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-                    info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-                    info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // !!!
-                    info.subresourceRange.baseMipLevel = 0;
-                    info.subresourceRange.levelCount = 1;
-                    info.subresourceRange.baseArrayLayer = 0;
-                    info.subresourceRange.layerCount = 1;
-
-                    for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                        info.image = normal_attachment.image[i];
-                        VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &normal_attachment.view[i]));
-                    }
-                }
-            }
-
-            { // specular attachment
-                { // image
-                    VkImageCreateInfo info{};
-                    info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-                    info.pNext = nullptr;
-                    info.flags = 0;
-                    info.imageType = VK_IMAGE_TYPE_2D;
-                    info.format = VK_FORMAT_R8G8B8A8_UNORM; // !!!
-                    info.extent = { swapchain.extent.x, swapchain.extent.y, 1 };
-                    info.mipLevels = 1;
-                    info.arrayLayers = 1;
-                    info.samples = VK_SAMPLE_COUNT_1_BIT; // !!!
-                    info.tiling = VK_IMAGE_TILING_OPTIMAL;
-                    info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // !!!
-                    info.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // !!!
-                    info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // !!!
-                    info.pQueueFamilyIndices = nullptr;
-                    info.queueFamilyIndexCount = 0;
-
-                    for (uint32_t i = 0; i < swapchain.frame_count; ++i)
-                        VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &specular_attachment.image[i]));
-                }
-
-                { // memory
-                    VkMemoryRequirements requirements;
-                    vkGetImageMemoryRequirements(engine.device, specular_attachment.image[0], &requirements);
-
-                    VkMemoryAllocateInfo info{};
-                    info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-                    info.pNext = nullptr;
-                    info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-                    info.allocationSize = requirements.size;
-                    
-                    for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &specular_attachment.memory[i]));
-                        VK_ASSERT(vkBindImageMemory(engine.device, specular_attachment.image[i], specular_attachment.memory[i], 0));
-                    }
-                }
-
-                { // view
-                    VkImageViewCreateInfo info{};
-                    info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-                    info.pNext = nullptr;
-                    info.flags = 0;
-                    info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                    info.format = VK_FORMAT_R8G8B8A8_UNORM; // !!!
-                    info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-                    info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-                    info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-                    info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-                    info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // !!!
-                    info.subresourceRange.baseMipLevel = 0;
-                    info.subresourceRange.levelCount = 1;
-                    info.subresourceRange.baseArrayLayer = 0;
-                    info.subresourceRange.layerCount = 1;
-
-                    for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                        info.image = specular_attachment.image[i];
-                        VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &specular_attachment.view[i]));
-                    }
-                }
-            }
+            specular_attachment = TextureAttachment( // metallic, roughness, ... some other stuff
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 
+                VK_FORMAT_R8G8B8A8_UNORM, 
+                VK_IMAGE_ASPECT_COLOR_BIT, 
+                settings.sample_count,
+                { }
+            );
+        } else {
+            albedo_attachment = TextureAttachment();
+            normal_attachment = TextureAttachment();
+            specular_attachment = TextureAttachment();
         }
     }
 
-    if (settings.z_prepass_enabled()) { // depth pass
+    if (settings.z_prepass_enabled) { // depth pass
         { // create cmd buffers
-            VkCommandBufferAllocateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            info.pNext = nullptr;
-            info.commandPool = engine.graphics.pool;
-            info.commandBufferCount = swapchain.frame_count;
-            info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-
+            VkCommandBufferAllocateInfo info{ 
+                VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, 
+                engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, settings.frame_count
+            };
             VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, &depth_pass.cmd_buffer[0]));
         }
 
         { // create semaphores
-            VkSemaphoreCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-            info.flags = 0;
-            info.pNext = nullptr;
-
-            for (uint32_t i = 0; i < swapchain.frame_count; ++i)
+            VkSemaphoreCreateInfo info{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
+            for (uint32_t i = 0; i < settings.frame_count; ++i)
                 VK_ASSERT(vkCreateSemaphore(engine.device, &info, nullptr, &depth_pass.finished[i]));
         }
         
         { // create pipeline layout
             std::array<VkDescriptorSetLayout, 2> sets = { engine.camera_layout, engine.transform_layout };
 
-            VkPipelineLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.flags = 0;
-            info.pushConstantRangeCount = 0;
-            info.pPushConstantRanges = nullptr;
-            info.setLayoutCount = sets.size();
-            info.pSetLayouts = sets.data();
-
+            VkPipelineLayoutCreateInfo info{ 
+                VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, nullptr, 0, 
+                sets.size(), sets.data(), 0, nullptr 
+            };
             VK_ASSERT(vkCreatePipelineLayout(engine.device, &info, nullptr, &depth_pass.layout));
         }
 
         { // create renderpass
-            std::array<VkAttachmentDescription, 1> attachments;
-            attachments[0].flags = 0;
-            attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
-            attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            attachments[0].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            attachments[0].format = VK_FORMAT_D32_SFLOAT;
-            attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-            attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-            attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-
-            VkAttachmentReference depth_ref;
-            depth_ref.attachment = 0;
-            depth_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-            std::array<VkSubpassDescription, 1> subpasses;
-            subpasses[0].flags = 0;
-            subpasses[0].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-            subpasses[0].pPreserveAttachments = nullptr;
-            subpasses[0].preserveAttachmentCount = 0;
-            subpasses[0].pInputAttachments = nullptr;
-            subpasses[0].inputAttachmentCount = 0;
-            subpasses[0].pColorAttachments = nullptr;
-            subpasses[0].colorAttachmentCount = 0;
-            subpasses[0].pResolveAttachments = nullptr;
-            subpasses[0].pDepthStencilAttachment = &depth_ref;
-            
-            VkRenderPassCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-            info.pNext = nullptr;
-            info.flags = 0;
-            info.attachmentCount = attachments.size();
-            info.pAttachments = attachments.data();
-            info.subpassCount = subpasses.size();
-            info.pSubpasses = subpasses.data();
-            info.dependencyCount = 0;
-            info.pDependencies = nullptr;
+            VkAttachmentReference depth_ref = { 0, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
+            VkAttachmentDescription depth_info = { 
+                0, VK_FORMAT_D32_SFLOAT, settings.sample_count, 
+                VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
+                VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
+                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+            };
+            VkSubpassDescription subpass = { 0, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, nullptr, 0, nullptr, nullptr, &depth_ref, 0, nullptr };
+            VkRenderPassCreateInfo info{ VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, nullptr, 0, 1, &depth_info, 1, &subpass, 0, nullptr };
 
             VK_ASSERT(vkCreateRenderPass(engine.device, &info, nullptr, &depth_pass.renderpass));
         }
         
         { // create pipeline
-            VkShaderModule vert_module = create_shader_module("res/import/shaders/depth.vert.spv");
+            VkShaderModule vert_module = create_shader_module("res/import/shaders/transform_basic.vert.spv");
             VkShaderModule frag_module = create_shader_module("res/import/shaders/depth.frag.spv");
 
             std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages;
-            shader_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            shader_stages[0].pNext = nullptr;
-            shader_stages[0].flags = 0;
-            shader_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-            shader_stages[0].module = vert_module;
-            shader_stages[0].pName = "main";
-            shader_stages[0].pSpecializationInfo = nullptr;
+            shader_stages[0] = { 
+                VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, 
+                VK_SHADER_STAGE_VERTEX_BIT, vert_module, "main", nullptr 
+            };
 
-            shader_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            shader_stages[1].pNext = nullptr;
-            shader_stages[1].flags = 0;
-            shader_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-            shader_stages[1].module = frag_module;
-            shader_stages[1].pName = "main";
-            shader_stages[1].pSpecializationInfo = nullptr;
+            shader_stages[1] = {
+                VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, 
+                VK_SHADER_STAGE_FRAGMENT_BIT, frag_module, "main", nullptr
+            };
 
             std::array<VkVertexInputBindingDescription, 1> vertex_binding;
-            vertex_binding[0].binding = 0;
-            vertex_binding[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-            vertex_binding[0].stride = sizeof(Vertex);
+            vertex_binding[0] = { 0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX };
 
             std::array<VkVertexInputAttributeDescription, 1> vertex_attrib; // max vertex count
-            vertex_attrib[0].binding = 0;
-            vertex_attrib[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-            vertex_attrib[0].location = 0;
-            vertex_attrib[0].offset = offsetof(Vertex, position);
-
-            VkPipelineVertexInputStateCreateInfo vertex_input{};
-            vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-            vertex_input.vertexBindingDescriptionCount = vertex_binding.size();
-            vertex_input.pVertexBindingDescriptions = vertex_binding.data();
-            vertex_input.vertexAttributeDescriptionCount = vertex_attrib.size();
-            vertex_input.pVertexAttributeDescriptions = vertex_attrib.data();
-
-            VkPipelineInputAssemblyStateCreateInfo assembly{};
-            assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-            assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-            assembly.primitiveRestartEnable = VK_FALSE;
-
-            VkPipelineViewportStateCreateInfo viewport_state{};
-            viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-            viewport_state.viewportCount = 1;
-            viewport_state.scissorCount = 1;
-
-            VkPipelineRasterizationStateCreateInfo rasterizer{};
-            rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-            rasterizer.depthClampEnable = VK_FALSE;
-            rasterizer.rasterizerDiscardEnable = VK_FALSE;
-            rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-            rasterizer.lineWidth = 1.0f; // only used when VK_POLYGON_MODE_LINE enabled
-            rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-            rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-            rasterizer.depthBiasEnable = VK_FALSE;
-
-            VkPipelineMultisampleStateCreateInfo multisampling{};
-            multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-            multisampling.sampleShadingEnable = VK_FALSE;
-            multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-            VkPipelineDepthStencilStateCreateInfo depth_stencil{};
-            depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-            depth_stencil.depthTestEnable = VK_TRUE;
-            depth_stencil.depthWriteEnable = VK_TRUE;
-            depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
-            depth_stencil.depthBoundsTestEnable = VK_FALSE;
-            depth_stencil.stencilTestEnable = VK_FALSE;
-
-            VkPipelineColorBlendAttachmentState resolve_attachment{};
-            resolve_attachment.colorWriteMask = 0;
-            resolve_attachment.blendEnable = VK_FALSE;
+            vertex_attrib[0] = { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position) };
             
-            VkPipelineColorBlendStateCreateInfo colour_blending{};
-            colour_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-            colour_blending.logicOpEnable = VK_FALSE;
-            colour_blending.logicOp = VK_LOGIC_OP_COPY;
-            colour_blending.attachmentCount = 1;
-            colour_blending.pAttachments = &resolve_attachment;
-            colour_blending.blendConstants[0] = 0.0f;
-            colour_blending.blendConstants[1] = 0.0f;
-            colour_blending.blendConstants[2] = 0.0f;
-            colour_blending.blendConstants[3] = 0.0f;
+            VkPipelineVertexInputStateCreateInfo vertex_state {
+                VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, nullptr, 0, 
+                vertex_binding.size(), vertex_binding.data(), vertex_attrib.size(), vertex_attrib.data()
+            };
 
-            VkDynamicState dynamic_states[] { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+            VkPipelineInputAssemblyStateCreateInfo assembly_state {
+                VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, nullptr, 0, 
+                VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE
+            };
+
+            VkPipelineViewportStateCreateInfo viewport_state {
+                VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, nullptr, 0, 
+                1, nullptr, 1, nullptr // viewport & scissor are dynamic
+            };
+
+            VkPipelineRasterizationStateCreateInfo rasterizer_state{
+                VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO, nullptr, 0,
+                VK_FALSE, VK_FALSE, VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE, 
+                VK_FALSE, 0.0f, 0.0f, 0.0f, 1.0f 
+            };
+
+            VkPipelineMultisampleStateCreateInfo multisampling_state{
+                VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO, nullptr, 0, 
+                settings.sample_count, VK_FALSE
+            };
+
+            VkPipelineDepthStencilStateCreateInfo depth_stencil_state{
+                VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO, nullptr, 0, 
+                VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS, VK_FALSE, VK_FALSE
+            };
+
+            std::array<VkPipelineColorBlendAttachmentState, 0> attachment_blend;
             
-            VkPipelineDynamicStateCreateInfo dynamics{};
-            dynamics.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-            dynamics.dynamicStateCount = 2;
-            dynamics.pDynamicStates = dynamic_states;
+            VkPipelineColorBlendStateCreateInfo colour_blending{
+                VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, nullptr, 0, 
+                VK_FALSE, VK_LOGIC_OP_COPY, attachment_blend.size(), attachment_blend.data(), { 0.0f, 0.0f, 0.0f, 0.0f }
+            };
 
-            VkGraphicsPipelineCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-            info.stageCount = 2;
-            info.pStages = shader_stages.data();
-            info.pVertexInputState = &vertex_input;
-            info.pInputAssemblyState = &assembly;
-            info.pViewportState = &viewport_state;
-            info.pRasterizationState = &rasterizer;
-            info.pMultisampleState = &multisampling;
-            info.pDepthStencilState = &depth_stencil;
-            info.pColorBlendState = &colour_blending;
-            info.pDynamicState = &dynamics;
-            info.layout = depth_pass.layout;
-            info.renderPass = depth_pass.renderpass;
-            info.subpass = 0;
-            info.basePipelineHandle = VK_NULL_HANDLE;
+            std::array<VkDynamicState, 2> dynamics { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+            
+            VkPipelineDynamicStateCreateInfo dynamic_states{
+                VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, nullptr, 0, 
+                dynamics.size(), dynamics.data()
+            };
+
+            VkGraphicsPipelineCreateInfo info{
+                VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, nullptr, 0, 
+                shader_stages.size(), shader_stages.data(), &vertex_state, &assembly_state, nullptr, 
+                &viewport_state, &rasterizer_state, &multisampling_state, &depth_stencil_state, &colour_blending, &dynamic_states, 
+                depth_pass.layout, depth_pass.renderpass, 0, nullptr, 0  
+            };
+
             VK_ASSERT(vkCreateGraphicsPipelines(engine.device, nullptr, 1, &info, nullptr, &depth_pass.pipeline));
 
             vkDestroyShaderModule(engine.device, vert_module, nullptr);
@@ -548,25 +211,21 @@ Renderer::Renderer() {
         { // create framebuffers
             std::array<VkImageView, 1> attachments;
 
-            VkFramebufferCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            info.pNext = nullptr;
-            info.flags = 0;
-            info.layers = 1;
-            info.renderPass = depth_pass.renderpass;
-            info.width = swapchain.extent.x;
-            info.height = swapchain.extent.y;
-            info.pAttachments = attachments.data();
-            info.attachmentCount = attachments.size(); 
-            
-            for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
+            VkFramebufferCreateInfo info{
+                VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, nullptr, 0, 
+                depth_pass.renderpass, attachments.size(), attachments.data(), 
+                swapchain.extent.x, swapchain.extent.y, 1
+            };
+
+            for (uint32_t i = 0; i < settings.frame_count; ++i) {
                 attachments[i] = depth_attachment.view[i];
                 VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &depth_pass.framebuffer[i]));
             }
         }
     }
 
-    if (settings.cluster_pass_enabled()) { // TODO: cluster pass
+    /*
+    if (settings.culling_pass_enabled) { // TODO: cluster pass
         { // create cmd_buffers
 
         }
@@ -583,22 +242,38 @@ Renderer::Renderer() {
 
         }
     }
+    */
 
-    if (settings.deferred_pass_enabled()) { // TODO: deferred pass
-        { // create cmd_buffers
-
+    if (settings.deferred_pass_enabled) { // TODO: deferred pass
+        { // create cmd buffers
+            VkCommandBufferAllocateInfo info{ 
+                VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, 
+                engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, settings.frame_count
+            };
+            VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, &deferred_pass.cmd_buffer[0]));
         }
 
         { // create semaphores
-
+            VkSemaphoreCreateInfo info{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
+            for (uint32_t i = 0; i < settings.frame_count; ++i) {
+                VK_ASSERT(vkCreateSemaphore(engine.device, &info, nullptr, &deferred_pass.finished[i]));
+            }
         }
 
         { // create fences
 
         }
 
-        { // create layouts
+        { // create pipeline layout
+            std::array<VkDescriptorSetLayout, 3> sets{ engine.camera_layout, engine.transform_layout, engine.material_layout };
+            std::array<VkPushConstantRange, 0> ranges;
+            //ranges[0] = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants) };
 
+            VkPipelineLayoutCreateInfo info{ 
+                VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, nullptr, 0, 
+                sets.size(), sets.data(), ranges.size(), ranges.data()
+            };
+            VK_ASSERT(vkCreatePipelineLayout(engine.device, &info, nullptr, &deferred_pass.layout));
         }
 
         { // create renderpass
@@ -616,62 +291,54 @@ Renderer::Renderer() {
 
     { // forward/present pass
         { // create cmd buffers
-            VkCommandBufferAllocateInfo info{ };
-            info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            info.pNext = nullptr;
-            info.commandPool = engine.graphics.pool;
-            info.commandBufferCount = swapchain.frame_count;
-            info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-
-            VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, lighting_pass.cmd_buffer.data()));
+            VkCommandBufferAllocateInfo info{ 
+                VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, 
+                engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, settings.frame_count
+            };
+            VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, &forward_pass.cmd_buffer[0]));
         }
 
         { // create semaphores
-            VkSemaphoreCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-            info.flags = 0;
-            info.pNext = nullptr;
-            
-            for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-                VK_ASSERT(vkCreateSemaphore(engine.device, &info, nullptr, &lighting_pass.finished[i]));
-                VK_ASSERT(vkCreateSemaphore(engine.device, &info, nullptr, &lighting_pass.image_available[i]));
+            VkSemaphoreCreateInfo info{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
+            for (uint32_t i = 0; i < settings.frame_count; ++i) {
+                VK_ASSERT(vkCreateSemaphore(engine.device, &info, nullptr, &forward_pass.finished[i]));
+                VK_ASSERT(vkCreateSemaphore(engine.device, &info, nullptr, &forward_pass.image_available[i]));
             }
         }
 
         { // create fences
-            VkFenceCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-            info.pNext = nullptr;
-            info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-            for (uint32_t i = 0; i < swapchain.frame_count; ++i)
-                vkCreateFence(engine.device, &info, nullptr, &lighting_pass.in_flight[i]);
+            VkFenceCreateInfo info{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
+            for (uint32_t i = 0; i < settings.frame_count; ++i) {
+                VK_ASSERT(vkCreateFence(engine.device, &info, nullptr, &forward_pass.in_flight[i]));
+            }
         }
 
         { // create pipeline layout
             std::array<VkDescriptorSetLayout, 3> sets{ engine.camera_layout, engine.transform_layout, engine.material_layout };
-            std::array<VkPushConstantRange, 1> ranges;
+            std::array<VkPushConstantRange, 0> ranges;
+            //ranges[0] = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants) };
 
-            ranges[0].size = sizeof(PushConstants);
-            ranges[0].offset = 0;
-            ranges[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-            VkPipelineLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.flags = 0;
-            info.pushConstantRangeCount = ranges.size();
-            info.pPushConstantRanges = ranges.data();
-            info.setLayoutCount = sets.size();
-            info.pSetLayouts = sets.data();
-
-            VK_ASSERT(vkCreatePipelineLayout(engine.device, &info, nullptr, &lighting_pass.layout));
+            VkPipelineLayoutCreateInfo info{ 
+                VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, nullptr, 0, 
+                sets.size(), sets.data(), ranges.size(), ranges.data()
+            };
+            VK_ASSERT(vkCreatePipelineLayout(engine.device, &info, nullptr, &forward_pass.layout));
         }
 
-        uint32_t attachment_count = 0;
         { // create renderpass
-            std::array<VkAttachmentDescription, 6> attachment_info; // max 6: swapchain, msaa, depth, albedo, normal, specular  
+            std::array<VkAttachmentDescription, 6> attachment_info;
             VkAttachmentReference colour_ref, depth_ref, resolve_ref;
             std::array<VkAttachmentReference, 3>  input_ref;
+            
+            VkSubpassDescription subpass {
+                0, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 
+                input_ref.data(), 1, &colour_ref, nullptr, &depth_ref, 0, nullptr
+            };
+
+            VkRenderPassCreateInfo info{
+                VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, nullptr, 0, 
+                0, attachment_info.data(), 1, &subpass, 0, nullptr
+            };
 
             /*
             attachment 0 always colour attachment, -> can be msaa_staging_attachment or swapchain image depending if msaa enabled
@@ -681,373 +348,268 @@ Renderer::Renderer() {
             */
 
             // bindings
-            { // create colour attachment
-                /*
-                when msaa enabled, the renderpass writes first to the colour attachment and then resolves the 
-                multi sampling into the resolve attachment. So, when msaa is enabled, renderpass maps the colour 
-                to a msaa staging attachment and the resolve to the swapchain image
-                */
-                colour_ref.attachment = attachment_count++;
-                colour_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-                VkAttachmentDescription& colour_info = attachment_info[colour_ref.attachment];
-                colour_info.flags = 0;
-                colour_info.format = swapchain.format;
-                colour_info.samples = settings.sample_count();
-                colour_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-                colour_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-                colour_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                colour_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                colour_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                if (settings.msaa_enabled()) {
-                    colour_info.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                } else {
-                    colour_info.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-                }
-
-            }
-
             { // create depth attachment reference
-                depth_ref.attachment = attachment_count++;
-                depth_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
+                depth_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
+                
                 VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
-                depth_info.flags = 0;
-                depth_info.format = VK_FORMAT_D32_SFLOAT;
-                depth_info.samples = settings.sample_count();
-                depth_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                depth_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                if (settings.z_prepass_enabled()) {
-                    depth_info.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-                    depth_info.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                    depth_info.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                    depth_info.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                if (settings.z_prepass_enabled) {
+                    depth_info = { 
+                        0, VK_FORMAT_D32_SFLOAT, settings.sample_count, 
+                        VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
+                        VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                    }; 
                 } else {
-                    depth_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-                    depth_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-                    depth_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    depth_info.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                    depth_info = { 
+                        0, VK_FORMAT_D32_SFLOAT, settings.sample_count, 
+                        VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
+                        VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                    };
                 }
-
-            }
-
-            if (settings.msaa_enabled()) { // create resolve attachment
-                resolve_ref.attachment = attachment_count++;
-                resolve_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                
-                VkAttachmentDescription& resolve_info = attachment_info[resolve_ref.attachment];
-                resolve_info.flags = 0;
-                resolve_info.format = swapchain.format;
-                resolve_info.samples = VK_SAMPLE_COUNT_1_BIT;
-                resolve_info.loadOp = VK_ATTACHMENT_LOAD_OP_NONE;
-                resolve_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-                resolve_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                resolve_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                resolve_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                resolve_info.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            }
-
-            if (settings.deferred_pass_enabled()) { // create input attachments
-                input_ref[0].attachment = attachment_count++;
-                VkAttachmentDescription& albedo_info = attachment_info[input_ref[0].attachment];
-                
-                albedo_info.flags = 0;
-                albedo_info.format = swapchain.format;
-                albedo_info.samples = VK_SAMPLE_COUNT_1_BIT;
-                albedo_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                albedo_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                albedo_info.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-                albedo_info.storeOp = VK_ATTACHMENT_STORE_OP_NONE;
-                albedo_info.initialLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-                albedo_info.finalLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-                
-
-                input_ref[1].attachment = attachment_count++;
-                VkAttachmentDescription& normal_info = attachment_info[input_ref[1].attachment];
-                
-                normal_info.flags = 0;
-                normal_info.format = VK_FORMAT_R32G32B32_SFLOAT;
-                normal_info.samples = VK_SAMPLE_COUNT_1_BIT;
-                normal_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-                normal_info.storeOp = VK_ATTACHMENT_STORE_OP_NONE;
-                normal_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                normal_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                normal_info.initialLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-                normal_info.finalLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-
-                input_ref[2].attachment = attachment_count++;
-                VkAttachmentDescription& specular_info = attachment_info[input_ref[1].attachment];
-                
-                specular_info.flags = 0;
-                specular_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-                specular_info.samples = VK_SAMPLE_COUNT_1_BIT;
-                specular_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-                specular_info.storeOp = VK_ATTACHMENT_STORE_OP_NONE;
-                specular_info.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                specular_info.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                specular_info.initialLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-                specular_info.finalLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;            
-            }
-
-            std::array<VkSubpassDescription, 1> subpass;
-            subpass[0].flags = 0;
-            subpass[0].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-            subpass[0].pPreserveAttachments = nullptr;
-            subpass[0].preserveAttachmentCount = 0;
-            subpass[0].pInputAttachments = input_ref.data();
-            subpass[0].colorAttachmentCount = 1;
-            subpass[0].pColorAttachments = &colour_ref;
-            subpass[0].pDepthStencilAttachment = &depth_ref;
-
-            if (settings.deferred_pass_enabled()) {
-                subpass[0].inputAttachmentCount = input_ref.size();
-            } else {
-                subpass[0].inputAttachmentCount = 0;
-            }
-
-            if (settings.msaa_enabled()) {
-                subpass[0].pResolveAttachments = &resolve_ref;
-            } else {
-                subpass[0].pResolveAttachments = nullptr;
             }
             
+            /*
+            when msaa enabled, the renderpass writes first to the colour attachment and then resolves the 
+            multi sampling into the resolve attachment. So, when msaa is enabled, renderpass maps the colour 
+            to a msaa staging attachment and the resolve to the swapchain image
+            */
+            if (settings.msaa_enabled) {
+                colour_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+                
+                VkAttachmentDescription& colour_info = attachment_info[colour_ref.attachment];
+                colour_info = { 
+                    0, swapchain.format, settings.sample_count, 
+                    VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE,
+                    VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                };
 
-            VkRenderPassCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-            info.pNext = nullptr;
-            info.flags = 0;
-            info.attachmentCount = attachment_count;
-            info.pAttachments = attachment_info.data();
-            info.subpassCount = subpass.size();
-            info.pSubpasses = subpass.data();
-            info.dependencyCount = 0;
-            info.pDependencies = nullptr;
+                resolve_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+            
+                VkAttachmentDescription& resolve_info = attachment_info[resolve_ref.attachment];
+                resolve_info = { 
+                    0, swapchain.format, VK_SAMPLE_COUNT_1_BIT, 
+                    VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_STORE,
+                    VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+                };
 
-            VK_ASSERT(vkCreateRenderPass(engine.device, &info, nullptr, &lighting_pass.renderpass));
+                subpass.pResolveAttachments = &resolve_ref;
+            } else {
+                colour_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+                
+                VkAttachmentDescription& colour_info = attachment_info[colour_ref.attachment];
+                colour_info = { 
+                    0, swapchain.format, settings.sample_count, 
+                    VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE,
+                    VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+                };
+            }
+
+
+            if (settings.deferred_pass_enabled) { // create input attachments
+                VkAttachmentReference& albedo_ref = input_ref[subpass.inputAttachmentCount++];
+                albedo_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+                VkAttachmentDescription& albedo_info = attachment_info[albedo_ref.attachment];
+                albedo_info = {
+                    0, VK_FORMAT_R8G8B8A8_UNORM, settings.sample_count, 
+                    VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
+                    VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                };
+
+                VkAttachmentReference& normal_ref = input_ref[subpass.inputAttachmentCount++];
+                normal_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+                VkAttachmentDescription& normal_info = attachment_info[normal_ref.attachment];
+                normal_info = {
+                    0, VK_FORMAT_R8G8B8A8_UNORM, settings.sample_count, 
+                    VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
+                    VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                };
+
+                VkAttachmentReference& specular_ref = input_ref[subpass.inputAttachmentCount++];
+                specular_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+                VkAttachmentDescription& specular_info = attachment_info[specular_ref.attachment];
+                specular_info = {
+                    0, VK_FORMAT_R8G8B8A8_UNORM, settings.sample_count, 
+                    VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
+                    VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                };       
+            }
+            
+            VK_ASSERT(vkCreateRenderPass(engine.device, &info, nullptr, &forward_pass.renderpass));
         }
 
         { // create pipeline
             VkShaderModule vert_module;
             VkShaderModule frag_module;
-            if (settings.deferred_pass_enabled()) {
-                vert_module = create_shader_module("res/import/shaders/present.vert.spv");
+            if (settings.deferred_pass_enabled) {
+                vert_module = create_shader_module("res/import/shaders/fullscreen.vert.spv");
                 frag_module = create_shader_module("res/import/shaders/present.frag.spv");
             } else {
-                vert_module = create_shader_module("res/import/shaders/forward.vert.spv");
+                vert_module = create_shader_module("res/import/shaders/transform.vert.spv");
                 frag_module = create_shader_module("res/import/shaders/forward.frag.spv");
             }
 
             std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages;
-            // vertex stage
-            shader_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            shader_stages[0].pNext = nullptr;
-            shader_stages[0].flags = 0;
-            shader_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-            shader_stages[0].module = vert_module;
-            shader_stages[0].pName = "main";
-            shader_stages[0].pSpecializationInfo = nullptr;
-            // fragment stage
-            shader_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            shader_stages[1].pNext = nullptr;
-            shader_stages[1].flags = 0;
-            shader_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-            shader_stages[1].module = frag_module;
-            shader_stages[1].pName = "main";
-            shader_stages[1].pSpecializationInfo = nullptr;
+            shader_stages[0] = {
+                VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, 
+                VK_SHADER_STAGE_VERTEX_BIT, vert_module, "main", nullptr
+            };
+            shader_stages[1] = {
+                VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, 
+                VK_SHADER_STAGE_FRAGMENT_BIT, frag_module, "main", nullptr
+            };
 
-            uint32_t vertex_attrib_count = 0, vertex_binding_count = 0;
             std::array<VkVertexInputBindingDescription, 1> vertex_binding;
             std::array<VkVertexInputAttributeDescription, 4> vertex_attrib;
+            VkPipelineVertexInputStateCreateInfo vertex_state;
 
-            if (settings.render_mode == RenderMode::FORWARD) {
-                vertex_binding[0].binding = 0;
-                vertex_binding[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-                vertex_binding[0].stride = sizeof(Vertex);
-                ++vertex_binding_count;
+            if (!settings.deferred_pass_enabled) {
+                vertex_binding[0] = { 0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX };
 
-                vertex_attrib[vertex_attrib_count].binding = 0;
-                vertex_attrib[vertex_attrib_count].format = VK_FORMAT_R32G32B32_SFLOAT;
-                vertex_attrib[vertex_attrib_count].location = 0;
-                vertex_attrib[vertex_attrib_count].offset = offsetof(Vertex, position);
-                ++vertex_attrib_count;
-
-                vertex_attrib[vertex_attrib_count].binding = 0;
-                vertex_attrib[vertex_attrib_count].format = VK_FORMAT_R32G32_SFLOAT;
-                vertex_attrib[vertex_attrib_count].location = 1;
-                vertex_attrib[vertex_attrib_count].offset = offsetof(Vertex, texcoord);
-                ++vertex_attrib_count;
-
-                vertex_attrib[vertex_attrib_count].binding = 0;
-                vertex_attrib[vertex_attrib_count].format = VK_FORMAT_R32G32B32_SFLOAT;
-                vertex_attrib[vertex_attrib_count].location = 2;
-                vertex_attrib[vertex_attrib_count].offset = offsetof(Vertex, normal);
-                ++vertex_attrib_count;
-
-                vertex_attrib[vertex_attrib_count].binding = 0;
-                vertex_attrib[vertex_attrib_count].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-                vertex_attrib[vertex_attrib_count].location = 3;
-                vertex_attrib[vertex_attrib_count].offset = offsetof(Vertex, tangent);
-                ++vertex_attrib_count;
+                vertex_attrib[0] = { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position) };
+                vertex_attrib[1] = { 1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, texcoord) };
+                vertex_attrib[2] = { 2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, normal) };
+                vertex_attrib[3] = { 3, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Vertex, tangent) };
+            
+                vertex_state = {
+                    VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, nullptr, 0, 
+                    vertex_binding.size(), vertex_binding.data(), vertex_attrib.size(), vertex_attrib.data()
+                };
+            } else {
+                vertex_state = {
+                    VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, nullptr, 0, 
+                    0, nullptr, 0, nullptr
+                };
             }
+
+            VkPipelineInputAssemblyStateCreateInfo assembly_state {
+                VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, nullptr, 0, 
+                VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE
+            };
+
+            VkPipelineViewportStateCreateInfo viewport_state{
+                VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, nullptr, 0,
+                1, nullptr, 1, nullptr
+            };
+
+            VkPipelineRasterizationStateCreateInfo rasterizer_state{
+                VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO, nullptr, 0,
+                VK_FALSE, VK_FALSE, VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE, 
+                VK_FALSE, 0.0f, 0.0f, 0.0f, 1.0f
+            };
+
+            VkPipelineMultisampleStateCreateInfo multisampling_state{
+                VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO, nullptr, 0,
+                settings.sample_count, VK_FALSE
+            };
+
+            VkPipelineDepthStencilStateCreateInfo depth_stencil_state{
+                VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO, nullptr, 0,
+                VK_TRUE, settings.z_prepass_enabled ? VK_FALSE : VK_TRUE, VK_COMPARE_OP_LESS, 
+                VK_FALSE, VK_FALSE
+            };
+
+            std::array<VkPipelineColorBlendAttachmentState, 1> attachment_blend;
+            attachment_blend[0] = { VK_FALSE };
+            attachment_blend[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
             
-            VkPipelineVertexInputStateCreateInfo vertex_input{};
-            vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-            vertex_input.vertexBindingDescriptionCount = vertex_binding_count;
-            vertex_input.pVertexBindingDescriptions = vertex_binding.data();
-            vertex_input.vertexAttributeDescriptionCount = vertex_attrib_count;
-            vertex_input.pVertexAttributeDescriptions = vertex_attrib.data();
+            VkPipelineColorBlendStateCreateInfo blend_state{
+                VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, nullptr, 0, 
+                VK_FALSE, VK_LOGIC_OP_COPY, attachment_blend.size(), attachment_blend.data()
+            };
 
-            VkPipelineInputAssemblyStateCreateInfo assembly{};
-            assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-            assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-            assembly.primitiveRestartEnable = VK_FALSE;
-
-            VkPipelineViewportStateCreateInfo viewport_state{};
-            viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-            viewport_state.viewportCount = 1;
-            viewport_state.scissorCount = 1;
-
-            VkPipelineRasterizationStateCreateInfo rasterizer{};
-            rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-            rasterizer.depthClampEnable = VK_FALSE;
-            rasterizer.rasterizerDiscardEnable = VK_FALSE;
-            rasterizer.polygonMode = VK_POLYGON_MODE_FILL; // TODO: wireframe debug mode
-            rasterizer.lineWidth = 1.0f;
-            rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-            rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE; // COUNTER_
-            rasterizer.depthBiasEnable = VK_FALSE;
-
-            VkPipelineMultisampleStateCreateInfo multisampling{};
-            multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-            multisampling.sampleShadingEnable = VK_FALSE; // ? I dont understand what this does at all
-            multisampling.rasterizationSamples = settings.sample_count();
-
-            VkPipelineDepthStencilStateCreateInfo depth_stencil{};
-            depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-            depth_stencil.depthTestEnable = VK_TRUE;
-            depth_stencil.depthWriteEnable = VK_TRUE;
-            depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
-            depth_stencil.depthBoundsTestEnable = VK_FALSE;
-            depth_stencil.stencilTestEnable = VK_FALSE;
-
-            VkPipelineColorBlendAttachmentState resolve_attachment{};
-            resolve_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            resolve_attachment.blendEnable = VK_FALSE;
+            std::array<VkDynamicState, 2> dynamics { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
             
-            VkPipelineColorBlendStateCreateInfo colour_blending{};
-            colour_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-            colour_blending.logicOpEnable = VK_FALSE;
-            colour_blending.logicOp = VK_LOGIC_OP_COPY;
-            colour_blending.attachmentCount = 1;
-            colour_blending.pAttachments = &resolve_attachment;
-            colour_blending.blendConstants[0] = 0.0f;
-            colour_blending.blendConstants[1] = 0.0f;
-            colour_blending.blendConstants[2] = 0.0f;
-            colour_blending.blendConstants[3] = 0.0f;
+            VkPipelineDynamicStateCreateInfo dynamic_state{
+                VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, nullptr, 0, 
+                dynamics.size(), dynamics.data()
+            };
 
-            VkDynamicState dynamic_states[] { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-            
-            VkPipelineDynamicStateCreateInfo dynamics{};
-            dynamics.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-            dynamics.dynamicStateCount = 2;
-            dynamics.pDynamicStates = dynamic_states;
-
-            VkGraphicsPipelineCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-            info.stageCount = shader_stages.size();
-            info.pStages = shader_stages.data();
-            info.pVertexInputState = &vertex_input;
-            info.pInputAssemblyState = &assembly;
-            info.pViewportState = &viewport_state;
-            info.pRasterizationState = &rasterizer;
-            info.pMultisampleState = &multisampling;
-            info.pDepthStencilState = &depth_stencil;
-            info.pColorBlendState = &colour_blending;
-            info.pDynamicState = &dynamics;
-            info.layout = lighting_pass.layout;
-            info.renderPass = lighting_pass.renderpass;
-            info.subpass = 0;
-            info.basePipelineHandle = VK_NULL_HANDLE;
-            VK_ASSERT(vkCreateGraphicsPipelines(engine.device, nullptr, 1, &info, nullptr, &lighting_pass.pipeline));
+            VkGraphicsPipelineCreateInfo info{
+                VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, nullptr, 0,
+                shader_stages.size(), shader_stages.data(), &vertex_state, &assembly_state, nullptr, &viewport_state, 
+                &rasterizer_state, &multisampling_state, &depth_stencil_state, &blend_state, &dynamic_state, 
+                forward_pass.layout, forward_pass.renderpass
+            };
+            VK_ASSERT(vkCreateGraphicsPipelines(engine.device, nullptr, 1, &info, nullptr, &forward_pass.pipeline));
 
             vkDestroyShaderModule(engine.device, vert_module, nullptr);
             vkDestroyShaderModule(engine.device, frag_module, nullptr);
         }
 
         { // create framebuffers
-            VkImageView attachments[6];
+            std::array<VkImageView, 6> attachments;
 
-            VkFramebufferCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            info.pNext = nullptr;
-            info.flags = 0;
-            info.layers = 1;
-            info.renderPass = lighting_pass.renderpass;
-            info.width = swapchain.extent.x;
-            info.height = swapchain.extent.y;                
-            info.pAttachments = attachments;
-            info.attachmentCount = attachment_count;
+            VkFramebufferCreateInfo info{
+                VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, nullptr, 0, 
+                forward_pass.renderpass, 0, attachments.data(), 
+                swapchain.extent.x, swapchain.extent.y, 1  
+            };
+            forward_pass.framebuffer.resize(std::lcm(settings.frame_count, swapchain.image_count));
 
-            lighting_pass.framebuffer.resize(std::lcm(swapchain.frame_count, swapchain.image_count));
-
-            for (uint32_t i = 0; i < lighting_pass.framebuffer.size(); ++i) {
-
-                uint32_t frame_i = i % swapchain.frame_count;
+            for (uint32_t i = 0; i < forward_pass.framebuffer.size(); ++i) {
+                uint32_t frame_i = i % settings.frame_count;
                 uint32_t image_i = i % swapchain.image_count;
                 
-                uint32_t attachment_index = 0;
-                if (settings.msaa_enabled()) { // colour attachment
-                    attachments[attachment_index++] = msaa_attachment.view[frame_i];
-                } else {
-                    attachments[attachment_index++] = swapchain.views[image_i];
-                }
+                info.attachmentCount = 0;
 
                 // depth attachment
-                attachments[attachment_index++] = depth_attachment.view[frame_i];
+                attachments[info.attachmentCount++] = depth_attachment.view[frame_i];
                 
-                // resolve attachment
-                if (settings.msaa_enabled()) {
-                    attachments[attachment_index++] = swapchain.views[image_i];
+                if (settings.msaa_enabled) { // colour attachment
+                    attachments[info.attachmentCount++] = msaa_attachment.view[frame_i];
                 }
+
+                // colour/resolve attachment
+                attachments[info.attachmentCount++] = swapchain.view[image_i];
 
                 // input attachments
-                if (settings.deferred_pass_enabled()) {
-                    attachments[attachment_index++] = albedo_attachment.view[frame_i];
-                    attachments[attachment_index++] = normal_attachment.view[frame_i];
-                    attachments[attachment_index++] = specular_attachment.view[frame_i];
+                if (settings.deferred_pass_enabled) {
+                    attachments[info.attachmentCount++] = albedo_attachment.view[frame_i];
+                    attachments[info.attachmentCount++] = normal_attachment.view[frame_i];
+                    attachments[info.attachmentCount++] = specular_attachment.view[frame_i];
                 }
 
-                VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &lighting_pass.framebuffer[i]));
+                VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &forward_pass.framebuffer[i]));
             }
         }
     }
 }
 
 Renderer::~Renderer() {
-    if (settings.z_prepass_enabled()) { // destroy depth pass
-        for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
+    if (settings.z_prepass_enabled) { // destroy depth pass
+        for (uint32_t i = 0; i < settings.frame_count; ++i) {
             vkDestroyFramebuffer(engine.device, depth_pass.framebuffer[i], nullptr);
         }
     }
 
-    if (settings.deferred_pass_enabled()) { // destroy deferred pass
-        for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
+    if (settings.deferred_pass_enabled) { // destroy deferred pass
+        for (uint32_t i = 0; i < settings.frame_count; ++i) {
             vkDestroyFramebuffer(engine.device, deferred_pass.framebuffer[i], nullptr);
         }
     }
 
-    if (settings.cluster_count.x > 1 || settings.cluster_count.y > 1 || settings.cluster_count.z > 1) { // destroy culling pass
+    if (false) { // destroy culling pass
 
     }
 
     { // destroy present pass
-        for (auto framebuffer : lighting_pass.framebuffer) {
+        for (auto framebuffer : forward_pass.framebuffer) {
             vkDestroyFramebuffer(engine.device, framebuffer, nullptr);
         }
 
-        for (uint32_t i = 0; i < swapchain.frame_count; ++i) {
-            vkDestroySemaphore(engine.device, lighting_pass.image_available[i], nullptr);
-            vkDestroyFence(engine.device, lighting_pass.in_flight[i], nullptr);
+        for (uint32_t i = 0; i < settings.frame_count; ++i) {
+            vkDestroySemaphore(engine.device, forward_pass.image_available[i], nullptr);
+            vkDestroyFence(engine.device, forward_pass.in_flight[i], nullptr);
         }
     }
 }
@@ -1055,10 +617,10 @@ Renderer::~Renderer() {
 void Renderer::draw() {
     const uint64_t timeout = 1000000000;
     
-    VK_ASSERT(vkWaitForFences(engine.device, 1, &lighting_pass.in_flight[frame_index], true, timeout));
+    VK_ASSERT(vkWaitForFences(engine.device, 1, &forward_pass.in_flight[frame_index], true, timeout));
     
     uint32_t image_index;
-    VkResult res = vkAcquireNextImageKHR(engine.device, swapchain.swapchain, timeout, lighting_pass.image_available[frame_index], nullptr, &image_index);
+    VkResult res = vkAcquireNextImageKHR(engine.device, swapchain.swapchain, timeout, forward_pass.image_available[frame_index], nullptr, &image_index);
 
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
         swapchain.recreate();
@@ -1077,115 +639,119 @@ void Renderer::draw() {
         }
     }
 
-    VK_ASSERT(vkResetFences(engine.device, 1, &lighting_pass.in_flight[frame_index]));
+    VK_ASSERT(vkResetFences(engine.device, 1, &forward_pass.in_flight[frame_index]));
     
-    if (settings.z_prepass_enabled()) {
+    if (settings.z_prepass_enabled) {
         depth_pass.record(frame_index);
         
         uint32_t wait_count = 0;
-        VkSemaphore semaphores[1];
-        VkPipelineStageFlags stages[1];
+        std::array<VkSemaphore, 1> semaphores;
+        std::array<VkPipelineStageFlags, 1> stages;
         
         { // wait on image available
             stages[wait_count] =  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; 
-            semaphores[wait_count] = lighting_pass.image_available[frame_index];
+            semaphores[wait_count] = forward_pass.image_available[frame_index];
             ++wait_count;
         }
         
-        depth_pass.submit(frame_index, { semaphores, wait_count }, { stages, wait_count });
+        VkSubmitInfo info{
+            VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
+            wait_count, semaphores.data(), stages.data(), 
+            1, &depth_pass.cmd_buffer[frame_index], 
+            1, &depth_pass.finished[frame_index]
+        };
+        VK_ASSERT(vkQueueSubmit(engine.graphics.queue, 1, &info, nullptr));
     }
     
-    if (settings.deferred_pass_enabled()) { // deferred pass 
+    if (settings.deferred_pass_enabled) { // deferred pass 
         deferred_pass.record(frame_index);
 
-        VkSemaphore wait_semaphore[] = { depth_pass.finished[frame_index] }; // wait on depth pass
-        VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-        deferred_pass.submit(frame_index, wait_semaphore, wait_stages, nullptr);
+        std::array<VkSemaphore, 1> wait_semaphores = { depth_pass.finished[frame_index] }; // wait on depth pass
+        std::array<VkPipelineStageFlags, 1> wait_stages = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+        
+        VkSubmitInfo info{
+            VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
+            1, wait_semaphores.data(), wait_stages.data(),
+            1, &deferred_pass.cmd_buffer[frame_index], 
+            1, &deferred_pass.finished[frame_index]
+        };
+
+        VK_ASSERT(vkQueueSubmit(engine.compute.queue, 1, &info, nullptr));
     }
 
-    if (settings.cluster_count.x > 1 || settings.cluster_count.y > 1 || settings.cluster_count.z > 1) { // cluster pass
+    if (settings.culling_pass_enabled) { // cluster pass
         culling_pass.record(frame_index);
 
-        VkSemaphore wait_semaphore[] = { depth_pass.finished[frame_index] }; // wait on depth pass
-        VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-        culling_pass.submit(frame_index, wait_semaphore, wait_stages, nullptr);
+        std::array<VkSemaphore, 1> wait_semaphores = { depth_pass.finished[frame_index] }; // wait on depth pass
+        std::array<VkPipelineStageFlags, 1> wait_stages = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+        
+        VkSubmitInfo info{
+            VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
+            1, wait_semaphores.data(), wait_stages.data(),
+            1, &culling_pass.cmd_buffer[frame_index],
+            1, &culling_pass.finished[frame_index]
+        };
+
+        VK_ASSERT(vkQueueSubmit(engine.compute.queue, 1, &info, nullptr));
     }
     
-    { // lighting pass
-        lighting_pass.record(frame_index);
+    { // forward pass
+        forward_pass.record(frame_index);
 
         uint32_t wait_count = 0;
-        std::array<VkSemaphore, 3> semaphores;
-        std::array<VkPipelineStageFlags, 3> stages;
+        std::array<VkSemaphore, 2> semaphores;
+        std::array<VkPipelineStageFlags, 2> stages;
 
         // note: deferred pass either waits on z_prepass or populates the depth_pass itself
-        if (settings.deferred_pass_enabled()) { // wait on deferred pass
+        if (settings.deferred_pass_enabled) { // wait on deferred pass
             stages[wait_count] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             semaphores[wait_count] = deferred_pass.finished[frame_index];
             ++wait_count;
-        } else if (settings.z_prepass_enabled()) { // wait on depth pass
+        } else if (settings.z_prepass_enabled) { // wait on depth pass
             stages[wait_count] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             semaphores[wait_count] = depth_pass.finished[frame_index];
             ++wait_count;
-        } else {
+        } else { // first command
             stages[wait_count] =  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; 
-            semaphores[wait_count] = lighting_pass.image_available[frame_index];
+            semaphores[wait_count] = forward_pass.image_available[frame_index];
             ++wait_count;
         }
         
-        if (settings.cluster_count.x > 1 || settings.cluster_count.y > 1 || settings.cluster_count.z > 1) { // wait on culling pass
+        if (settings.culling_pass_enabled) { // wait on culling pass
             stages[wait_count] = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             semaphores[wait_count] = culling_pass.finished[frame_index];
             ++wait_count;
         }
 
-        lighting_pass.submit(frame_index, { semaphores.data(), wait_count }, { stages.data(), wait_count }, lighting_pass.in_flight[frame_index]);
+        VkSubmitInfo info{
+            VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
+            wait_count, semaphores.data(), stages.data(), 
+            1, &forward_pass.cmd_buffer[frame_index], 
+            1, &forward_pass.finished[frame_index]
+        };
+        VK_ASSERT(vkQueueSubmit(engine.graphics.queue, 1, &info, forward_pass.in_flight[frame_index]));
     }
     
     { // present to screen
-        std::array<VkSemaphore, 1> wait { lighting_pass.finished[frame_index] };
-        
-        VkPresentInfoKHR info{};
-        info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        info.pNext = nullptr;
-        info.waitSemaphoreCount = 1;
-        info.pWaitSemaphores = wait.data();
-        info.swapchainCount = wait.size();
-        info.pSwapchains = &swapchain.swapchain;
-        info.pImageIndices = &image_index;
-        info.pResults = nullptr;
-        
+        VkPresentInfoKHR info{ 
+            VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, nullptr, 
+            1, &forward_pass.finished[frame_index], 
+            1, &swapchain.swapchain, &image_index, 
+            nullptr
+        };
         VkResult res = vkQueuePresentKHR(engine.present.queue, &info);
 
         if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR) {
             swapchain.recreate();
-            // recreate:
-            // - attachments
-            // - framebuffers
+            //recreate();
         } else {
             VK_ASSERT(res);
         }
     }
     
-    frame_index = (frame_index + 1) % swapchain.frame_count; // get next frame data set
+    frame_index = (frame_index + 1) % settings.frame_count; // get next frame data set
 }
 
-
-
-Renderer::TextureAttachment::~TextureAttachment() {
-    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT && memory[i]; ++i) {
-        vkDestroyImage(engine.device, image[i], nullptr);
-        vkDestroyImageView(engine.device, view[i], nullptr);
-        vkFreeMemory(engine.device, memory[i], nullptr);
-    }
-}
-
-Renderer::BufferAttachment::~BufferAttachment() {
-    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT && memory[i]; ++i) {
-        vkDestroyBuffer(engine.device, buffer[i], nullptr);
-        vkFreeMemory(engine.device, memory[i], nullptr);
-    }
-}
 
 Renderer::GraphicPipeline::~GraphicPipeline() {
     uint32_t frame_count;
@@ -1200,25 +766,6 @@ Renderer::GraphicPipeline::~GraphicPipeline() {
 
     for (uint32_t i = 0; i < frame_count; ++i)
         vkDestroySemaphore(engine.device, finished[i], nullptr);
-}
-
-void Renderer::GraphicPipeline::submit(
-    uint32_t frame_index, 
-    std::span<VkSemaphore> wait_semaphore, 
-    std::span<VkPipelineStageFlags> wait_stages, 
-    VkFence signal_fence
-) {
-    VkSubmitInfo info{};
-    info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    info.waitSemaphoreCount = wait_semaphore.size();
-    info.pWaitSemaphores = wait_semaphore.data();
-    info.pWaitDstStageMask = wait_stages.data();
-    info.commandBufferCount = 1;
-    info.pCommandBuffers = &cmd_buffer[frame_index];
-    info.signalSemaphoreCount = 1;
-    info.pSignalSemaphores = &finished[frame_index];
-    
-    vkQueueSubmit(engine.graphics.queue, 1, &info, signal_fence);
 }
 
 Renderer::ComputePipeline::~ComputePipeline() {
@@ -1266,18 +813,14 @@ void Renderer::DepthPass::record(uint32_t frame_index) {
     }
 
     { // begin renderpass
-        VkClearValue clear = { 1.0f };
+        VkClearValue clear = { 1.0f };        
         
-        
-        VkRenderPassBeginInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        info.renderPass = renderpass;
-        info.renderArea.offset = { 0, 0 };
-        info.renderArea.extent = { swapchain.extent.x, swapchain.extent.y };
-        info.framebuffer = framebuffer[frame_index];
-        info.pClearValues = &clear;
-        info.clearValueCount = 1;
-
+        VkRenderPassBeginInfo info{
+            VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, nullptr, 
+            renderpass, framebuffer[frame_index], 
+            { { 0, 0, }, { swapchain.extent.x, swapchain.extent.y } }, 
+            1, &clear
+        };
         vkCmdBeginRenderPass(cmd_buffer[frame_index], &info, VK_SUBPASS_CONTENTS_INLINE);
     }
 
@@ -1325,7 +868,7 @@ void Renderer::DepthPass::record(uint32_t frame_index) {
     }
 }
 
-void Renderer::ClusterPass::record(uint32_t frame_index) {
+void Renderer::CullingPass::record(uint32_t frame_index) {
     { // reset & begin cmd buffer
         VK_ASSERT(vkResetCommandBuffer(cmd_buffer[frame_index], 0));
         
@@ -1333,8 +876,6 @@ void Renderer::ClusterPass::record(uint32_t frame_index) {
         info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         VK_ASSERT(vkBeginCommandBuffer(cmd_buffer[frame_index], &info));
     }
-
-
 
     VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
 }
@@ -1375,7 +916,7 @@ void Renderer::DeferredPass::record(uint32_t frame_index) {
 
 }
 
-void Renderer::LightingPass::record(uint32_t frame_index) {
+void Renderer::ForwardPass::record(uint32_t frame_index) {
     { // reset & begin cmd buffer
         VK_ASSERT(vkResetCommandBuffer(cmd_buffer[frame_index], 0));
         
@@ -1386,8 +927,8 @@ void Renderer::LightingPass::record(uint32_t frame_index) {
 
     { // begin renderpass
         std::array<VkClearValue, 2> clear;
-        clear[0].color = { 0.05, 0.01, 0.05 };
-        clear[1].depthStencil = { 1.0f, 0 };
+        clear[1].color = { 0.05, 0.01, 0.05 };
+        clear[0].depthStencil = { 1.0f, 0 };
 
         VkRenderPassBeginInfo info{};
         info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
