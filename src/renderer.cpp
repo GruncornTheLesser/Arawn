@@ -104,7 +104,7 @@ Renderer::Renderer() {
                 VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, 
                 engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, settings.frame_count
             };
-            VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, &depth_pass.cmd_buffer[0]));
+            VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, depth_pass.cmd_buffer.data()));
         }
 
         { // create semaphores
@@ -184,9 +184,9 @@ Renderer::Renderer() {
                 settings.sample_count, VK_FALSE
             };
 
-            VkPipelineDepthStencilStateCreateInfo depth_stencil_state{
+            VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {
                 VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO, nullptr, 0, 
-                VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS, VK_FALSE, VK_FALSE
+                VK_TRUE, settings.z_prepass_enabled ? VK_FALSE : VK_TRUE, VK_COMPARE_OP_LESS, VK_FALSE, VK_FALSE
             };
 
             std::array<VkPipelineColorBlendAttachmentState, 0> attachment_blend;
@@ -226,7 +226,7 @@ Renderer::Renderer() {
             };
 
             for (uint32_t i = 0; i < settings.frame_count; ++i) {
-                attachments[i] = depth_attachment.view[i];
+                attachments[0] = depth_attachment.view[i];
                 VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &depth_pass.framebuffer[i]));
             }
         }
@@ -341,10 +341,9 @@ Renderer::Renderer() {
 
             // bindings
             { // create depth attachment reference
-                depth_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
-                
-                VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
                 if (settings.z_prepass_enabled) {
+                    depth_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL };
+                    VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
                     depth_info = {
                         0, VK_FORMAT_D32_SFLOAT, settings.sample_count, 
                         VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
@@ -352,6 +351,8 @@ Renderer::Renderer() {
                         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
                     }; 
                 } else {
+                    depth_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
+                    VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
                     depth_info = { 
                         0, VK_FORMAT_D32_SFLOAT, settings.sample_count, 
                         VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
@@ -452,8 +453,9 @@ Renderer::Renderer() {
 
             VkPipelineDepthStencilStateCreateInfo depth_stencil_state{
                 VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO, nullptr, 0,
-                VK_TRUE, settings.z_prepass_enabled ? VK_FALSE : VK_TRUE, VK_COMPARE_OP_LESS, 
-                VK_FALSE, VK_FALSE
+                settings.deferred_pass_enabled ? VK_FALSE : VK_TRUE, 
+                (settings.z_prepass_enabled || settings.deferred_pass_enabled) ? VK_FALSE : VK_TRUE, 
+                VK_COMPARE_OP_LESS, VK_FALSE, VK_FALSE
             };
 
             std::array<VkPipelineColorBlendAttachmentState, 3> attachment_blend;
@@ -488,7 +490,7 @@ Renderer::Renderer() {
             vkDestroyShaderModule(engine.device, frag_module, nullptr);
         }
 
-        { // framebuffer
+        { // create framebuffers
             std::array<VkImageView, 4> attachments;
 
             VkFramebufferCreateInfo info{
@@ -894,7 +896,7 @@ void Renderer::draw() {
         
         VkSubmitInfo info{
             VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
-            wait_count, wait_semaphores.data(), wait_stages.data(), 
+            wait_count, wait_semaphores.data(), wait_stages.data(),
             1, &depth_pass.cmd_buffer[frame_index], 
             1, &depth_pass.finished[frame_index]
         };
@@ -910,11 +912,11 @@ void Renderer::draw() {
 
         if (settings.z_prepass_enabled) { // wait on depth pass
             wait_semaphores[wait_count] = depth_pass.finished[frame_index];
-            wait_stages[wait_count] =  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; 
+            wait_stages[wait_count] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             ++wait_count;
-        } else { // wait on image available
+        } else { // first command
             wait_semaphores[wait_count] = forward_pass.image_available[frame_index];
-            wait_stages[wait_count] =  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; 
+            wait_stages[wait_count] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; 
             ++wait_count;
         }
                
@@ -940,10 +942,12 @@ void Renderer::draw() {
             wait_semaphores[wait_count] = depth_pass.finished[frame_index];
             wait_stages[wait_count] =  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; 
             ++wait_count;
-        } else { 
+        } else if (settings.deferred_pass_enabled) { 
             wait_semaphores[wait_count] = deferred_pass.finished[frame_index];
             wait_stages[wait_count] =  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; 
             ++wait_count;
+        } else {
+            throw "";
         }
 
         VkSubmitInfo info{
@@ -1139,14 +1143,12 @@ void Renderer::DeferredPass::record(uint32_t frame_index) {
         clear[2].color = { 0.0, 0.0, 0.0, 0.0 };
         clear[3].color = { 0.0, 0.0, 0.0, 0.0 };
 
-        VkRenderPassBeginInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        info.renderPass = renderpass;
-        info.renderArea.offset = { 0, 0 };
-        info.renderArea.extent = { swapchain.extent.x, swapchain.extent.y };
-        info.framebuffer = framebuffer[frame_index];
-        info.pClearValues = clear.data();
-        info.clearValueCount = clear.size();
+        VkRenderPassBeginInfo info{
+            VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, nullptr, 
+            renderpass, framebuffer[frame_index], { { 0, 0 }, 
+            { swapchain.extent.x, swapchain.extent.y } }, 
+            clear.size(), clear.data()
+        };
 
         vkCmdBeginRenderPass(cmd_buffer[frame_index], &info, VK_SUBPASS_CONTENTS_INLINE);
     }

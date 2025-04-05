@@ -5,8 +5,8 @@
     "display mode" : "windowed",
     "frame count" : 2,
     "vsync mode" : "on",
-    "anti alias" : "msaa2",
-    "z prepass" : false,
-    "render mode" : "deferred", 
-    "cluster count" : [ 1, 1, 1 ]
+    "anti alias" : "none",
+    "z prepass" : true,
+    "render mode" : "deferred" 
+    //"cluster count" : [ 1, 1, 1 ]
 }

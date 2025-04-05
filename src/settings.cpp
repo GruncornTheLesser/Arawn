@@ -42,9 +42,9 @@ Settings::Settings(std::filesystem::path fp) {
     }
 
     try {
-        uint32_t frame_count = std::min<int32_t>(settings["frame count"], MAX_FRAMES_IN_FLIGHT);    
+        frame_count = std::min<uint32_t>(settings["frame count"], MAX_FRAMES_IN_FLIGHT);    
     } catch (Json::ParseException e) { 
-        uint32_t frame_count = 2; // default 2
+        frame_count = 2; // default 2
     }
 
     try {
