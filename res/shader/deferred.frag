@@ -56,7 +56,11 @@ void main() {
         roughness = material.roughness;
     }
 
-    out_albedo = vec4(albedo.rgb, 1.0);
-    out_normal = vec4(normal.rgb, metallic);
-    out_position = vec4(frag_position, roughness);
+    out_albedo.rgb = albedo.rgb;
+
+    out_normal.rgb = normal.rgb;
+    out_normal.a   = metallic;
+
+    out_position.rgb = frag_position.rgb;
+    out_position.a   = roughness;
 }

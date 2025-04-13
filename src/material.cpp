@@ -11,7 +11,7 @@ Material::Material() {
     default_material.diffuse[2] = 0.0f;
     default_material.diffuse_texname = "res/image/default.png";
     default_material.normal_texname = "";
-    default_material.roughness = 0.0f;
+    default_material.roughness = 1.0f;
     default_material.roughness_texname = "";
     default_material.metallic = 0.0f;
     default_material.metallic_texname = "";

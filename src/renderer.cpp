@@ -189,6 +189,8 @@ void Renderer::recreate() {
 }
 
 Renderer::~Renderer() {
+    if (!forward_pass.enabled()) return;
+    
     vkWaitForFences(engine.device, frame_count, in_flight.data(), VK_TRUE, UINT64_MAX);
 
     { // destroy sync objects pass
@@ -197,6 +199,48 @@ Renderer::~Renderer() {
             vkDestroyFence(engine.device, in_flight[i], nullptr);
         }
     }
+}
+
+Renderer::Renderer(Renderer&& other) {
+    if (this == &other) return;
+
+
+}
+Renderer& Renderer::operator=(Renderer&& other) {
+    if (this == &other) return *this;
+    
+    if (forward_pass.enabled()) {
+        vkWaitForFences(engine.device, frame_count, in_flight.data(), VK_TRUE, UINT64_MAX);
+
+        { // destroy sync objects pass
+            for (uint32_t i = 0; i < frame_count; ++i) {
+                vkDestroySemaphore(engine.device, image_available[i], nullptr);
+                vkDestroyFence(engine.device, in_flight[i], nullptr);
+            }
+        }
+    }
+
+    msaa_attachment = std::move(other.msaa_attachment);
+    depth_attachment = std::move(other.depth_attachment);
+    albedo_attachment = std::move(other.albedo_attachment);
+    normal_attachment = std::move(other.normal_attachment);
+    position_attachment = std::move(other.position_attachment);
+    cluster_buffer = std::move(other.cluster_buffer);
+    light_buffer = std::move(other.light_buffer);
+
+    uint32_t frame_index = other.frame_index;
+    uint32_t frame_count = other.frame_count;
+
+    attachment_set = std::move(other.attachment_set);
+    image_available = std::move(other.image_available);
+    in_flight = std::move(other.in_flight);
+
+    depth_pass = std::move(other.depth_pass);
+    culling_pass = std::move(other.culling_pass);
+    deferred_pass = std::move(other.deferred_pass);
+    forward_pass = std::move(other.forward_pass);
+
+    return *this;
 }
 
 void Renderer::draw() {

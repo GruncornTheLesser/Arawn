@@ -34,15 +34,28 @@ Controller  controller;
 std::vector<Model> models;
 std::vector<Light> mights;
 
+Model* bunny;
+float bunny_speed = 5.0f;
+uint32_t bunny_up_handle;
+uint32_t bunny_down_handle;
+uint32_t bunny_left_handle;
+uint32_t bunny_right_handle;
+void bunny_move_up(const Update& ev) { bunny->transform.position.z += bunny_speed * ev.delta; }
+void bunny_move_down(const Update& ev) { bunny->transform.position.z -= bunny_speed * ev.delta; }
+void bunny_move_right(const Update& ev) { bunny->transform.position.x += bunny_speed * ev.delta; }
+void bunny_move_left(const Update& ev) { bunny->transform.position.x -= bunny_speed * ev.delta; }
+
+
+
 int main() {
-    //camera.rotation = glm::rotate(camera.rotation, glm::radians(180.0f), glm::vec3(1, 0, 0));
-    
-    Model::Load("res/model/sponza/sponza.obj");
-    //Model::Load("res/model/cube/cube.obj");
-    
-    std::ranges::for_each(models, [&](Model& model) {
-        model.transform.scale = glm::vec3(0.1, 0.1, 0.1);
-    });
+    //Model::Load("res/model/sponza/sponza.obj");
+
+    Model::Load("res/model/cube/cube.obj");
+    {
+        Model& floor = models.back();
+        floor.transform.scale = glm::vec3(80.0f, 0.1f, 80.0f);
+        floor.transform.position = glm::vec3(0, -5.0f, 0.0f);
+    }
 
     while (!window.closed()) {
         window.update();

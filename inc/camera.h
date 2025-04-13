@@ -21,7 +21,7 @@ struct Camera {
     std::array<Uniform, MAX_FRAMES_IN_FLIGHT> uniform;
 
     glm::vec3 position = { 0.0f, 0.0f, 1.0f };
-    glm::quat rotation = { 0.0f, 1.0f, 0.0f, 0.0f };
+    glm::quat rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
 
     float fov = 45.0f; // degrees
     float near = 0.1f;

@@ -5,28 +5,28 @@
 #include "renderer.h"
 
 Controller::Controller() {
-    window.on(KeyUp{ Key::W })   += [&](auto& event) { window.on<Update>() -= move_forward_event_handle; };
-    window.on(KeyDown{ Key::W }) += [&](auto& event) { move_forward_event_handle = window.on<Update>() += move_forward; };
+    window.on(KeyUp{ Key::W })   += [&](auto& event) { window.on<Update>().detach(move_forward_event_handle); };
+    window.on(KeyDown{ Key::W }) += [&](auto& event) { move_forward_event_handle = window.on<Update>().attach(move_forward); };
 
-    window.on(KeyUp{ Key::A })   += [&](auto& event) { window.on<Update>() -= move_left_event_handle; };
-    window.on(KeyDown{ Key::A }) += [&](auto& event) { move_left_event_handle = window.on<Update>() += move_left; };
+    window.on(KeyUp{ Key::A })   += [&](auto& event) { window.on<Update>().detach(move_left_event_handle); };
+    window.on(KeyDown{ Key::A }) += [&](auto& event) { move_left_event_handle = window.on<Update>().attach(move_left); };
 
-    window.on(KeyUp{ Key::S })   += [&](auto& event) { window.on<Update>() -= move_backward_event_handle; };
-    window.on(KeyDown{ Key::S }) += [&](auto& event) { move_backward_event_handle = window.on<Update>() += move_backward; };
+    window.on(KeyUp{ Key::S })   += [&](auto& event) { window.on<Update>().detach(move_backward_event_handle); };
+    window.on(KeyDown{ Key::S }) += [&](auto& event) { move_backward_event_handle = window.on<Update>().attach(move_backward); };
 
-    window.on(KeyUp{ Key::D })   += [&](auto& event) { window.on<Update>() -= move_right_event_handle; };
-    window.on(KeyDown{ Key::D }) += [&](auto& event) { move_right_event_handle = window.on<Update>() += move_right; };
+    window.on(KeyUp{ Key::D })   += [&](auto& event) { window.on<Update>().detach(move_right_event_handle); };
+    window.on(KeyDown{ Key::D }) += [&](auto& event) { move_right_event_handle = window.on<Update>().attach(move_right); };
 
-    window.on(KeyUp{ Key::SPACE })   += [&](auto& event) { window.on<Update>() -= move_up_event_handle; };
-    window.on(KeyDown{ Key::SPACE }) += [&](auto& event) { move_up_event_handle = window.on<Update>() += move_up; };
+    window.on(KeyUp{ Key::SPACE })   += [&](auto& event) { window.on<Update>().detach(move_up_event_handle); };
+    window.on(KeyDown{ Key::SPACE }) += [&](auto& event) { move_up_event_handle = window.on<Update>().attach(move_up); };
 
-    window.on(KeyUp{ Key::L_SHIFT })   += [&](auto& event) { window.on<Update>() -= move_down_event_handle; };
-    window.on(KeyDown{ Key::L_SHIFT }) += [&](auto& event) { move_down_event_handle = window.on<Update>() += move_down; };
+    window.on(KeyUp{ Key::L_SHIFT })   += [&](auto& event) { window.on<Update>().detach(move_down_event_handle); };
+    window.on(KeyDown{ Key::L_SHIFT }) += [&](auto& event) { move_down_event_handle = window.on<Update>().attach(move_down); };
 
     window.on(KeyUp{ Key::L_CTRL })   += [&](auto& event) { controller.move_speed /= 5; };
     window.on(KeyDown{ Key::L_CTRL }) += [&](auto& event) { controller.move_speed *= 5; };
     
-    window.on(MouseButtonUp{ Mouse::BUTTON_LEFT }) += [&](auto& event) { window.on<Update>() -= rotate_event_handle; };
+    window.on(MouseButtonUp{ Mouse::BUTTON_LEFT }) += [&](auto& event) { window.on<Update>().detach(rotate_event_handle); };
     window.on(MouseButtonDown{ Mouse::BUTTON_LEFT }) += [&](auto& event) {
         rotation_origin = window.mouse_position();
         rotation = camera.rotation;
@@ -50,34 +50,34 @@ Controller::Controller() {
         window.set_resolution(resolutions[resolution_index]);
     };
 
-    window.on(KeyDown{ Key::R }) += [&](auto& event) { // decrease resolution
+    window.on(KeyDown{ Key::R }) += [&](auto& event) { // recreate renderer
         settings = Settings("configs/settings.json");
         renderer.recreate();
     };
 }
 
 void Controller::move_forward(const Update& event) { 
+    camera.position += glm::inverse(camera.rotation) * glm::vec3(0, 0, event.delta * -controller.move_speed);
+}
+
+void Controller::move_backward(const Update& event) { 
     camera.position += glm::inverse(camera.rotation) * glm::vec3(0, 0, event.delta * controller.move_speed);
 }
 
 void Controller::move_left(const Update& event) { 
-    camera.position += glm::inverse(camera.rotation) * glm::vec3(event.delta * controller.move_speed, 0, 0);
-}
-
-void Controller::move_backward(const Update& event) { 
-    camera.position += glm::inverse(camera.rotation) * glm::vec3(0, 0, event.delta * -controller.move_speed);
-}
-
-void Controller::move_right(const Update& event) { 
     camera.position += glm::inverse(camera.rotation) * glm::vec3(event.delta * -controller.move_speed, 0, 0);
 }
 
+void Controller::move_right(const Update& event) { 
+    camera.position += glm::inverse(camera.rotation) * glm::vec3(event.delta * controller.move_speed, 0, 0);
+}
+
 void Controller::move_up(const Update& event) { 
-    camera.position += glm::inverse(camera.rotation) * glm::vec3(0.0, event.delta * controller.move_speed, 0);
+    camera.position += glm::inverse(camera.rotation) * glm::vec3(0.0, event.delta * -controller.move_speed, 0);
 }
 
 void Controller::move_down(const Update& event) { 
-    camera.position += glm::inverse(camera.rotation) * glm::vec3(0.0, event.delta * -controller.move_speed, 0);
+    camera.position += glm::inverse(camera.rotation) * glm::vec3(0.0, event.delta * controller.move_speed, 0);
 }
 
 void Controller::rotate(const Update& event) {

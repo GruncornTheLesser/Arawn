@@ -11,8 +11,7 @@ void Camera::update(uint32_t frame_index) {
     Data data;
     data.proj = glm::perspective(glm::radians(fov), (float)swapchain.extent.x / swapchain.extent.y, near, far);
     data.view = glm::mat4_cast(rotation);
-    data.view = glm::translate(data.view, position);
-    data.eye = position;
-
+    data.view = glm::translate(data.view, -position);
+    data.eye = glm::inverse(data.view) * glm::vec4(0, 0, 0, 1);
     uniform[frame_index].buffer.set_value(&data);
 }
