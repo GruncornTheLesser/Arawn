@@ -85,7 +85,7 @@ void Controller::rotate(const Update& event) {
     camera.rotation = controller.rotation;
     
     glm::vec3 up = glm::vec3(0, 1, 0);
-    glm::quat yaw = glm::angleAxis(-delta.x / swapchain.extent.x, up);
+    glm::quat yaw = glm::angleAxis(delta.x / swapchain.extent.x, up);
     camera.rotation *= yaw;
     
     glm::vec3 right = glm::inverse(camera.rotation) * glm::vec3(1, 0, 0);

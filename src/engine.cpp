@@ -495,12 +495,12 @@ Engine::Engine() {
             normal_attachment_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             normal_attachment_binding.pImmutableSamplers = &sampler;
             
-            VkDescriptorSetLayoutBinding& specular_attachment_binding = set_layout_binding[2];
-            specular_attachment_binding.binding = 2;
-            specular_attachment_binding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-            specular_attachment_binding.descriptorCount = 1;
-            specular_attachment_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            specular_attachment_binding.pImmutableSamplers = nullptr;
+            VkDescriptorSetLayoutBinding& position_attachment_binding = set_layout_binding[2];
+            position_attachment_binding.binding = 2;
+            position_attachment_binding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+            position_attachment_binding.descriptorCount = 1;
+            position_attachment_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            position_attachment_binding.pImmutableSamplers = nullptr;
 
             VkDescriptorSetLayoutCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;

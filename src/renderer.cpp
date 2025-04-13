@@ -89,9 +89,9 @@ void Renderer::recreate() {
                 { }
             );
 
-            specular_attachment = TextureAttachment( // metallic, roughness, ... some other stuff
+            position_attachment = TextureAttachment( // metallic, roughness, ... some other stuff
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 
-                VK_FORMAT_R8G8B8A8_UNORM, 
+                VK_FORMAT_R16G16B16A16_SFLOAT, 
                 VK_IMAGE_ASPECT_COLOR_BIT, 
                 settings.sample_count,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -124,7 +124,7 @@ void Renderer::recreate() {
 
                     image_info[0] = { engine.sampler, albedo_attachment.view[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
                     image_info[1] = { engine.sampler, normal_attachment.view[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-                    image_info[2] = { engine.sampler, specular_attachment.view[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+                    image_info[2] = { engine.sampler, position_attachment.view[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
                     write_info[0].dstSet = attachment_set[i];
                     write_info[1].dstSet = attachment_set[i];
@@ -141,7 +141,7 @@ void Renderer::recreate() {
 
             albedo_attachment = TextureAttachment();
             normal_attachment = TextureAttachment();
-            specular_attachment = TextureAttachment();
+            position_attachment = TextureAttachment();
         }
     }
 
@@ -789,12 +789,12 @@ Renderer::DeferredPass::DeferredPass(Renderer& renderer) {
                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
             };
 
-            VkAttachmentReference& specular_ref = colour_ref[subpass.colorAttachmentCount++];
-            specular_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+            VkAttachmentReference& position_ref = colour_ref[subpass.colorAttachmentCount++];
+            position_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
 
-            VkAttachmentDescription& specular_info = attachment_info[specular_ref.attachment];
-            specular_info = {
-                0, VK_FORMAT_R8G8B8A8_UNORM, settings.sample_count, 
+            VkAttachmentDescription& position_info = attachment_info[position_ref.attachment];
+            position_info = {
+                0, VK_FORMAT_R16G16B16A16_SFLOAT, settings.sample_count, 
                 VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -819,7 +819,7 @@ Renderer::DeferredPass::DeferredPass(Renderer& renderer) {
         };
 
         std::array<VkVertexInputBindingDescription, 1> vertex_binding;
-        std::array<VkVertexInputAttributeDescription, 4> vertex_attrib;
+        std::array<VkVertexInputAttributeDescription, 5> vertex_attrib;
         VkPipelineVertexInputStateCreateInfo vertex_state;
 
         vertex_binding[0] = { 0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX };
@@ -827,7 +827,8 @@ Renderer::DeferredPass::DeferredPass(Renderer& renderer) {
         vertex_attrib[0] = { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position) };
         vertex_attrib[1] = { 1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, texcoord) };
         vertex_attrib[2] = { 2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, normal) };
-        vertex_attrib[3] = { 3, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Vertex, tangent) };
+        vertex_attrib[3] = { 3, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, tangent) };
+        vertex_attrib[4] = { 4, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, bi_tangent) };
 
         vertex_state = {
             VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, nullptr, 0, 
@@ -906,7 +907,7 @@ Renderer::DeferredPass::DeferredPass(Renderer& renderer) {
             attachments[0] = renderer.depth_attachment.view[i];
             attachments[1] = renderer.albedo_attachment.view[i];
             attachments[2] = renderer.normal_attachment.view[i];
-            attachments[3] = renderer.specular_attachment.view[i];
+            attachments[3] = renderer.position_attachment.view[i];
             
             VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &framebuffer[i]));
         }
@@ -1207,12 +1208,12 @@ Renderer::ForwardPass::ForwardPass(Renderer& renderer) {
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
             };
 
-            VkAttachmentReference& specular_ref = input_ref[subpass.inputAttachmentCount++];
-            specular_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            VkAttachmentReference& position_ref = input_ref[subpass.inputAttachmentCount++];
+            position_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
-            VkAttachmentDescription& specular_info = attachment_info[specular_ref.attachment];
-            specular_info = {
-                0, VK_FORMAT_R8G8B8A8_UNORM, settings.sample_count, 
+            VkAttachmentDescription& position_info = attachment_info[position_ref.attachment];
+            position_info = {
+                0, VK_FORMAT_R16G16B16A16_SFLOAT, settings.sample_count, 
                 VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -1248,7 +1249,7 @@ Renderer::ForwardPass::ForwardPass(Renderer& renderer) {
         };
 
         std::array<VkVertexInputBindingDescription, 1> vertex_binding;
-        std::array<VkVertexInputAttributeDescription, 4> vertex_attrib;
+        std::array<VkVertexInputAttributeDescription, 5> vertex_attrib;
         VkPipelineVertexInputStateCreateInfo vertex_state;
 
         if (!settings.deferred_pass_enabled) {
@@ -1257,7 +1258,8 @@ Renderer::ForwardPass::ForwardPass(Renderer& renderer) {
             vertex_attrib[0] = { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position) };
             vertex_attrib[1] = { 1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, texcoord) };
             vertex_attrib[2] = { 2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, normal) };
-            vertex_attrib[3] = { 3, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Vertex, tangent) };
+            vertex_attrib[3] = { 3, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, tangent) };
+            vertex_attrib[4] = { 4, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, bi_tangent) };
         
             vertex_state = {
                 VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, nullptr, 0, 
@@ -1356,7 +1358,7 @@ Renderer::ForwardPass::ForwardPass(Renderer& renderer) {
             if (settings.deferred_pass_enabled) {
                 attachments[info.attachmentCount++] = renderer.albedo_attachment.view[frame_i];
                 attachments[info.attachmentCount++] = renderer.normal_attachment.view[frame_i];
-                attachments[info.attachmentCount++] = renderer.specular_attachment.view[frame_i];
+                attachments[info.attachmentCount++] = renderer.position_attachment.view[frame_i];
             }
 
             VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &framebuffer[i]));

@@ -28,56 +28,6 @@ Swapchain::~Swapchain() {
     vkDestroySurfaceKHR(engine.instance, surface, nullptr);
 }
 
-void Swapchain::set_vsync_mode(VsyncMode mode) { 
-    settings.vsync_mode = mode;
-    recreate();
-}
-
-std::vector<VsyncMode> Swapchain::enum_vsync_modes() const {
-    std::vector<VsyncMode> vsync_modes;
-
-    vsync_modes.push_back(VsyncMode::ON); // guaranteed to be supported VK_PRESENT_MODE_FIFO_KHR
-
-    uint32_t count;
-    VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, nullptr));
-    std::vector<VkPresentModeKHR> supported(count);
-    VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, supported.data()));
-
-    if (std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_IMMEDIATE_KHR) != supported.end() || 
-        std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_FIFO_RELAXED_KHR) != supported.end())
-    {
-        vsync_modes.push_back(VsyncMode::OFF);
-    }
-
-    return vsync_modes;   
-}
-
-void Swapchain::set_anti_alias(AntiAlias mode) {
-    settings.anti_alias = mode;
-    recreate();
-}
-
-std::vector<AntiAlias> Swapchain::enum_anti_alias() const {
-    std::vector<AntiAlias> anti_alias_modes = { AntiAlias::NONE }; // AntiAlias::FXAA_2, AntiAlias::FXAA_4, AntiAlias::FXAA_8, AntiAlias::FXAA_16
-    
-    VkPhysicalDeviceProperties properties;
-    vkGetPhysicalDeviceProperties(engine.gpu, &properties);
-
-    if (properties.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_2_BIT)
-        anti_alias_modes.push_back(AntiAlias::MSAA_2);
-
-    if (properties.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_4_BIT)
-        anti_alias_modes.push_back(AntiAlias::MSAA_4);
-
-    if (properties.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_8_BIT)
-        anti_alias_modes.push_back(AntiAlias::MSAA_8);
-
-    if (properties.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_16_BIT)
-        anti_alias_modes.push_back(AntiAlias::MSAA_16);
-
-    return anti_alias_modes;
-}
-
 void Swapchain::recreate() {
     while (window.minimized()) { glfwWaitEvents(); }
     

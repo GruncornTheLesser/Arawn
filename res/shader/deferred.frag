@@ -14,11 +14,11 @@ layout(set = 2, binding = 4) uniform sampler2D normal_map;
 
 layout(location = 0) in vec3 frag_position; // world position
 layout(location = 1) in vec2 frag_texcoord;
-layout(location = 2) in vec3 frag_normal;
+layout(location = 2) in mat3 TBN;
 
-layout(location = 0) out vec4 out_albedo;
-layout(location = 1) out vec4 out_normal;
-layout(location = 2) out vec4 out_specular;
+layout(location = 0) out vec4 out_albedo; // albedo + alpha
+layout(location = 1) out vec4 out_normal; // normal + metallic
+layout(location = 2) out vec4 out_position; // position + roughness
 
 
 const uint albedo_texture_flag = 0x00000001;
@@ -27,26 +27,36 @@ const uint roughness_texture_flag = 0x00000004;
 const uint normal_texture_flag = 0x00000008;
 
 void main() {
+    vec3 albedo;
     if ((material.flags & albedo_texture_flag) == albedo_texture_flag) {
-        out_albedo = vec4(texture(albedo_map, frag_texcoord).rgb, 1);
+        albedo = texture(albedo_map, frag_texcoord).rgb;
     } else {
-        out_albedo = vec4(material.albedo, 1);
+        albedo = material.albedo;
     }
 
-    vec3 normal = frag_normal;
-    //if ((material.flags & normal_texture_flag) == normal_texture_flag) {
-    //    normal = texture(normal_map, frag_texcoord).rgb;
-    //}
+    vec3 normal;
+    if ((material.flags & normal_texture_flag) == normal_texture_flag) {
+        vec3 normal = texture(normal_map, frag_texcoord).rgb * 2.0 - 1.0;
+        normal = normalize(TBN * normal);
+    } else {
+        normal = TBN[2];
+    }
 
+    float metallic;
     if ((material.flags & metallic_texture_flag) == metallic_texture_flag) {
-        out_specular.r = texture(metallic_map, frag_texcoord).r;
+        metallic = texture(metallic_map, frag_texcoord).r;
     } else {
-        out_specular.r = material.metallic;
+        metallic = material.metallic;
     }
 
+    float roughness;
     if ((material.flags & roughness_texture_flag) == roughness_texture_flag) {
-        out_specular.g = texture(roughness_map, frag_texcoord).r;
+        roughness = texture(roughness_map, frag_texcoord).r;
     } else {
-        out_specular.g = material.roughness;
+        roughness = material.roughness;
     }
+
+    out_albedo = vec4(albedo.rgb, 1.0);
+    out_normal = vec4(normal.rgb, metallic);
+    out_position = vec4(frag_position, roughness);
 }

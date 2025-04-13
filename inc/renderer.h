@@ -40,19 +40,24 @@ public:
 
     void recreate();
 
+    void record(uint32_t frame_index);
+
 private:
-    TextureAttachment msaa_attachment;      // enabled when anti alias not NONE
-    TextureAttachment depth_attachment;     // enabled when depth mode not NONE
-    TextureAttachment albedo_attachment;    // enabled when render mode DEFERRED
-    TextureAttachment normal_attachment;    // enabled when render mode DEFERRED
-    TextureAttachment specular_attachment;  // enabled when render mode DEFERRED
+    TextureAttachment msaa_attachment;
+    TextureAttachment depth_attachment;
+    TextureAttachment albedo_attachment;
+    TextureAttachment normal_attachment;
+    TextureAttachment position_attachment;
 
-
-    // BufferAttachment light_buffer;
-    // BufferAttachment cluster_buffer;
+    BufferAttachment cluster_buffer;
+    BufferAttachment light_buffer;
 
     uint32_t frame_index = 0;
     uint32_t frame_count = 0;
+
+    std::array<VK_TYPE(VkDescriptorSet), MAX_FRAMES_IN_FLIGHT> attachment_set;
+    std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> image_available;
+    std::array<VK_TYPE(VkFence), MAX_FRAMES_IN_FLIGHT> in_flight;
 
     struct DepthPass {
         DepthPass() { cmd_buffer[0] = nullptr; }
@@ -64,6 +69,7 @@ private:
         DepthPass& operator=(const DepthPass& other) = delete;
 
         void record(uint32_t frame_index);
+        bool enabled() { return cmd_buffer[0] != nullptr; }
 
         std::array<VK_TYPE(VkCommandBuffer), MAX_FRAMES_IN_FLIGHT> cmd_buffer;
         std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> finished;
@@ -87,6 +93,7 @@ private:
         CullingPass& operator=(const CullingPass& other) = delete;
 
         void record(uint32_t frame_index);
+        bool enabled() { return cmd_buffer[0] != nullptr; }
         
         std::array<VK_TYPE(VkCommandBuffer), MAX_FRAMES_IN_FLIGHT> cmd_buffer;
         std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> finished;
@@ -105,6 +112,7 @@ private:
         DeferredPass& operator=(const DeferredPass& other) = delete;
         
         void record(uint32_t frame_index);
+        bool enabled() { return cmd_buffer[0] != nullptr; }
 
         std::array<VK_TYPE(VkCommandBuffer), MAX_FRAMES_IN_FLIGHT> cmd_buffer;
         std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> finished;
@@ -124,6 +132,7 @@ private:
         ForwardPass& operator=(const ForwardPass& other) = delete;
 
         void record(uint32_t frame_index);
+        bool enabled() { return cmd_buffer[0] != nullptr; }
 
         std::array<VK_TYPE(VkCommandBuffer), MAX_FRAMES_IN_FLIGHT> cmd_buffer;
         std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> finished;
@@ -132,10 +141,6 @@ private:
         VK_TYPE(VkPipelineLayout) layout;
         std::vector<VK_TYPE(VkFramebuffer)> framebuffer;
     } forward_pass;
-
-    std::array<VK_TYPE(VkDescriptorSet), MAX_FRAMES_IN_FLIGHT> attachment_set;
-    std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> image_available;
-    std::array<VK_TYPE(VkFence), MAX_FRAMES_IN_FLIGHT> in_flight;
 };
 
 extern Renderer renderer;

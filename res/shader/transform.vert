@@ -13,11 +13,12 @@ layout (set = 1, binding = 0) uniform Object {
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec2 in_texcoord;
 layout(location = 2) in vec3 in_normal;
-layout(location = 3) in vec4 in_tangent;
+layout(location = 3) in vec3 in_tangent;
+layout(location = 4) in vec3 in_bi_tangent;
 
-layout(location = 0) out vec3 frag_position; // world position
+layout(location = 0) out vec3 frag_position;
 layout(location = 1) out vec2 frag_texcoord;
-layout(location = 2) out vec3 frag_normal;
+layout(location = 2) out mat3 frag_TBN;
 
 
 void main() {
@@ -25,5 +26,10 @@ void main() {
 
     frag_position = vec3(model * vec4(in_position, 1.0));
     frag_texcoord = in_texcoord;
-    frag_normal = normalize(vec3(model * vec4(in_normal, 0.0)));
+    mat3 norm_mat = transpose(inverse(mat3(model)));
+    frag_TBN = mat3(norm_mat * in_tangent, 
+                    norm_mat * in_bi_tangent, 
+                    norm_mat * in_normal
+    );
+
 }

@@ -1,12 +1,12 @@
 {
     "device" : "NVIDIA GeForce RTX 3060 Laptop GPU",
     "resolution" : [ 800, 600 ],
-    "aspect ratio" : "16:9", // 4:3
+    "aspect ratio" : "4:3", // "16:9",
     "display mode" : "windowed",
-    "frame count" : 1,
+    "frame count" : 2,
     "vsync mode" : "off",
-    "anti alias" : "msaa2",
-    "z prepass" : true,
+    "anti alias" : "none",
+    "z prepass" : false,
     "render mode" : "deferred", 
     "culling enabled" : false
     //"cluster count" : [ 1, 1, 1 ],

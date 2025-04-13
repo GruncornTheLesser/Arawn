@@ -12,13 +12,6 @@ public:
     Swapchain(const Swapchain&) = delete;
     Swapchain& operator=(const Swapchain&) = delete;
 
-    // attributes 
-    void set_vsync_mode(VsyncMode mode);
-    std::vector<VsyncMode> enum_vsync_modes() const;
-        
-    void set_anti_alias(AntiAlias mode);
-    std::vector<AntiAlias> enum_anti_alias() const;
-
     void recreate();
 
     glm::uvec2 extent;

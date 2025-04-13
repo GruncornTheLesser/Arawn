@@ -27,12 +27,16 @@ struct TextureAttachment {
 
 struct BufferAttachment {
     BufferAttachment() { buffer[0] = nullptr; }
+    BufferAttachment(void* data, uint32_t size, 
+    VK_ENUM(VkBufferUsageFlags) usage,
+    VK_ENUM(VkMemoryPropertyFlags) memory_property, 
+    std::span<uint32_t> queue_families);
+    
     ~BufferAttachment();
     BufferAttachment(BufferAttachment&& other);
     BufferAttachment& operator=(BufferAttachment&& other);
     BufferAttachment(const BufferAttachment& other) = delete;
     BufferAttachment& operator=(const BufferAttachment& other) = delete;
-
 
     std::array<VK_TYPE(VkBuffer), MAX_FRAMES_IN_FLIGHT> buffer;
     std::array<VK_TYPE(VkDeviceMemory), MAX_FRAMES_IN_FLIGHT> memory;

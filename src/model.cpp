@@ -37,64 +37,65 @@ void Model::Load(std::filesystem::path fp) {
         throw std::runtime_error(warn + err);
     }
 
-    
     for (const auto& obj_model : obj_models) {
-        std::vector<uint32_t> face_indices;
-        std::vector<uint32_t> face_offsets;
+        std::vector<uint32_t> obj_indices;
+        std::vector<uint32_t> obj_offsets;
         std::vector<Mesh> meshes;
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
         std::unordered_map<tinyobj::index_t, uint32_t> unique_vertices;
         
         // initialize // { 0, 1 ... n }
-        face_indices.resize(obj_model.mesh.num_face_vertices.size());
-        std::ranges::iota(face_indices, 0); 
+        obj_indices.resize(obj_model.mesh.num_face_vertices.size());
+        std::ranges::iota(obj_indices, 0); 
 
         // filter out unsuported primitive types(lines and points)
-        face_indices.erase(std::remove_if(face_indices.begin(), face_indices.end(), 
+        obj_indices.erase(std::remove_if(obj_indices.begin(), obj_indices.end(), 
             [&](uint32_t obj_face_index) {
                 return obj_model.mesh.num_face_vertices[obj_face_index] < 3; 
             }
-        ), face_indices.end());
+        ), obj_indices.end());
         
         // sorts by material_id
-        std::ranges::sort(face_indices, [&](uint32_t lhs, uint32_t rhs) {
+        std::ranges::sort(obj_indices, [&](uint32_t lhs, uint32_t rhs) {
             return obj_model.mesh.material_ids[lhs] > obj_model.mesh.material_ids[rhs];
         });
 
         // get vertex index offset for each face
-        face_offsets.resize(obj_model.mesh.num_face_vertices.size(), 0);
-        for (uint32_t i = 1; i < face_indices.size(); ++i) {
-            face_offsets[i] = face_offsets[i - 1] + obj_model.mesh.num_face_vertices[face_indices[i - 1]];
+        obj_offsets.resize(obj_model.mesh.num_face_vertices.size(), 0);
+        for (uint32_t i = 1; i < obj_indices.size(); ++i) {
+            obj_offsets[i] = obj_offsets[i - 1] + obj_model.mesh.num_face_vertices[obj_indices[i - 1]];
         }
         
         // generate triangle faces
-        for (uint32_t face_index : face_indices) {
-            uint32_t vertex_index = face_offsets[face_index]; // obj data vertex index
-            uint32_t next_triangle = vertex_index + obj_model.mesh.num_face_vertices[face_index];
-            uint32_t next_face = vertex_index + obj_model.mesh.num_face_vertices[face_index];
+        for (uint32_t obj_index : obj_indices) {
+            uint32_t vertex_index = obj_offsets[obj_index]; // obj data vertex index
+            uint32_t next_triangle = vertex_index + obj_model.mesh.num_face_vertices[obj_index];
+            uint32_t next_face = vertex_index + obj_model.mesh.num_face_vertices[obj_index];
             
-            for (; vertex_index < next_triangle; ++vertex_index) { // triangle
+            for (; vertex_index < next_triangle; ++vertex_index) {
                 auto& vertex_idx = obj_model.mesh.indices[vertex_index];
                 auto res = unique_vertices.try_emplace(vertex_idx, vertices.size());
                 indices.push_back(res.first->second);
 
                 if (res.second) { // if new vertices
                     auto& vertex = vertices.emplace_back();
-                    if (vertex_idx.vertex_index != -1) {
+                    {
                         std::size_t position_index = vertex_idx.vertex_index * 3;
                         vertex.position = { obj_attrib.vertices[position_index + 0], 
                                             obj_attrib.vertices[position_index + 1], 
                                             obj_attrib.vertices[position_index + 2] 
-                        };
+                        };    
                     }
 
                     if (vertex_idx.normal_index != -1) {
-                        std::size_t normal_index = vertex_idx.normal_index * 2;
+                        std::size_t normal_index = vertex_idx.normal_index * 3;
                         vertex.normal = { obj_attrib.normals[normal_index + 0], 
                                           obj_attrib.normals[normal_index + 1], 
                                           obj_attrib.normals[normal_index + 2]
                         };
+                    } else {
+                        vertex.normal = { 0, 0, 0 };
                     }
 
                     if (vertex_idx.texcoord_index != -1) {
@@ -102,19 +103,56 @@ void Model::Load(std::filesystem::path fp) {
                         vertex.texcoord = { obj_attrib.texcoords[texcoord_index + 0], 
                                      1.0f - obj_attrib.texcoords[texcoord_index + 1]
                         };
+                    } else {
+                        vertex.texcoord = { 0, 0 };
                     }
                 }
             }
         }
         
+        // calculate face tangents/bitangents
+        for (uint32_t i = 0; i < indices.size(); i+=3) {
+            Vertex& v1 = vertices[indices[i + 0]]; 
+            Vertex& v2 = vertices[indices[i + 1]];
+            Vertex& v3 = vertices[indices[i + 2]];
+
+            glm::vec3 edge1 = v2.position - v1.position;
+            glm::vec3 edge2 = v3.position - v1.position;
+
+            glm::vec2 delta1 = v2.texcoord - v1.texcoord;
+            glm::vec2 delta2 = v3.texcoord - v1.texcoord;
+
+            float f = 1.0f / (delta1.x * delta2.y - delta1.y * delta2.x);
+
+            glm::vec3 tangent = f * (delta2.y * edge1 - delta1.y * edge2);
+            glm::vec3 bi_tangent = f * (delta1.x * edge2 - delta2.x * edge1);
+
+            tangent = glm::normalize(tangent);
+            bi_tangent = glm::normalize(bi_tangent);
+
+            v1.tangent += tangent;
+            v2.tangent += tangent;
+            v3.tangent += tangent;
+
+            v1.bi_tangent += bi_tangent;
+            v2.bi_tangent += bi_tangent;
+            v3.bi_tangent += bi_tangent;
+        }
+
+        // normalize tangent/bi_tangent
+        for (Vertex& vertex : vertices) {
+            vertex.tangent = glm::normalize(vertex.tangent);
+            vertex.bi_tangent = glm::normalize(vertex.bi_tangent);
+        }
+
         { // get vertex groups for each mesh
             uint32_t vertex_count = 0;
             
             int curr_material = obj_model.mesh.material_ids[0];
 
-            for (uint32_t face_index : face_indices) {
-                vertex_count += obj_model.mesh.num_face_vertices[face_index];
-                int next_material = obj_model.mesh.material_ids[face_index];
+            for (uint32_t obj_index : obj_indices) {
+                vertex_count += obj_model.mesh.num_face_vertices[obj_index];
+                int next_material = obj_model.mesh.material_ids[obj_index];
                 
                 if (next_material != curr_material) { // for each new material
                     meshes.emplace_back(vertex_count, Material{ &obj_materials[curr_material], dir });
@@ -401,7 +439,6 @@ Model::Transform::Uniform::Uniform()
    set(engine.transform_layout, std::array<std::variant<UniformBuffer*, UniformTexture*>, 1>() = { &buffer }) { }
 
 void Model::Transform::update(uint32_t frame_index) {
-    
     glm::mat4 transform = glm::identity<glm::mat4>();
     transform = glm::mat4_cast(rotation);
     transform = glm::scale(transform, scale);

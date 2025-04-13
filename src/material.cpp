@@ -32,6 +32,7 @@ Material::Material(const tinyobj::material_t* info, std::filesystem::path dir)
     data.albedo = { info->diffuse[0], info->diffuse[1], info->diffuse[2] };
     data.metallic = info->metallic;
     data.roughness = info->roughness;
+    data.flags = 0;
 
     if (!info->diffuse_texname.empty()) data.flags |= Material::ALBEDO_TEXTURE;
     if (!info->metallic_texname.empty()) data.flags |= Material::METALLIC_TEXTURE;
