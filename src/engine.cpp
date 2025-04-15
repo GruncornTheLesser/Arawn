@@ -1,9 +1,10 @@
 #define ARAWN_IMPLEMENTATION
 #include "engine.h"
+#include "settings.h"
 #include <vector>
 #include <algorithm>
 #include <cstring>
-#include "settings.h"
+#include <fstream>
 /*
 1. init glfw
 2. init vulkan instance
@@ -555,6 +556,26 @@ uint32_t Engine::memory_type_index(VkMemoryRequirements& requirements, VkMemoryP
 
     throw std::runtime_error("no supported memory index found");
 }
+
+VkShaderModule Engine::create_shader(std::filesystem::path fp) const {
+    std::ifstream file(fp, std::ios::ate | std::ios::binary);
+    if (!file.is_open()) throw std::runtime_error("could not open file: " + fp.string());
+
+    std::vector<char> buffer(static_cast<std::size_t>(file.tellg()));
+    file.seekg(0);
+    file.read(buffer.data(), buffer.size());
+    file.close();
+
+    VkShaderModuleCreateInfo info {};
+    info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    info.pCode = reinterpret_cast<uint32_t*>(buffer.data());
+    info.codeSize = buffer.size();
+
+    VkShaderModule shader;
+    VK_ASSERT(vkCreateShaderModule(engine.device, &info, NULL, &shader));
+    return shader;
+}
+
 
 void log_error(std::string_view msg, std::source_location loc) {
     // I dont know if I've ever seen this function work...

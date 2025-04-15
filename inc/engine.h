@@ -1,6 +1,6 @@
 #pragma once
 #include "vulkan.h"
-
+#include <filesystem>
 class Engine {    
 public:
     Engine();
@@ -12,8 +12,10 @@ public:
 
     uint32_t memory_type_index(VK_TYPE(VkMemoryRequirements&) requirements, VK_ENUM(VkMemoryPropertyFlags) memory_property_flags);
 
-    VK_TYPE(VkInstance) instance;               // vulkan instance
-    VK_TYPE(VkPhysicalDevice) gpu;              // gpu selected
+    VK_TYPE(VkShaderModule) create_shader(std::filesystem::path fp) const;
+
+    VK_TYPE(VkInstance) instance;   // vulkan instance
+    VK_TYPE(VkPhysicalDevice) gpu;  // gpu selected
     VK_TYPE(VkDevice) device;
 
     struct { // queue data

@@ -7,13 +7,15 @@
 class Model {
 public:
     friend class Renderer;
+    friend class DepthPass;
+    friend class CullingPass;
+    friend class DeferredPass;
+    friend class ForwardPass;
 
     struct Mesh { 
         uint32_t vertex_count;
         Material material;
     };
-
-    
 
     static void Load(std::filesystem::path fp);
     Model() : vertex_buffer(nullptr) { }
