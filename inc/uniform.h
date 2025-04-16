@@ -5,6 +5,10 @@
 #include <variant>
 #include <span>
 
+class UniformBuffer;
+class UniformTexture;
+using Uniform = std::variant<UniformBuffer*, UniformTexture*>;
+
 class UniformBuffer {
     friend class UniformSet;
 public:
@@ -16,12 +20,11 @@ public:
     UniformBuffer(const UniformBuffer& other) = delete;
     UniformBuffer& operator=(const UniformBuffer& other) = delete;
 
-    void set_value(const void* data);
+    void set_value(const void* data, uint32_t size);
 
 private:
     VK_TYPE(VkBuffer) buffer = nullptr;
     VK_TYPE(VkDeviceMemory) memory;
-    uint32_t size;
 };
 
 class UniformTexture {
@@ -44,7 +47,7 @@ private:
 class UniformSet {
 public:
     UniformSet() : descriptor_set(nullptr) { }
-    UniformSet(VK_TYPE(VkDescriptorSetLayout) layout, std::span<std::variant<UniformBuffer*, UniformTexture*>> bindings);
+    UniformSet(VK_TYPE(VkDescriptorSetLayout) layout, std::span<Uniform> bindings);
     ~UniformSet();
     UniformSet(UniformSet&&);
     UniformSet& operator=(UniformSet&&);

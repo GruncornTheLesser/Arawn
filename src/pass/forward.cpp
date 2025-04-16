@@ -28,9 +28,10 @@ ForwardPass::ForwardPass(Renderer& renderer) {
             VK_ASSERT(vkCreateSemaphore(engine.device, &info, nullptr, &finished[i]));
         }
     }
+    
     { // create pipeline layout
         if (settings.deferred_pass_enabled) {
-            std::array<VkDescriptorSetLayout, 2> sets{ engine.camera_layout, engine.attachment_layout };
+            std::array<VkDescriptorSetLayout, 3> sets{ engine.camera_layout, engine.attachment_layout, engine.light_layout };
             std::array<VkPushConstantRange, 0> ranges;
             //ranges[0] = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants) };
         
@@ -41,7 +42,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
             
             VK_ASSERT(vkCreatePipelineLayout(engine.device, &info, nullptr, &layout));
         } else {
-            std::array<VkDescriptorSetLayout, 3> sets{ engine.camera_layout, engine.transform_layout, engine.material_layout };
+            std::array<VkDescriptorSetLayout, 4> sets{ engine.camera_layout, engine.transform_layout, engine.material_layout, engine.light_layout };
             std::array<VkPushConstantRange, 0> ranges;
             //ranges[0] = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants) };
         
@@ -167,7 +168,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
 
             VkAttachmentDescription& position_info = attachment_info[position_ref.attachment];
             position_info = {
-                0, VK_FORMAT_R16G16B16A16_SFLOAT, settings.sample_count, 
+                0, VK_FORMAT_R32G32B32A32_SFLOAT, settings.sample_count, 
                 VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -397,7 +398,7 @@ void ForwardPass::record(uint32_t frame_index) {
     { // begin renderpass
         std::array<VkClearValue, 2> clear;
         clear[0].depthStencil = { 1.0f, 0 };
-        clear[1].color = { 0.1, 0.01, 0.1 };
+        clear[1].color = { 0.0, 0.00, 0.0 };
 
         VkRenderPassBeginInfo info{};
         info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -434,7 +435,10 @@ void ForwardPass::record(uint32_t frame_index) {
         vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].set.descriptor_set, 0, nullptr);
         
         // bind input attachments
-        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &renderer.attachment_set[frame_index], 0, nullptr);
+        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &renderer.input_attachment_set[frame_index], 0, nullptr);
+
+        // bind lights
+        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &renderer.light_attachment_set[frame_index], 0, nullptr);
 
         // draw fullscreen quad(vertices embedded in fullscreen.vert)
         vkCmdDraw(cmd_buffer[frame_index], 6, 1, 0, 0);
@@ -442,6 +446,9 @@ void ForwardPass::record(uint32_t frame_index) {
     } else { // draw scene
         // bind camera
         vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].set.descriptor_set, 0, nullptr);
+
+        // bind lights
+        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 3, 1, &renderer.light_attachment_set[frame_index], 0, nullptr);
 
         for (Model& model : models) {
             // bind vbo

@@ -58,21 +58,13 @@ void log_error(std::string_view msg, std::source_location loc = std::source_loca
 #endif
 
 #ifndef MAX_LIGHTS_PER_CLUSTER
-#define MAX_LIGHTS_PER_CLUSTER 128
+#define MAX_LIGHTS_PER_CLUSTER 255
 #endif
 
 #ifndef MAX_LIGHTS_PER_TILE
-#define MAX_LIGHTS_PER_TILE 256
-#endif
-
-#ifndef MAX_NUM_CLUSTERS
-#define MAX_NUM_CLUSTERS 2048
-#endif
-
-#ifndef MAX_NUM_TILES
-#define MAX_NUM_TILES 512
+#define MAX_LIGHTS_PER_TILE 15
 #endif
 
 #ifndef MAX_MIPMAP_LEVEL 
-#define MAX_MIPMAP_LEVEL 12
+#define MAX_MIPMAP_LEVEL 1 // 12
 #endif

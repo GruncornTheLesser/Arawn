@@ -13,5 +13,5 @@ void Camera::update(uint32_t frame_index) {
     data.view = glm::mat4_cast(rotation);
     data.view = glm::translate(data.view, -position);
     data.eye = glm::inverse(data.view) * glm::vec4(0, 0, 0, 1);
-    uniform[frame_index].buffer.set_value(&data);
+    uniform[frame_index].buffer.set_value(&data, sizeof(Camera));
 }

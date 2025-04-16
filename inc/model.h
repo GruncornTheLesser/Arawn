@@ -4,6 +4,13 @@
 #include "material.h"
 #include <filesystem>
 
+struct Light {
+    glm::vec3 position; 
+    float radius;
+    glm::vec3 colour;
+    float intensity_curve;
+};
+
 class Model {
 public:
     friend class Renderer;
@@ -53,3 +60,4 @@ private:
 };
 
 extern std::vector<Model> models;
+extern std::vector<Light> lights;

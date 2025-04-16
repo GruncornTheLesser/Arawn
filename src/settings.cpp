@@ -1,10 +1,10 @@
-#include <charconv>
 #define ARAWN_IMPLEMENTATION
 #include "settings.h"
+#include "json.h"
 #include <fstream>
 #include <string>
-#include "json.h"
 #include <iostream>
+#include <charconv>
 
 Settings::Settings(std::filesystem::path fp) {
     std::ifstream file(fp, std::ios::ate | std::ios::binary);
@@ -18,17 +18,21 @@ Settings::Settings(std::filesystem::path fp) {
     
     Json::Object settings = Json(buffer);
 
-    try {
+    try { // parse device
         device = settings["device"];
     } catch (Json::ParseException e) { 
         device = "";
     }
-
-    try { // parse resolution
-        Json::IntBuffer res = settings["resolution"];
-        resolution = { res[0], res[1] };
+   
+    try { // parse display mode
+        std::string_view display_str = settings["display mode"];
+        
+        if      (display_str == "windowed") display_mode = DisplayMode::WINDOWED;
+        else if (display_str == "exclusive") display_mode = DisplayMode::EXCLUSIVE; 
+        else if (display_str == "fullscreen") display_mode = DisplayMode::FULLSCREEN;
+    
     } catch (Json::ParseException e) { 
-        resolution = { 800, 600 };
+        display_mode = DisplayMode::WINDOWED;
     }
 
     try { // parse aspect ratio
@@ -42,16 +46,12 @@ Settings::Settings(std::filesystem::path fp) {
     } catch(Json::ParseException e) {
         aspect_ratio = float(resolution.x) / resolution.y;
     }
-    
-    try { // parse display mode
-        std::string_view display_str = settings["display mode"];
-        
-        if      (display_str == "windowed") display_mode = DisplayMode::WINDOWED;
-        else if (display_str == "exclusive") display_mode = DisplayMode::EXCLUSIVE; 
-        else if (display_str == "fullscreen") display_mode = DisplayMode::FULLSCREEN;
-    
+
+    try { // parse resolution
+        Json::IntBuffer res = settings["resolution"];
+        resolution = { res[0], res[1] };
     } catch (Json::ParseException e) { 
-        display_mode = DisplayMode::WINDOWED;
+        resolution = { 800, 600 };
     }
 
     try { // parse frame count
@@ -61,14 +61,9 @@ Settings::Settings(std::filesystem::path fp) {
     }
 
     try { // parse vsync mode
-        std::string_view vsync_str = settings["vsync mode"];
-        
-        if      (vsync_str == "off") vsync_mode = VsyncMode::OFF; 
-        else if (vsync_str == "on") vsync_mode = VsyncMode::ON;
-        else throw Json::ParseException{};
-
+        bool vsync_enabled = settings["vsync mode"];
     } catch (Json::ParseException e) {
-        vsync_mode = VsyncMode::OFF;
+        vsync_enabled = false;
     }
 
     try { // parse anti alias mode
@@ -94,26 +89,32 @@ Settings::Settings(std::filesystem::path fp) {
     try { // parse render mode
         std::string_view render_mode_str = settings["render mode"];
 
-        if      (render_mode_str == "forward") render_mode = RenderMode::FORWARD;
+        if      (render_mode_str == "forward")  render_mode = RenderMode::FORWARD;
         else if (render_mode_str == "deferred") render_mode = RenderMode::DEFERRED;
         else throw Json::ParseException{};
-
     } catch (Json::ParseException) {
         render_mode = RenderMode::FORWARD;
     }
 
-    try { // parse cluster culling count
-        Json::IntBuffer cluster = settings["cluster count"];
-        cluster_count = { 
-            std::max<uint32_t>(1, cluster[0]),
-            std::max<uint32_t>(1, cluster[1]),
-            std::max<uint32_t>(1, cluster[2])
-        };
+    try { // parse culling mode
+        std::string_view cluster_mode_str = settings["culling mode"];
+        
+        if      (cluster_mode_str == "none")      culling_mode = CullingMode::NONE;
+        else if (cluster_mode_str == "tiled")     culling_mode = CullingMode::TILED;
+        else if (cluster_mode_str == "clustered") culling_mode = CullingMode::CLUSTERED;
+        else throw Json::ParseException{};
     } catch (Json::ParseException e) {
-        cluster_count = { 1, 1, 1 };
+        culling_mode = culling_mode = CullingMode::NONE;
     }
 
-    culling_pass_enabled = cluster_count.x > 1 || cluster_count.y > 1 || cluster_count.z > 1;
+    try { // parse tile size
+        Json::IntBuffer cluster = settings["cell size"];
+        tile_size = { cluster[0], cluster[1] };
+    } catch (Json::ParseException e) {
+        tile_size = { 16, 16 };
+    }
+
+    culling_pass_enabled = culling_mode != CullingMode::NONE;
     deferred_pass_enabled = render_mode == RenderMode::DEFERRED;
     switch (anti_alias) {
     case AntiAlias::MSAA_2:  sample_count = VK_SAMPLE_COUNT_2_BIT; break;

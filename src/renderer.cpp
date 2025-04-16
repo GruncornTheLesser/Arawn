@@ -9,6 +9,80 @@ Renderer::Renderer() {
     recreate();
 }
 
+Renderer::~Renderer() {
+    if (!forward_pass.enabled()) return;
+    
+    vkWaitForFences(engine.device, frame_count, in_flight.data(), VK_TRUE, UINT64_MAX);
+
+    { // destroy sync objects pass
+        for (uint32_t i = 0; i < frame_count; ++i) {
+            vkDestroySemaphore(engine.device, image_available[i], nullptr);
+            vkDestroyFence(engine.device, in_flight[i], nullptr);
+        }
+    }
+}
+
+Renderer::Renderer(Renderer&& other) {
+    if (this == &other) return;
+
+    msaa_attachment = std::move(other.msaa_attachment);
+    depth_attachment = std::move(other.depth_attachment);
+    albedo_attachment = std::move(other.albedo_attachment);
+    normal_attachment = std::move(other.normal_attachment);
+    position_attachment = std::move(other.position_attachment);
+    cluster_buffer = std::move(other.cluster_buffer);
+    light_buffer = std::move(other.light_buffer);
+
+    uint32_t frame_index = other.frame_index;
+    uint32_t frame_count = other.frame_count;
+
+    input_attachment_set = std::move(other.input_attachment_set);
+    image_available = std::move(other.image_available);
+    in_flight = std::move(other.in_flight);
+
+    depth_pass = std::move(other.depth_pass);
+    culling_pass = std::move(other.culling_pass);
+    deferred_pass = std::move(other.deferred_pass);
+    forward_pass = std::move(other.forward_pass);
+}
+
+Renderer& Renderer::operator=(Renderer&& other) {
+    if (this == &other) return *this;
+    
+    if (forward_pass.enabled()) {
+        vkWaitForFences(engine.device, frame_count, in_flight.data(), VK_TRUE, UINT64_MAX);
+
+        { // destroy sync objects pass
+            for (uint32_t i = 0; i < frame_count; ++i) {
+                vkDestroySemaphore(engine.device, image_available[i], nullptr);
+                vkDestroyFence(engine.device, in_flight[i], nullptr);
+            }
+        }
+    }
+
+    msaa_attachment = std::move(other.msaa_attachment);
+    depth_attachment = std::move(other.depth_attachment);
+    albedo_attachment = std::move(other.albedo_attachment);
+    normal_attachment = std::move(other.normal_attachment);
+    position_attachment = std::move(other.position_attachment);
+    cluster_buffer = std::move(other.cluster_buffer);
+    light_buffer = std::move(other.light_buffer);
+
+    uint32_t frame_index = other.frame_index;
+    uint32_t frame_count = other.frame_count;
+
+    input_attachment_set = std::move(other.input_attachment_set);
+    image_available = std::move(other.image_available);
+    in_flight = std::move(other.in_flight);
+
+    depth_pass = std::move(other.depth_pass);
+    culling_pass = std::move(other.culling_pass);
+    deferred_pass = std::move(other.deferred_pass);
+    forward_pass = std::move(other.forward_pass);
+
+    return *this;
+}
+
 void Renderer::recreate() {
     vkDeviceWaitIdle(engine.device);
     
@@ -17,6 +91,7 @@ void Renderer::recreate() {
     { // recreate attachments
         if (settings.culling_pass_enabled) {
             depth_attachment = TextureAttachment(
+                settings.frame_count,
                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 
                 VK_FORMAT_D32_SFLOAT, 
                 VK_IMAGE_ASPECT_DEPTH_BIT, 
@@ -26,6 +101,7 @@ void Renderer::recreate() {
             );
         } else {
             depth_attachment = TextureAttachment(
+                settings.frame_count,
                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 
                 VK_FORMAT_D32_SFLOAT, 
                 VK_IMAGE_ASPECT_DEPTH_BIT, 
@@ -37,6 +113,7 @@ void Renderer::recreate() {
 
         if (settings.msaa_enabled) {
             msaa_attachment = TextureAttachment(
+                settings.frame_count,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT, 
                 swapchain.format, 
                 VK_IMAGE_ASPECT_COLOR_BIT, 
@@ -48,8 +125,15 @@ void Renderer::recreate() {
             msaa_attachment = TextureAttachment();
         }
 
+        if (settings.culling_pass_enabled) {
+
+        } else {
+
+        }
+
         if (settings.deferred_pass_enabled) {
             albedo_attachment = TextureAttachment(
+                settings.frame_count,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 
                 VK_FORMAT_R8G8B8A8_UNORM, 
                 VK_IMAGE_ASPECT_COLOR_BIT, 
@@ -59,6 +143,7 @@ void Renderer::recreate() {
             );
 
             normal_attachment = TextureAttachment(
+                settings.frame_count,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 
                 VK_FORMAT_R8G8B8A8_UNORM,
                 VK_IMAGE_ASPECT_COLOR_BIT, 
@@ -68,8 +153,9 @@ void Renderer::recreate() {
             );
 
             position_attachment = TextureAttachment( // metallic, roughness, ... some other stuff
+                settings.frame_count,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 
-                VK_FORMAT_R16G16B16A16_SFLOAT, 
+                VK_FORMAT_R32G32B32A32_SFLOAT, // TODO: downsize to 16bit & normalize to camera
                 VK_IMAGE_ASPECT_COLOR_BIT, 
                 settings.sample_count,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -86,27 +172,30 @@ void Renderer::recreate() {
                 std::array<VkWriteDescriptorSet, 3> write_info;
                 write_info[0] = { 
                     VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, 
-                    nullptr, 0, 0, 1, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, &image_info[0]
+                    nullptr, 0, 0, 1, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 
+                    &image_info[0]
                 };
                 write_info[1] = { 
                     VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, 
-                    nullptr, 1, 0, 1, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, &image_info[1]
+                    nullptr, 1, 0, 1, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 
+                    &image_info[1]
                 };
                 write_info[2] = { 
                     VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, 
-                    nullptr, 2, 0, 1, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, &image_info[2]
+                    nullptr, 2, 0, 1, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 
+                    &image_info[2]
                 };
                 
                 for (uint32_t i = 0; i < settings.frame_count; ++i) {
-                    VK_ASSERT(vkAllocateDescriptorSets(engine.device, &alloc_info, &attachment_set[i]));
+                    VK_ASSERT(vkAllocateDescriptorSets(engine.device, &alloc_info, &input_attachment_set[i]));
 
                     image_info[0] = { engine.sampler, albedo_attachment.view[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
                     image_info[1] = { engine.sampler, normal_attachment.view[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
                     image_info[2] = { engine.sampler, position_attachment.view[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
-                    write_info[0].dstSet = attachment_set[i];
-                    write_info[1].dstSet = attachment_set[i];
-                    write_info[2].dstSet = attachment_set[i];
+                    write_info[0].dstSet = input_attachment_set[i];
+                    write_info[1].dstSet = input_attachment_set[i];
+                    write_info[2].dstSet = input_attachment_set[i];
 
                     vkUpdateDescriptorSets(engine.device, 3, write_info.data(), 0, nullptr);
                 }
@@ -114,13 +203,15 @@ void Renderer::recreate() {
 
         } else {
             if (frame_count != 0) {
-                VK_ASSERT(vkFreeDescriptorSets(engine.device, engine.descriptor_pool, frame_count, attachment_set.data()));
+                VK_ASSERT(vkFreeDescriptorSets(engine.device, engine.descriptor_pool, frame_count, input_attachment_set.data()));
             }
 
             albedo_attachment = TextureAttachment();
             normal_attachment = TextureAttachment();
             position_attachment = TextureAttachment();
         }
+
+        
     }
 
     { // recreate passes
@@ -161,64 +252,135 @@ void Renderer::recreate() {
                 vkDestroyFence(engine.device, in_flight[i], nullptr);
             }
         }
-    }
-
-    frame_count = settings.frame_count;
-}
-
-Renderer::~Renderer() {
-    if (!forward_pass.enabled()) return;
-    
-    vkWaitForFences(engine.device, frame_count, in_flight.data(), VK_TRUE, UINT64_MAX);
-
-    { // destroy sync objects pass
-        for (uint32_t i = 0; i < frame_count; ++i) {
-            vkDestroySemaphore(engine.device, image_available[i], nullptr);
-            vkDestroyFence(engine.device, in_flight[i], nullptr);
+        
+        current_version = 1;
+        for (uint32_t i = 0; i < settings.frame_count; ++i) {
+            frame_version[i] = 0;
         }
     }
-}
 
-Renderer::Renderer(Renderer&& other) {
-    if (this == &other) return;
+    { // update buffer attachments
+        light_buffer = BufferAttachment(
+            settings.frame_count, 
+            nullptr, 
+            sizeof(uint32_t) + sizeof(Light) * MAX_LIGHTS, 
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
+            std::array<uint32_t, 2>() = { engine.compute.family, engine.graphics.family }
+        );
+
+        if (settings.culling_mode == CullingMode::TILED) {
+            cell_count = glm::uvec3(settings.resolution / settings.tile_size + glm::uvec2(1), 1);
+            uint32_t tile_count = cell_count.x * cell_count.y;
+
+            cluster_buffer = BufferAttachment(
+                settings.frame_count, 
+                nullptr, 
+                sizeof(Frustrum) * tile_count, 
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
+                std::array<uint32_t, 2>() = { engine.compute.family, engine.graphics.family }
+            );
+
+            culled_buffer = BufferAttachment(
+                settings.frame_count, 
+                nullptr, 
+                sizeof(LightArray<MAX_LIGHTS_PER_TILE>) * tile_count,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
+                std::array<uint32_t, 2>() = { engine.compute.family, engine.graphics.family }
+            );
 
 
-}
-Renderer& Renderer::operator=(Renderer&& other) {
-    if (this == &other) return *this;
-    
-    if (forward_pass.enabled()) {
-        vkWaitForFences(engine.device, frame_count, in_flight.data(), VK_TRUE, UINT64_MAX);
+        } else if (settings.culling_mode == CullingMode::CLUSTERED) {
+            cell_count = glm::uvec3(settings.resolution / settings.tile_size + glm::uvec2(1), 8);
+            uint32_t cluster_count = cell_count.x * cell_count.y * cell_count.z;
 
-        { // destroy sync objects pass
-            for (uint32_t i = 0; i < frame_count; ++i) {
-                vkDestroySemaphore(engine.device, image_available[i], nullptr);
-                vkDestroyFence(engine.device, in_flight[i], nullptr);
+            cluster_buffer = BufferAttachment(
+                settings.frame_count, 
+                nullptr, 
+                sizeof(Cluster) * cluster_count, 
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
+                std::array<uint32_t, 2>() = { engine.compute.family, engine.graphics.family }
+            );
+
+            culled_buffer = BufferAttachment(
+                settings.frame_count, nullptr, sizeof(LightArray<MAX_LIGHTS_PER_CLUSTER>) * cluster_count,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
+                std::array<uint32_t, 2>() = { engine.compute.family, engine.graphics.family }
+            );
+        } else {
+            cluster_buffer = BufferAttachment();
+            culled_buffer = BufferAttachment();
+        }
+
+        {
+            VkDescriptorSetAllocateInfo info{ 
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, 
+                engine.descriptor_pool, 1, &engine.light_layout
+            };
+
+            for (uint32_t i = 0; i < settings.frame_count; ++i) {
+                VK_ASSERT(vkAllocateDescriptorSets(engine.device, &info, &light_attachment_set[i]));
+
+                VkDescriptorBufferInfo light_buffer_info{ light_buffer.buffer[i], 0, VK_WHOLE_SIZE };
+                VkDescriptorBufferInfo culled_buffer_info{ culled_buffer.buffer[i], 0, VK_WHOLE_SIZE };
+                VkDescriptorBufferInfo cell_buffer_info{ cluster_buffer.buffer[i], 0, VK_WHOLE_SIZE };
+                
+                std::array<VkWriteDescriptorSet, 3> info;
+                VkWriteDescriptorSet& light_info = info[0];
+                light_info = { 
+                    VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, 
+                    light_attachment_set[i], 0, 0, 1, 
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
+                    nullptr, &light_buffer_info, nullptr 
+                };
+                
+                if (settings.culling_mode != CullingMode::NONE) {
+                    VkWriteDescriptorSet& culled_info = info[1];
+                    culled_info = { 
+                        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, 
+                        light_attachment_set[i], 1, 0, 1, 
+                        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
+                        nullptr, &culled_buffer_info, nullptr 
+                    };
+
+                    VkWriteDescriptorSet& cell_binding = info[2];
+                    cell_binding = { 
+                        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, 
+                        light_attachment_set[i], 2, 0, 1, 
+                        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
+                        nullptr, &cell_buffer_info, nullptr 
+                    };
+                    
+                    vkUpdateDescriptorSets(engine.device, 3, info.data(), 0, nullptr);
+                } else {
+                    vkUpdateDescriptorSets(engine.device, 1, info.data(), 0, nullptr);
+                }
+
             }
         }
     }
+    frame_count = settings.frame_count;
 
-    msaa_attachment = std::move(other.msaa_attachment);
-    depth_attachment = std::move(other.depth_attachment);
-    albedo_attachment = std::move(other.albedo_attachment);
-    normal_attachment = std::move(other.normal_attachment);
-    position_attachment = std::move(other.position_attachment);
-    cluster_buffer = std::move(other.cluster_buffer);
-    light_buffer = std::move(other.light_buffer);
+}
 
-    uint32_t frame_index = other.frame_index;
-    uint32_t frame_count = other.frame_count;
+void Renderer::record(uint32_t frame_index) {
+    if (depth_pass.enabled())    depth_pass.record(frame_index);
+    if (deferred_pass.enabled()) deferred_pass.record(frame_index);
+    if (culling_pass.enabled())  culling_pass.record(frame_index);
+    if (forward_pass.enabled())  forward_pass.record(frame_index);
 
-    attachment_set = std::move(other.attachment_set);
-    image_available = std::move(other.image_available);
-    in_flight = std::move(other.in_flight);
-
-    depth_pass = std::move(other.depth_pass);
-    culling_pass = std::move(other.culling_pass);
-    deferred_pass = std::move(other.deferred_pass);
-    forward_pass = std::move(other.forward_pass);
-
-    return *this;
+    if (lights.size() > 0) { // update light buffer
+        void* mapped_data;
+        uint32_t data_size = sizeof(LightArray<MAX_LIGHTS>);
+        VK_ASSERT(vkMapMemory(engine.device, light_buffer.memory[frame_index], 0, data_size, 0, &mapped_data));
+        LightArray<MAX_LIGHTS>& light_array = *reinterpret_cast<LightArray<MAX_LIGHTS>*>(mapped_data);
+        light_array.count = lights.size();
+        std::memcpy(light_array.data, lights.data(), data_size);
+        vkUnmapMemory(engine.device, light_buffer.memory[frame_index]);
+    }
 }
 
 void Renderer::draw() {
@@ -236,8 +398,12 @@ void Renderer::draw() {
         VK_ASSERT(res);
     }
     
-    // update ubos
-    {
+    { // update
+        if (frame_version[frame_index] != current_version) {
+            frame_version[frame_index] = current_version;
+            record(frame_index);
+        }
+        
         camera.update(frame_index);
         
         for (auto& model : models) {
@@ -248,8 +414,6 @@ void Renderer::draw() {
     VK_ASSERT(vkResetFences(engine.device, 1, &in_flight[frame_index]));
     
     if (settings.z_prepass_enabled) {
-        depth_pass.record(frame_index);
-        
         uint32_t wait_count = 0;
         std::array<VkSemaphore, 1> wait_semaphores;
         std::array<VkPipelineStageFlags, 1> wait_stages;
@@ -270,8 +434,6 @@ void Renderer::draw() {
     }
     
     if (settings.deferred_pass_enabled) { // deferred pass 
-        deferred_pass.record(frame_index);
-
         uint32_t wait_count = 0;
         std::array<VkSemaphore, 1> wait_semaphores;
         std::array<VkPipelineStageFlags, 1> wait_stages;
@@ -297,8 +459,6 @@ void Renderer::draw() {
     }
 
     if (settings.culling_pass_enabled) { // cluster pass
-        culling_pass.record(frame_index);
-
         uint32_t wait_count = 0;
         std::array<VkSemaphore, 1> wait_semaphores;
         std::array<VkPipelineStageFlags, 1> wait_stages;
@@ -325,8 +485,6 @@ void Renderer::draw() {
     }
     
     { // forward pass
-        forward_pass.record(frame_index);
-
         uint32_t wait_count = 0;
         std::array<VkSemaphore, 2> wait_semaphores;
         std::array<VkPipelineStageFlags, 2> wait_stages;

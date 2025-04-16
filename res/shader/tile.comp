@@ -1,0 +1,78 @@
+#version 450
+#define TILE_SIZE 16
+
+struct Light { 
+	vec4 position; // position + radius
+	vec4 colour;
+};
+
+struct Frustrum {
+	vec4 planes[4];
+};
+
+layout(set = 1, binding = 1) buffer Lights {
+	Light lights[];
+};
+
+layout(set = 1, binding = 2) buffer Frustrums {
+	Frustrum frustrums[];
+};
+
+layout(set = 1, binding = 3) buffer Params {
+	mat4 view;
+	mat4 inv_proj;
+	uvec2 screen_size;
+	uvec2 num_threads;
+	uint num_lights;
+};
+
+vec4 clip_to_view(vec4 clip_position) {
+	vec4 view_position = inv_proj * clip_position;
+	view_position = view_position / view_position.w;
+	return view_position;
+}
+
+vec4 screen_to_view(vec4 screen_position) {
+	vec2 texcoord = screen_position.xy / screen_size;
+	vec4 clip = vec4(vec2(texcoord.x, 1 - texcoord.y) * 2 - 1, screen_position.z, screen_position.w);
+	return clip_to_view(clip);
+}
+
+vec4 compute_plane(vec3 p0, vec3 p1, vec3 p2) {
+	vec4 plane;
+    plane.xyz = normalize(cross(p1 - p0, p2 - p0));
+    plane.w = dot(plane.xyz, p0);
+    return plane;
+}
+
+layout (local_size_x=TILE_SIZE, local_size_y=TILE_SIZE) in;
+
+void main() {
+	if (gl_GlobalInvocationID.x >= num_threads.x) return;
+	if (gl_GlobalInvocationID.y >= num_threads.y) return;
+
+	uint index = gl_GlobalInvocationID.x +
+				 gl_GlobalInvocationID.y * num_threads.x;
+	
+	vec3 eye = { 0, 0, 0 };
+	
+	vec4 screen_space[4];
+	screen_space[0] = vec4((gl_GlobalInvocationID.xy + uvec2(0, 0)) * TILE_SIZE, -1.0f, 1.0f); // top left
+	screen_space[1] = vec4((gl_GlobalInvocationID.xy + uvec2(1, 0)) * TILE_SIZE, -1.0f, 1.0f); // top right
+	screen_space[2] = vec4((gl_GlobalInvocationID.xy + uvec2(0, 1)) * TILE_SIZE, -1.0f, 1.0f); // bottom left
+	screen_space[3] = vec4((gl_GlobalInvocationID.xy + uvec2(1, 1)) * TILE_SIZE, -1.0f, 1.0f); // bottom right
+
+	vec3 view_space[4];
+	view_space[0] = screen_to_view(screen_space[0]).xyz;
+	view_space[1] = screen_to_view(screen_space[1]).xyz;
+	view_space[2] = screen_to_view(screen_space[2]).xyz;
+	view_space[3] = screen_to_view(screen_space[3]).xyz;
+
+	vec4 planes[4];
+	planes[0] = compute_plane(eye, view_space[2], view_space[0]);
+	planes[1] = compute_plane(eye, view_space[1], view_space[3]);
+	planes[2] = compute_plane(eye, view_space[2], view_space[1]);
+	planes[3] = compute_plane(eye, view_space[3], view_space[2]);
+
+	frustrums[index].planes = planes;
+}

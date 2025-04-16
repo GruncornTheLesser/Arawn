@@ -6,7 +6,7 @@
 #include <stb_image.h>
 #include <cstring>
 
-UniformBuffer::UniformBuffer(const void* data, uint32_t size) : size(size) {
+UniformBuffer::UniformBuffer(const void* data, uint32_t size) {
     { // create buffer
         VkBufferCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -35,7 +35,7 @@ UniformBuffer::UniformBuffer(const void* data, uint32_t size) : size(size) {
         VK_ASSERT(vkBindBufferMemory(engine.device, buffer, memory, 0));
     }
 
-    if (data != nullptr) set_value(data);
+    if (data != nullptr) set_value(data, size);
 };
 
 UniformBuffer::~UniformBuffer() {
@@ -50,7 +50,6 @@ UniformBuffer::UniformBuffer(UniformBuffer&& other) {
 
     buffer = other.buffer;
     memory = other.memory;
-    size = other.size;
 
     other.buffer = nullptr;
 }
@@ -58,12 +57,11 @@ UniformBuffer::UniformBuffer(UniformBuffer&& other) {
 UniformBuffer& UniformBuffer::operator=(UniformBuffer&& other) {
     std::swap(buffer, other.buffer);
     std::swap(memory, other.memory);
-    std::swap(size, other.size);
 
     return *this;
 }
 
-void UniformBuffer::set_value(const void* data) {
+void UniformBuffer::set_value(const void* data, uint32_t size) {
     void* mapped_data;
     VK_ASSERT(vkMapMemory(engine.device, memory, 0, size, 0, &mapped_data));
     std::memcpy(mapped_data, data, size);
@@ -398,7 +396,7 @@ UniformTexture& UniformTexture::operator=(UniformTexture&& other) {
     return *this;
 }
 
-UniformSet::UniformSet(VkDescriptorSetLayout layout, std::span<std::variant<UniformBuffer*, UniformTexture*>> bindings) {
+UniformSet::UniformSet(VkDescriptorSetLayout layout, std::span<Uniform> bindings) {
     { // allocate descriptor set
         VkDescriptorSetAllocateInfo info{};
         info.pNext = nullptr;
@@ -424,7 +422,7 @@ UniformSet::UniformSet(VkDescriptorSetLayout layout, std::span<std::variant<Unif
                     auto& buffer_info = buffer_infos.emplace_back();
                     buffer_info.buffer = uniform_buffer.buffer;
                     buffer_info.offset = 0;
-                    buffer_info.range = uniform_buffer.size;
+                    buffer_info.range = VK_WHOLE_SIZE;
 
                     auto& write_info = write_infos.emplace_back();
                     write_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;

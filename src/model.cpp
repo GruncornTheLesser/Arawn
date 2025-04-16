@@ -444,5 +444,5 @@ void Model::Transform::update(uint32_t frame_index) {
     transform = glm::scale(transform, scale);
     transform = glm::translate(transform, position);
 
-    uniform[frame_index].buffer.set_value(&transform);
+    uniform[frame_index].buffer.set_value(&transform, sizeof(glm::mat4));
 }

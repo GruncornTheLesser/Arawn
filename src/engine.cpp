@@ -302,7 +302,8 @@ Engine::Engine() {
     }
 
     { // init descriptor pools
-        std::array<VkDescriptorPoolSize, 2> pool_sizes = { 
+        std::array<VkDescriptorPoolSize, 3> pool_sizes = { 
+            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 255 },
             VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 65535 },
             VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 65535 } // for textures
         };
@@ -453,7 +454,7 @@ Engine::Engine() {
         }
 
         { // lights/clusters layout
-            std::array<VkDescriptorSetLayoutBinding, 2> set_layout_binding;
+            std::array<VkDescriptorSetLayoutBinding, 3> set_layout_binding;
             
             VkDescriptorSetLayoutBinding& light_binding = set_layout_binding[0];
             light_binding.binding = 0;
@@ -461,13 +462,20 @@ Engine::Engine() {
             light_binding.descriptorCount = 1;
             light_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
             light_binding.pImmutableSamplers = nullptr;
+            
+            VkDescriptorSetLayoutBinding& culled_binding = set_layout_binding[1];
+            culled_binding.binding = 1;
+            culled_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            culled_binding.descriptorCount = 1;
+            culled_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+            culled_binding.pImmutableSamplers = nullptr;
 
-            VkDescriptorSetLayoutBinding& cluster_binding = set_layout_binding[1];
-            cluster_binding.binding = 1;
-            cluster_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            cluster_binding.descriptorCount = 1;
-            cluster_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            cluster_binding.pImmutableSamplers = nullptr;
+            VkDescriptorSetLayoutBinding& cell_binding = set_layout_binding[2];
+            cell_binding.binding = 2;
+            cell_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            cell_binding.descriptorCount = 1;
+            cell_binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            cell_binding.pImmutableSamplers = nullptr;
 
             VkDescriptorSetLayoutCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;

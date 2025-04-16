@@ -8,8 +8,11 @@
 #include "camera.h"
 #include "controller.h"
 
-//#include "renderer/forward.h"
-//#include "renderer/deferred.h"
+//#include "pass/depth.h"
+//#include "pass/deferred.h"
+//#include "pass/culling.h"
+//#include "pass/forward.h"
+
 
 /*
 TODOLIST:
@@ -32,31 +35,37 @@ Renderer    renderer;
 Camera      camera;
 Controller  controller;
 std::vector<Model> models;
-std::vector<Light> mights;
-
-Model* bunny;
-float bunny_speed = 5.0f;
-uint32_t bunny_up_handle;
-uint32_t bunny_down_handle;
-uint32_t bunny_left_handle;
-uint32_t bunny_right_handle;
-void bunny_move_up(const Update& ev) { bunny->transform.position.z += bunny_speed * ev.delta; }
-void bunny_move_down(const Update& ev) { bunny->transform.position.z -= bunny_speed * ev.delta; }
-void bunny_move_right(const Update& ev) { bunny->transform.position.x += bunny_speed * ev.delta; }
-void bunny_move_left(const Update& ev) { bunny->transform.position.x -= bunny_speed * ev.delta; }
-
-
+std::vector<Light> lights;
 
 int main() {
     //Model::Load("res/model/sponza/sponza.obj");
 
-    Model::Load("res/model/cube/cube.obj");
     {
+        Model::Load("res/model/cube/cube.obj");
         Model& floor = models.back();
-        floor.transform.scale = glm::vec3(80.0f, 0.1f, 80.0f);
-        floor.transform.position = glm::vec3(0, -5.0f, 0.0f);
+        floor.transform.scale = glm::vec3(8.0f, 0.1f, 8.0f);
+        floor.transform.position = glm::vec3(0, -0.05f, 0.0f);
     }
+    
+    {
+        std::array<glm::vec3, 7> colours = { 
+            glm::vec3(0, 0, 1),
+            glm::vec3(0, 1, 0),
+            glm::vec3(0, 1, 1),
+            glm::vec3(1, 0, 0),
+            glm::vec3(1, 1, 1),
+            glm::vec3(1, 1, 0),
+            glm::vec3(1, 1, 1)  
+        };
 
+        for (int x = -5; x < 5; ++x) {
+            for (int y = -5; y < 5; ++y) {
+                lights.emplace_back(glm::vec3(x, 0.1f, y), 1.5f, 2.0f * colours[((y + 5) * 9 + x + 5) % 7], 2.0f);
+            }
+        }
+        
+    }
+    
     while (!window.closed()) {
         window.update();
         renderer.draw();

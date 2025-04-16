@@ -1,10 +1,10 @@
 #define ARAWN_IMPLEMENTATION
 #include "attachments.h"
 #include "engine.h"
-#include "settings.h"
 #include "swapchain.h"
 
 TextureAttachment::TextureAttachment(
+    uint32_t frame_count,
     VkImageUsageFlags usage, 
     VkFormat format, 
     VkImageAspectFlagBits aspect, 
@@ -22,12 +22,12 @@ TextureAttachment::TextureAttachment(
             static_cast<uint32_t>(queue_families.size()), queue_families.data()
         };
 
-        for (uint32_t i = 0; i < settings.frame_count; ++i) {
+        for (uint32_t i = 0; i < frame_count; ++i) {
             VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &image[i]));
         }
 
-        if (settings.frame_count != MAX_FRAMES_IN_FLIGHT) {
-            image[settings.frame_count] = nullptr;
+        if (frame_count != MAX_FRAMES_IN_FLIGHT) {
+            image[frame_count] = nullptr;
         }
     }
 
@@ -40,7 +40,7 @@ TextureAttachment::TextureAttachment(
             requirements.size, engine.memory_type_index(requirements, memory_property) 
         };
         
-        for (uint32_t i = 0; i < settings.frame_count; ++i) {
+        for (uint32_t i = 0; i < frame_count; ++i) {
             VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &memory[i]));
             VK_ASSERT(vkBindImageMemory(engine.device, image[i], memory[i], 0));
         }
@@ -63,7 +63,7 @@ TextureAttachment::TextureAttachment(
         info.format = format; 
         info.subresourceRange.aspectMask = aspect;
 
-        for (uint32_t i = 0; i < settings.frame_count; ++i) {
+        for (uint32_t i = 0; i < frame_count; ++i) {
             info.image = image[i];
             VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &view[i]));
         }
@@ -111,6 +111,7 @@ TextureAttachment& TextureAttachment::operator=(TextureAttachment&& other) {
 }
 
 BufferAttachment::BufferAttachment(
+    uint32_t frame_count,
     void* data, uint32_t size,
     VkBufferUsageFlags usage,
     VkMemoryPropertyFlags memory_property, 
@@ -124,12 +125,12 @@ BufferAttachment::BufferAttachment(
             static_cast<uint32_t>(queue_families.size()), queue_families.data()
         };
 
-        for (uint32_t i = 0; i < settings.frame_count; ++i) {
+        for (uint32_t i = 0; i < frame_count; ++i) {
             VK_ASSERT(vkCreateBuffer(engine.device, &info, nullptr, &buffer[i]));
         }
 
-        if (settings.frame_count != MAX_FRAMES_IN_FLIGHT) {
-            buffer[settings.frame_count] = nullptr;
+        if (frame_count != MAX_FRAMES_IN_FLIGHT) {
+            buffer[frame_count] = nullptr;
         }
     }
 
@@ -142,7 +143,7 @@ BufferAttachment::BufferAttachment(
             requirements.size, engine.memory_type_index(requirements, memory_property) 
         };
         
-        for (uint32_t i = 0; i < settings.frame_count; ++i) {
+        for (uint32_t i = 0; i < frame_count; ++i) {
             VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &memory[i]));
             VK_ASSERT(vkBindBufferMemory(engine.device, buffer[i], memory[i], 0));
         }

@@ -1,5 +1,11 @@
 #version 450
 
+struct Light {
+    vec3 position;
+    float radius;
+    vec3 colour;
+    float intensity;
+};
 
 layout(std140, set = 0, binding = 0) uniform Camera {
     mat4 proj;
@@ -10,6 +16,12 @@ layout(std140, set = 0, binding = 0) uniform Camera {
 layout(set = 1, input_attachment_index = 0, binding = 0) uniform subpassInputMS albedo_attachment;
 layout(set = 1, input_attachment_index = 0, binding = 1) uniform subpassInputMS normal_attachment;
 layout(set = 1, input_attachment_index = 0, binding = 2) uniform subpassInputMS position_attachment;
+
+layout(std430, set = 2, binding = 0) readonly buffer LightArray {
+    uint light_count;
+    int padding[3];
+    Light lights[];
+};
 
 layout(location = 0) out vec4 out_colour;
 
@@ -37,6 +49,12 @@ float G_Smith(float NdotV, float NdotL, float roughness) {
     return G_SchlickGGX(NdotL, roughness) * G_SchlickGGX(NdotV, roughness);
 }
 
+float attenuate(vec3 light_position, vec3 frag_position, float radius, float intensity) {
+    vec3 diff = light_position - frag_position;
+    float d2 = dot(diff, diff); // distance squared
+    float r2 = radius * radius; // radius squared
+    return (r2 - d2) / (1 + d2) / r2;
+}
 
 void main() {
     vec4 in_albedo =   subpassLoad(albedo_attachment, gl_SampleID);
@@ -54,34 +72,31 @@ void main() {
     vec3 N = normalize(normal);
     vec3 V = normalize(frag_position - eye);
 
-    vec3 F0 = vec3(0.04);
+    vec3 F0 = vec3(0.01); // assumes IOR of ~1.5
     F0 = mix(F0, albedo, metallic);
     
     // ambient component
-    out_colour = vec4(vec3(0.03) * albedo, 1.0);
+    out_colour = vec4(vec3(0.1) * albedo, 1.0);
 
     // for each light
-    {
-        vec3 light_position = vec3(0, 5, 0);
-        vec3 light_colour = vec3(100.0, 100.0, 100.0);
+    for (uint i = 0; i < light_count; ++i) {
+        Light light = lights[i];
         
-        vec3 L = normalize(light_position - frag_position);
+        vec3 L = normalize(light.position - frag_position);
         vec3 H = normalize(V + L);
 
-        float dist = max(length(light_position - frag_position), EPSILON);
-
-        float NdotH = dot(N, H);
-        float NdotV = dot(N, V);
-        float NdotL = dot(N, L);
-        float HdotV = dot(H, V);
-
-        float A = NdotL / (dist * dist); // attenuation
+        float NdotH = max(dot(N, H), EPSILON);
+        float NdotV = max(dot(N, V), EPSILON);
+        float NdotL = max(dot(N, L), 0.0);
+        float HdotV = max(dot(H, V), 0.0);
+        
+        float A = attenuate(light.position, frag_position, light.radius, light.intensity); // attenuation
         float D = D_GGX(NdotH, roughness);
         float G = G_Smith(NdotV, NdotL, roughness);
         vec3  F = F_Schlick(HdotV, F0);
 
         vec3 diffuse = albedo / PI * (vec3(1.0) - F) * (1.0 - metallic);
         vec3 specular = D * G * F / max(4.0 * NdotV * NdotL, EPSILON);
-        out_colour.rgb += (vec3(F)) * light_colour * A;
+        out_colour.rgb += (diffuse + specular) * light.colour * A * NdotL;
     }
 }

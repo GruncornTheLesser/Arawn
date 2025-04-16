@@ -39,5 +39,5 @@ Material::Material(const tinyobj::material_t* info, std::filesystem::path dir)
     if (!info->roughness_texname.empty()) data.flags |= Material::ROUGHNESS_TEXTURE;
     if (!info->normal_texname.empty()) data.flags |= Material::NORMAL_TEXTURE;
 
-    buffer.set_value(&data);
+    buffer.set_value(&data, sizeof(Data));
 }

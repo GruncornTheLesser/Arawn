@@ -49,7 +49,7 @@ find_program(GLSLC_EXECUTABLE glslc)
 
 if (GLSLC_EXECUTABLE)
 	message(STATUS "ARAWN: using glslc from path")
-	set(GLSLC_EXECUTABLE glslc)
+	set(GLSLC_EXECUTABLE glslc --target-env=vulkan1.2)
 elseif(DEFINED ENV{VULKAN_SDK})
 	message(STATUS "using vulkan sdk")
 	if(WIN32)

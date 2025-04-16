@@ -59,10 +59,6 @@ CullingPass::CullingPass(Renderer& renderer) {
 
         vkDestroyShaderModule(engine.device, comp_module, nullptr);
     }
-
-    { // initialize tiles/clusters
-        
-    }
 }
 
 CullingPass::~CullingPass() {

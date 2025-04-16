@@ -19,6 +19,12 @@ enum class RenderMode {
     DEFERRED
 };
 
+enum class CullingMode {
+    NONE,
+    TILED,
+    CLUSTERED
+};
+
 enum class AntiAlias { 
     NONE,       // VK_SAMPLE_COUNT_1
     MSAA_2,     // VK_SAMPLE_COUNT_2
@@ -38,16 +44,19 @@ struct Settings {
     //void save(std::filesystem::path fp);
 
     // engine
-    std::string device;
-    glm::uvec2 resolution;
-    DisplayMode display_mode;
-    float       aspect_ratio;
-    uint32_t    frame_count;
-    VsyncMode   vsync_mode;
-    AntiAlias   anti_alias;
-    bool z_prepass_enabled;
-    RenderMode render_mode;
-    glm::uvec3 cluster_count;
+    std::string device;         // requires complete reinstancing of engine
+    // swapchain
+    DisplayMode display_mode;   // recreates window + swapchain + renderer
+    glm::uvec2  resolution;      // recreates swapchain + renderer
+    float       aspect_ratio;   // simply lists different set of resolutions
+    uint32_t    frame_count;    // recreates renderer
+    bool        vsync_enabled;  // recreates swapchain + renderer
+    // renderer
+    AntiAlias   anti_alias;     // recreates renderer
+    bool z_prepass_enabled;     // recreates renderer
+    RenderMode render_mode;     // recreates renderer
+    CullingMode culling_mode;   // recreates renderer
+    glm::uvec2 tile_size;       // reassigns uniform value
 
     bool culling_pass_enabled;
     bool deferred_pass_enabled;

@@ -1,0 +1,116 @@
+#version 450
+#extension GL_KHR_shader_subgroup_basic : enable
+#extension GL_KHR_shader_subgroup_arithmetic : enable
+
+#define TILE_SIZE 16
+#define MAX_LIGHTS 128
+
+struct Light { 
+	vec3 position; // position + radius
+	float radius;
+	vec3 colour;
+	float intensity; 
+};
+
+struct Frustrum {
+	vec4 planes[4];
+};
+
+layout(binding = 1) uniform sampler2D depth_sampler;
+
+
+layout(binding = 4) buffer Params {
+	mat4 view;
+	mat4 inv_proj;
+	uvec2 screen_size;
+	uint num_lights;
+};
+
+layout(std430, binding = 3) buffer Lights {
+	Light lights[];
+};
+
+layout(std430, binding = 5) buffer Frustrums {
+	Frustrum frustrums[];
+};
+
+layout(std430, binding = 6) buffer LightIndexArray {
+	uint indices[];
+};
+
+layout(std430, binding = 7) buffer LightGrid {
+	uint tiles[];
+};
+
+vec4 clip_to_view(vec4 clip_position) {
+	vec4 view_position = inv_proj * clip_position;
+	view_position = view_position / view_position.w;
+	return view_position;
+}
+
+vec4 screen_to_view(vec4 screen_position) {
+	vec2 texcoord = screen_position.xy / screen_size;
+	vec4 clip = vec4(vec2(texcoord.x, 1 - texcoord.y) * 2 - 1, screen_position.z, screen_position.w);
+	return clip_to_view(clip);
+}
+
+bool sphere_inside_plane(vec4 sphere, vec4 plane) {
+	return dot(plane.xyz, sphere.xyz) - plane.w < -sphere.w;
+}
+
+bool sphere_inside_frustrum(vec4 sphere, Frustrum frustrum, float near, float far) {
+	// if sphere depth +/- shere radius outside of near far depth range
+	if (sphere.z - sphere.w > near || sphere.z + sphere.w < far) {
+		return false;
+	}
+	// if sphere insides frustrum plane
+	for (uint i = 0; i < 4; ++i) {
+		if (sphere_inside_plane(sphere, frustrum.planes[i])) {
+			return false;
+		}
+	}
+	
+	return true;
+}
+
+layout (local_size_x = TILE_SIZE, local_size_y = TILE_SIZE) in;
+
+void main() {
+	vec2 texcoord = gl_GlobalInvocationID.xy / screen_size + gl_LocalInvocationID.xy / vec2(TILE_SIZE);
+	texcoord.y = 1.0 - texcoord.y;
+
+	// find 
+	float depth = texture(depth_sampler, texcoord).r;
+	
+	float far = subgroupMin(depth); // min
+	float near = subgroupMax(depth); // max 
+
+	if (!subgroupElect()) {
+		return;
+	}
+
+	uint index = gl_WorkGroupID.x +
+				 gl_WorkGroupID.y * gl_WorkGroupSize.x;
+
+	float diff = near - far;
+	far -= diff;
+	near -= diff;
+
+	uint count = 0;
+	uint begin = index * MAX_LIGHTS;
+	for (uint i = 0; i < num_lights; ++i) {
+		
+		vec4 light = view * vec4(lights[i].position.xyz, 1); // light in view space
+		light.w = lights[i].radius; // copy radius
+		
+		if (sphere_inside_frustrum(light, frustrums[index], near, far)) { 
+			indices[begin + count] = i;
+			if (++count == MAX_LIGHTS) {
+				break;
+			}
+			
+		}
+	}
+
+	tiles[index] = count;
+}

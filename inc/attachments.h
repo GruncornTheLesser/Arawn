@@ -6,6 +6,7 @@
 struct TextureAttachment {
     TextureAttachment() { image[0] = nullptr; }
     TextureAttachment(
+        uint32_t frame_count,
         VK_ENUM(VkImageUsageFlags) usage, 
         VK_ENUM(VkFormat) format, 
         VK_ENUM(VkImageAspectFlagBits) aspect, 
@@ -27,10 +28,13 @@ struct TextureAttachment {
 
 struct BufferAttachment {
     BufferAttachment() { buffer[0] = nullptr; }
-    BufferAttachment(void* data, uint32_t size, 
-    VK_ENUM(VkBufferUsageFlags) usage,
-    VK_ENUM(VkMemoryPropertyFlags) memory_property, 
-    std::span<uint32_t> queue_families);
+    BufferAttachment(
+        uint32_t frame_count,
+        void* data, uint32_t size, 
+        VK_ENUM(VkBufferUsageFlags) usage,
+        VK_ENUM(VkMemoryPropertyFlags) memory_property, 
+        std::span<uint32_t> queue_families
+    );
     
     ~BufferAttachment();
     BufferAttachment(BufferAttachment&& other);
