@@ -50,10 +50,11 @@ float G_Smith(float NdotV, float NdotL, float roughness) {
 }
 
 float attenuate(vec3 light_position, vec3 frag_position, float radius, float intensity) {
-    vec3 diff = light_position - frag_position;
-    float d2 = dot(diff, diff); // distance squared
-    float r2 = radius * radius; // radius squared
-    return (r2 - d2) / (1 + d2) / r2;
+    const float offset = 0.1;
+    vec3 d = light_position - frag_position;    // difference
+    float x2 = dot(d, d) / (radius * radius);   // normalized dist squared 
+    float f = offset * (x2 - 1);                // offset
+    return f / (f - x2);
 }
 
 void main() {
