@@ -21,12 +21,18 @@ Material::Material() {
 }
 
 Material::Material(const tinyobj::material_t* info, std::filesystem::path dir)
- : buffer(nullptr, sizeof(Data)),
-   albedo_texture(dir /= std::filesystem::path(info->diffuse_texname)), 
-   metallic_texture(dir /= std::filesystem::path(info->metallic_texname)), 
-   roughness_texture(dir /= std::filesystem::path(info->roughness_texname)), 
-   normal_texture(dir /= std::filesystem::path(info->normal_texname)),
-   set(engine.material_layout, std::array<std::variant<UniformBuffer*, UniformTexture*>, 5>() = { &buffer, &albedo_texture, &metallic_texture, &roughness_texture, &normal_texture })
+ : buffer(nullptr, sizeof(Data), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, { }),
+   albedo(dir /= std::filesystem::path(info->diffuse_texname)), 
+   metallic(dir /= std::filesystem::path(info->metallic_texname)), 
+   roughness(dir /= std::filesystem::path(info->roughness_texname)), 
+   normal(dir /= std::filesystem::path(info->normal_texname)),
+   uniform(engine.material_layout, std::array<Uniform, 5>() = { 
+        UniformBuffer{ &buffer }, 
+        UniformTexture{ &albedo }, 
+        UniformTexture{ &metallic }, 
+        UniformTexture{ &roughness }, 
+        UniformTexture{ &normal }
+    })
 {
     Data data;
     data.albedo = { info->diffuse[0], info->diffuse[1], info->diffuse[2] };

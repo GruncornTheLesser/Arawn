@@ -1,48 +1,16 @@
-#define ARAWN_IMPLEMENTATION
 #pragma once
 #include "vulkan.h"
-#include <filesystem>
+#include "buffer.h"
+#include "texture.h"
 #include <variant>
-#include <span>
 
-class UniformBuffer;
-class UniformTexture;
-using Uniform = std::variant<UniformBuffer*, UniformTexture*>;
+struct UniformBuffer { Buffer* ptr; };
+struct StorageBuffer { Buffer* ptr; };
+struct UniformTexture { Texture* ptr; };
+struct InputAttachment { Texture* ptr; };
+struct DepthAttachment { Texture* ptr; };
+using Uniform = std::variant<UniformBuffer, StorageBuffer, UniformTexture, InputAttachment, DepthAttachment>;
 
-class UniformBuffer {
-    friend class UniformSet;
-public:
-    UniformBuffer() : buffer(nullptr) { }
-    UniformBuffer(const void* data, uint32_t size);
-    ~UniformBuffer();
-    UniformBuffer(UniformBuffer&& other);
-    UniformBuffer& operator=(UniformBuffer&& other);
-    UniformBuffer(const UniformBuffer& other) = delete;
-    UniformBuffer& operator=(const UniformBuffer& other) = delete;
-
-    void set_value(const void* data, uint32_t size);
-
-private:
-    VK_TYPE(VkBuffer) buffer = nullptr;
-    VK_TYPE(VkDeviceMemory) memory;
-};
-
-class UniformTexture {
-    friend class UniformSet;
-public:
-    UniformTexture() : image(nullptr) { }
-    UniformTexture(std::filesystem::path fp);
-    ~UniformTexture();
-    UniformTexture(UniformTexture&& other);
-    UniformTexture& operator=(UniformTexture&& other);
-    UniformTexture(const UniformTexture& other) = delete;
-    UniformTexture& operator=(const UniformTexture& other) = delete;
-
-private:
-    VK_TYPE(VkImage) image = nullptr;
-    VK_TYPE(VkDeviceMemory) memory;
-    VK_TYPE(VkImageView) view;
-};
 
 class UniformSet {
 public:

@@ -34,19 +34,16 @@ public:
     Model& operator=(const Model& other) = delete;
     
     struct Transform {
-        struct Uniform { 
-            UniformBuffer buffer;
-            UniformSet set; 
-            Uniform();
-        };
-
+        Transform();
+        
         void update(uint32_t frame_index);
 
         glm::vec3 position { 0, 0, 0 };
         glm::quat rotation { 1, 0, 0, 0 };
         glm::vec3 scale = { 1, 1, 1 };
         
-        std::array<Uniform, MAX_FRAMES_IN_FLIGHT> uniform;
+        std::array<UniformSet, MAX_FRAMES_IN_FLIGHT> uniform;
+        std::array<Buffer, MAX_FRAMES_IN_FLIGHT> buffer;
     } transform;
 private:
     uint32_t vertex_count = 0;

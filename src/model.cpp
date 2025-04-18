@@ -434,9 +434,12 @@ Model& Model::operator=(Model&& other) {
     return *this;
 }
 
-Model::Transform::Uniform::Uniform()
- : buffer(nullptr, sizeof(glm::mat4)), 
-   set(engine.transform_layout, std::array<std::variant<UniformBuffer*, UniformTexture*>, 1>() = { &buffer }) { }
+Model::Transform::Transform() {
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        buffer[i] = Buffer(nullptr, sizeof(glm::mat4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, { });
+        uniform[i] = UniformSet(engine.transform_layout, std::array<Uniform, 1>() = { UniformBuffer{ &buffer[i] } });
+    }
+}
 
 void Model::Transform::update(uint32_t frame_index) {
     glm::mat4 transform = glm::identity<glm::mat4>();
@@ -444,5 +447,5 @@ void Model::Transform::update(uint32_t frame_index) {
     transform = glm::scale(transform, scale);
     transform = glm::translate(transform, position);
 
-    uniform[frame_index].buffer.set_value(&transform, sizeof(glm::mat4));
+    buffer[frame_index].set_value(&transform, sizeof(glm::mat4));
 }

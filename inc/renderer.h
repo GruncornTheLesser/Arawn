@@ -1,25 +1,17 @@
 #pragma once
 #include "vulkan.h"
 #include "uniform.h"
-#include "attachments.h"
 #include "pass/depth.h"
 #include "pass/deferred.h"
 #include "pass/culling.h"
 #include "pass/forward.h"
 
-struct Frustrum {
+struct Frustum {
     glm::vec4 planes[4];
 };
 
 struct Cluster { // axis aligned bounding box
 	glm::vec4 min_position, max_position;
-};
-
-template<size_t N>
-struct LightArray {
-    uint32_t count;
-    int padding[3];
-    uint32_t data[N];
 };
 
 class Renderer {
@@ -42,30 +34,30 @@ public:
     void record(uint32_t frame_index);
 
 private:
-    glm::uvec3 cell_count; // resolution / tile_size + 1
-
-    TextureAttachment msaa_attachment;      // msaa staging attachment
-    TextureAttachment depth_attachment;     // depth buffer attachment
-    TextureAttachment albedo_attachment;    // deferred colour attachment 1 (colour + alpha)
-    TextureAttachment normal_attachment;    // deferred colour attachment 2 (normal + metallic)
-    TextureAttachment position_attachment;  // deferred colour attachment 3 (normal + roughness)
-
-    BufferAttachment cluster_buffer; // cluster/frustrum buffer
-    BufferAttachment culled_buffer;   // { index, count }
-    BufferAttachment light_buffer;   // uniform buffer
+    glm::uvec3 frustum_count; // resolution / tile_size + 1
 
     uint32_t frame_index = 0;
     uint32_t frame_count = 0;
+
+    std::array<Texture, MAX_FRAMES_IN_FLIGHT> msaa_attachment;      // msaa staging attachment
+    std::array<Texture, MAX_FRAMES_IN_FLIGHT> depth_attachment;     // depth buffer attachment
+    std::array<Texture, MAX_FRAMES_IN_FLIGHT> albedo_attachment;    // deferred colour attachment 1 (colour + alpha)
+    std::array<Texture, MAX_FRAMES_IN_FLIGHT> normal_attachment;    // deferred colour attachment 2 (normal + metallic)
+    std::array<Texture, MAX_FRAMES_IN_FLIGHT> position_attachment;  // deferred colour attachment 3 (normal + roughness)
+
+    std::array<Buffer, MAX_FRAMES_IN_FLIGHT> frustum_buffer; // cluster/Frustum buffer
+    std::array<Buffer, MAX_FRAMES_IN_FLIGHT> culled_buffer;   // { index, count }
+    std::array<Buffer, MAX_FRAMES_IN_FLIGHT> light_buffer;   // uniform buffer
     
+    std::array<UniformSet, MAX_FRAMES_IN_FLIGHT> light_attachment_set;
+    std::array<UniformSet, MAX_FRAMES_IN_FLIGHT> input_attachment_set;
+
     uint32_t current_version = 0;
     std::array<uint32_t, MAX_FRAMES_IN_FLIGHT> frame_version;
 
     std::array<VK_TYPE(VkFence), MAX_FRAMES_IN_FLIGHT> in_flight;
     std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> image_available;
     
-    std::array<VK_TYPE(VkDescriptorSet), MAX_FRAMES_IN_FLIGHT> light_attachment_set;
-    std::array<VK_TYPE(VkDescriptorSet), MAX_FRAMES_IN_FLIGHT> input_attachment_set;
-
     DepthPass depth_pass;
     DeferredPass deferred_pass;
     CullingPass culling_pass;
