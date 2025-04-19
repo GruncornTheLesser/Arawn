@@ -10,10 +10,6 @@ struct Frustum {
     glm::vec4 planes[4];
 };
 
-struct Cluster { // axis aligned bounding box
-	glm::vec4 min_position, max_position;
-};
-
 class Renderer {
     friend class DepthPass;
     friend class DeferredPass;
@@ -34,8 +30,9 @@ public:
     void record(uint32_t frame_index);
 
 private:
-    glm::uvec3 frustum_count; // resolution / tile_size + 1
+    Configuration config;
 
+    glm::uvec3 cluster_count; // resolution / tile_size + 1
     uint32_t frame_index = 0;
     uint32_t frame_count = 0;
 
@@ -45,9 +42,17 @@ private:
     std::array<Texture, MAX_FRAMES_IN_FLIGHT> normal_attachment;    // deferred colour attachment 2 (normal + metallic)
     std::array<Texture, MAX_FRAMES_IN_FLIGHT> position_attachment;  // deferred colour attachment 3 (normal + roughness)
 
-    std::array<Buffer, MAX_FRAMES_IN_FLIGHT> frustum_buffer; // cluster/Frustum buffer
-    std::array<Buffer, MAX_FRAMES_IN_FLIGHT> culled_buffer;   // { index, count }
-    std::array<Buffer, MAX_FRAMES_IN_FLIGHT> light_buffer;   // uniform buffer
+    std::array<Buffer, MAX_FRAMES_IN_FLIGHT> light_buffer;
+    std::array<Buffer, MAX_FRAMES_IN_FLIGHT> cluster_buffer;
+    Buffer frustum_buffer;
+
+    std::array<VK_TYPE(VkFence), MAX_FRAMES_IN_FLIGHT> in_flight;
+    std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT>     image_ready;
+    std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT * 2> depth_ready;
+    std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT>     light_ready;
+    std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT>     defer_ready;
+    std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT>     frame_ready;
+
     
     std::array<UniformSet, MAX_FRAMES_IN_FLIGHT> light_attachment_set;
     std::array<UniformSet, MAX_FRAMES_IN_FLIGHT> input_attachment_set;
@@ -55,9 +60,6 @@ private:
     uint32_t current_version = 0;
     std::array<uint32_t, MAX_FRAMES_IN_FLIGHT> frame_version;
 
-    std::array<VK_TYPE(VkFence), MAX_FRAMES_IN_FLIGHT> in_flight;
-    std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> image_available;
-    
     DepthPass depth_pass;
     DeferredPass deferred_pass;
     CullingPass culling_pass;

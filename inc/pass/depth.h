@@ -18,8 +18,6 @@ public:
     bool enabled() { return cmd_buffer[0] != nullptr; }
 
     std::array<VK_TYPE(VkCommandBuffer), MAX_FRAMES_IN_FLIGHT> cmd_buffer;
-    std::array<VK_TYPE(VkSemaphore), MAX_FRAMES_IN_FLIGHT> finished;
-    
     VK_TYPE(VkPipeline) pipeline;
     VK_TYPE(VkRenderPass) renderpass;
     VK_TYPE(VkPipelineLayout) layout;

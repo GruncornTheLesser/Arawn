@@ -21,13 +21,6 @@ DepthPass::DepthPass(Renderer& renderer) {
         }
     }
 
-    { // create semaphores
-        VkSemaphoreCreateInfo info{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
-        for (uint32_t i = 0; i < settings.frame_count; ++i) {
-            VK_ASSERT(vkCreateSemaphore(engine.device, &info, nullptr, &finished[i]));
-        }
-    }
-
     { // create pipeline layout
         std::array<VkDescriptorSetLayout, 2> sets = { engine.camera_layout, engine.transform_layout };
 
@@ -38,13 +31,15 @@ DepthPass::DepthPass(Renderer& renderer) {
         VK_ASSERT(vkCreatePipelineLayout(engine.device, &info, nullptr, &layout));
     }
 
+
+    VkSampleCountFlagBits sample_count = settings.sample_count();
     { // create renderpass
         VkAttachmentReference depth_ref = { 0, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
         VkAttachmentDescription depth_info = { 
-            0, VK_FORMAT_D32_SFLOAT, settings.sample_count, 
+            0, VK_FORMAT_D32_SFLOAT, sample_count, 
             VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
             VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
-            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
         };
         VkSubpassDescription subpass{ 0, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, nullptr, 0, nullptr, nullptr, &depth_ref, 0, nullptr };
         VkRenderPassCreateInfo info{ VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, nullptr, 0, 1, &depth_info, 1, &subpass, 0, nullptr };
@@ -53,8 +48,8 @@ DepthPass::DepthPass(Renderer& renderer) {
     }
 
     { // create pipeline
-        VkShaderModule vert_module = engine.create_shader("res/import/shader/transform_basic.vert.spv");
-        VkShaderModule frag_module = engine.create_shader("res/import/shader/depth.frag.spv");
+        VkShaderModule vert_module = engine.create_shader("res/import/shader/transform/basic.vert.spv");
+        VkShaderModule frag_module = engine.create_shader("res/import/shader/empty.frag.spv");
 
         std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages;
         shader_stages[0] = { 
@@ -96,7 +91,7 @@ DepthPass::DepthPass(Renderer& renderer) {
 
         VkPipelineMultisampleStateCreateInfo multisampling_state{
             VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO, nullptr, 0, 
-            settings.sample_count, VK_FALSE
+            sample_count, VK_FALSE
         };
 
         VkPipelineDepthStencilStateCreateInfo depth_stencil_state = {
@@ -141,7 +136,7 @@ DepthPass::DepthPass(Renderer& renderer) {
         };
 
         for (uint32_t i = 0; i < settings.frame_count; ++i) {
-            attachments[0] = renderer.depth_attachment.view[i];
+            attachments[0] = renderer.depth_attachment[i].view;
             VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &framebuffer[i]));
         }
     }
@@ -155,7 +150,6 @@ DepthPass::~DepthPass() {
         
         uint32_t i;
         for (i = 0 ; i < MAX_FRAMES_IN_FLIGHT && cmd_buffer[i] != nullptr; ++i) {
-            vkDestroySemaphore(engine.device, finished[i], nullptr);
             vkDestroyFramebuffer(engine.device, framebuffer[i], nullptr);
         }
         vkFreeCommandBuffers(engine.device, engine.graphics.pool, i, cmd_buffer.data());
@@ -168,7 +162,6 @@ DepthPass::DepthPass(DepthPass&& other) {
     if (this == &other) return;
 
     cmd_buffer = other.cmd_buffer;
-    finished = other.finished;
     
     pipeline = other.pipeline;
     renderpass = other.renderpass;
@@ -189,7 +182,6 @@ DepthPass& DepthPass::operator=(DepthPass&& other) {
         
         uint32_t i;
         for (i = 0 ; i < MAX_FRAMES_IN_FLIGHT && cmd_buffer[i] != nullptr; ++i) {
-            vkDestroySemaphore(engine.device, finished[i], nullptr);
             vkDestroyFramebuffer(engine.device, framebuffer[i], nullptr);
         }
         vkFreeCommandBuffers(engine.device, engine.graphics.pool, i, cmd_buffer.data());
@@ -200,7 +192,6 @@ DepthPass& DepthPass::operator=(DepthPass&& other) {
     renderpass = other.renderpass;
     pipeline = other.pipeline;
     cmd_buffer = other.cmd_buffer;
-    finished = other.finished;
     framebuffer = other.framebuffer;
 
     other.cmd_buffer[0] = nullptr;
@@ -252,7 +243,7 @@ void DepthPass::record(uint32_t frame_index) {
 
     { // draw scene 
         // bind camera
-        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].set.descriptor_set, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].descriptor_set, 0, nullptr);
 
         for (Model& model : models) {
             // bind vbo
@@ -263,17 +254,30 @@ void DepthPass::record(uint32_t frame_index) {
             vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index_buffer, 0, VK_INDEX_TYPE_UINT32);
             
             // bind transform
-            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.uniform[frame_index].set.descriptor_set, 0, nullptr);
+            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.uniform[frame_index].descriptor_set, 0, nullptr);
 
             vkCmdDrawIndexed(cmd_buffer[frame_index], model.vertex_count, 1, 0, 0, 0);
         }
     }
     
-    { // end renderpass & cmd buffer
-        vkCmdEndRenderPass(cmd_buffer[frame_index]);
+    vkCmdEndRenderPass(cmd_buffer[frame_index]);
 
-        VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
+    {
+        VkImageMemoryBarrier barrier{ 
+            VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, nullptr,  
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+            VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+            VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, 
+            renderer.depth_attachment[frame_index].image, 
+            { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
+        };
+
+        vkCmdPipelineBarrier(cmd_buffer[frame_index],
+            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
+            0, 0, nullptr, 0, nullptr, 1, &barrier
+        );
     }
-}
 
+    VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
+}
 

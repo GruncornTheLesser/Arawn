@@ -57,27 +57,27 @@ Controller::Controller() {
 }
 
 void Controller::move_forward(const Update& event) { 
-    camera.position += glm::inverse(camera.rotation) * glm::vec3(0, 0, event.delta * -controller.move_speed);
-}
-
-void Controller::move_backward(const Update& event) { 
     camera.position += glm::inverse(camera.rotation) * glm::vec3(0, 0, event.delta * controller.move_speed);
 }
 
-void Controller::move_left(const Update& event) { 
-    camera.position += glm::inverse(camera.rotation) * glm::vec3(event.delta * -controller.move_speed, 0, 0);
+void Controller::move_backward(const Update& event) { 
+    camera.position += glm::inverse(camera.rotation) * glm::vec3(0, 0, event.delta * -controller.move_speed);
 }
 
-void Controller::move_right(const Update& event) { 
+void Controller::move_left(const Update& event) { 
     camera.position += glm::inverse(camera.rotation) * glm::vec3(event.delta * controller.move_speed, 0, 0);
 }
 
+void Controller::move_right(const Update& event) { 
+    camera.position += glm::inverse(camera.rotation) * glm::vec3(event.delta * -controller.move_speed, 0, 0);
+}
+
 void Controller::move_up(const Update& event) { 
-    camera.position += glm::inverse(camera.rotation) * glm::vec3(0.0, event.delta * -controller.move_speed, 0);
+    camera.position += glm::inverse(camera.rotation) * glm::vec3(0.0, event.delta * controller.move_speed, 0);
 }
 
 void Controller::move_down(const Update& event) { 
-    camera.position += glm::inverse(camera.rotation) * glm::vec3(0.0, event.delta * controller.move_speed, 0);
+    camera.position += glm::inverse(camera.rotation) * glm::vec3(0.0, event.delta * -controller.move_speed, 0);
 }
 
 void Controller::rotate(const Update& event) {

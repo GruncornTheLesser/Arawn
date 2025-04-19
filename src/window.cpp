@@ -49,7 +49,7 @@ Window::Window()
 	glfwSetCursorPosCallback(window, mouse_move_callback);
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 
-    set_display_mode(settings.display_mode);
+    set_display_mode(settings.display_mode());
 
     previous_frame = std::chrono::high_resolution_clock::now();
 }

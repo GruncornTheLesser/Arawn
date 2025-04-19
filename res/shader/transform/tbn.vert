@@ -4,9 +4,13 @@
 layout (std140, set = 0, binding = 0) uniform Camera {
     mat4 proj;
     mat4 view;
+    mat4 inv_proj;
+    uvec2 screen_size;
+	float near;
+	float far;
     vec3 eye;
 };
-layout (set = 1, binding = 0) uniform Object {
+layout (set = 1, binding = 0) uniform Transform {
     mat4 model;
 };
 

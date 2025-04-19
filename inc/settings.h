@@ -3,66 +3,40 @@
 #include <filesystem>
 #include <string>
 
-enum class DisplayMode { 
-    WINDOWED=0,
-    FULLSCREEN=1,
-    EXCLUSIVE=2
+enum class DisplayMode : uint32_t { WINDOWED=0, FULLSCREEN=2, EXCLUSIVE=3, MASK=3 };
+enum class VsyncMode : uint32_t { DISABLED=0, ENABLED=4, MASK=4 };
+enum class RenderMode : uint32_t { FORWARD=0, DEFERRED=8, MASK=8 };
+enum class CullingMode : uint32_t { NONE=0, TILED=16, CLUSTERED=48, MASK=48 };
+enum class DepthMode : uint32_t { DISABLED=0, ENABLED=64, MASK=64 };
+enum class AntiAlias : uint32_t { NONE=0, MSAA_2=128, MSAA_4=256, MSAA_8=384, MASK=384 };
+
+struct Configuration {
+    RenderMode render_mode() const;
+    DisplayMode display_mode() const;
+    CullingMode culling_mode() const;
+    AntiAlias anti_alias_mode() const;
+    DepthMode depth_mode() const;
+    VsyncMode vsync_mode() const;
+    
+    bool vsync_enabled() const;
+    bool msaa_enabled() const;
+    bool culling_enabled() const;
+    bool depth_prepass_enabled() const;
+    bool deferred_pass_enabled() const;
+    VK_ENUM(VkSampleCountFlagBits) sample_count() const;    
+
+    uint32_t flags;
 };
 
-enum class VsyncMode { 
-    OFF,            // IMMEDIATE/FIFO_RELAXED
-    ON              // FIFO/MAILBOX
-};
-
-enum class RenderMode {
-    FORWARD,
-    DEFERRED
-};
-
-enum class CullingMode {
-    NONE,
-    TILED,
-    CLUSTERED
-};
-
-enum class AntiAlias { 
-    NONE,       // VK_SAMPLE_COUNT_1
-    MSAA_2,     // VK_SAMPLE_COUNT_2
-    MSAA_4,     // VK_SAMPLE_COUNT_4
-    MSAA_8,     // VK_SAMPLE_COUNT_8
-    MSAA_16     // VK_SAMPLE_COUNT_16
-    /*
-    FXAA_2,
-    FXAA_4,
-    FXAA_8,
-    FXAA_16,
-    */
-};
-
-struct Settings {
+struct Settings : Configuration {
     Settings(std::filesystem::path fp);
     //void save(std::filesystem::path fp);
 
     // engine
-    std::string device;         // requires complete reinstancing of engine
-    // swapchain
-    DisplayMode display_mode;   // recreates window + swapchain + renderer
-    glm::uvec2  resolution;      // recreates swapchain + renderer
-    float       aspect_ratio;   // simply lists different set of resolutions
-    uint32_t    frame_count;    // recreates renderer
-    bool        vsync_enabled;  // recreates swapchain + renderer
-    // renderer
-    AntiAlias   anti_alias;     // recreates renderer
-    bool z_prepass_enabled;     // recreates renderer
-    RenderMode render_mode;     // recreates renderer
-    CullingMode culling_mode;   // recreates renderer
-    glm::uvec2 tile_size;       // reassigns uniform value
-
-    bool culling_pass_enabled;
-    bool deferred_pass_enabled;
-    VK_ENUM(VkSampleCountFlagBits) sample_count;
-    bool msaa_enabled;
-    
+    std::string device;
+    glm::uvec2  resolution;
+    float       aspect_ratio;
+    uint32_t    frame_count;
 };
 
 extern Settings settings;

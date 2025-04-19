@@ -14,6 +14,10 @@
 //#include "pass/forward.h"
 
 
+
+
+
+
 /*
 TODOLIST:
  * move paremeters to settings class
@@ -31,19 +35,23 @@ Settings    settings("configs/settings.json");
 Engine      engine;
 Window      window;
 Swapchain   swapchain;
-Renderer    renderer;
 Camera      camera;
+Renderer    renderer;
 Controller  controller;
 std::vector<Model> models;
 std::vector<Light> lights;
 
 int main() {
-    //Model::Load("res/model/sponza/sponza.obj");
-
+    //{
+    //    Model::Load("res/model/sponza/sponza.obj");
+    //    for (auto& model : models) {
+    //        model.transform.scale = glm::vec3(0.1f);
+    //    }
+    //}
     {
         Model::Load("res/model/cube/cube.obj");
         Model& floor = models.back();
-        floor.transform.scale = glm::vec3(8.0f, 0.1f, 8.0f);
+        floor.transform.scale = glm::vec3(300.0f, 0.1f, 300.0f);
         floor.transform.position = glm::vec3(0, -0.05f, 0.0f);
     }
     
@@ -58,10 +66,12 @@ int main() {
             glm::vec3(1, 1, 1)  
         };
 
-        for (int x = -5; x < 5; ++x) {
-            for (int y = -5; y < 5; ++y) {
-                lights.emplace_back(glm::vec3(x, 0.1f, y), 1.5f, 2.0f * colours[((y + 5) * 9 + x + 5) % 7], 2.0f);
-            }
+        glm::ivec3 count{ 10, 1, 10 };
+        for (int x = -count.x / 2; x < count.x / 2; ++x) 
+            for (int y = 0; y < count.y; ++y) 
+                for (int z = -count.z / 2; z < count.z / 2; ++z) {
+                    lights.emplace_back(glm::vec3(x, 0, z) * glm::vec3(20), 10.0f, 
+                        1000.0f * colours[(y * count.x * count.z + (z + count.z / 2) * count.z + x + count.x / 2) % 7], 2.0f);
         }
         
     }

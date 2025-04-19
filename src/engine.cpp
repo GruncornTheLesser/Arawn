@@ -364,7 +364,6 @@ Engine::Engine() {
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &camera_layout));
         }
 
-        
         { // transform layout
             std::array<VkDescriptorSetLayoutBinding, 1> set_layout_binding;
 
@@ -454,7 +453,7 @@ Engine::Engine() {
         }
 
         { // lights/clusters layout
-            std::array<VkDescriptorSetLayoutBinding, 3> set_layout_binding;
+            std::array<VkDescriptorSetLayoutBinding, 4> set_layout_binding;
             
             VkDescriptorSetLayoutBinding& light_binding = set_layout_binding[0];
             light_binding.binding = 0;
@@ -463,19 +462,26 @@ Engine::Engine() {
             light_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
             light_binding.pImmutableSamplers = nullptr;
             
-            VkDescriptorSetLayoutBinding& culled_binding = set_layout_binding[1];
-            culled_binding.binding = 1;
-            culled_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            culled_binding.descriptorCount = 1;
-            culled_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            culled_binding.pImmutableSamplers = nullptr;
+            VkDescriptorSetLayoutBinding& frustum_binding = set_layout_binding[1];
+            frustum_binding.binding = 1;
+            frustum_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            frustum_binding.descriptorCount = 1;
+            frustum_binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            frustum_binding.pImmutableSamplers = nullptr;
 
             VkDescriptorSetLayoutBinding& cell_binding = set_layout_binding[2];
             cell_binding.binding = 2;
             cell_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             cell_binding.descriptorCount = 1;
-            cell_binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            cell_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
             cell_binding.pImmutableSamplers = nullptr;
+
+            VkDescriptorSetLayoutBinding& depth_binding = set_layout_binding[3];
+            depth_binding.binding = 3;
+            depth_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            depth_binding.descriptorCount = 1;
+            depth_binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            depth_binding.pImmutableSamplers = nullptr;
 
             VkDescriptorSetLayoutCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -519,7 +525,6 @@ Engine::Engine() {
 
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &attachment_layout));
         }
-        
     }
 }
 

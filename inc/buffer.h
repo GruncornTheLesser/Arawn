@@ -20,7 +20,6 @@ public:
 
     void set_value(const void* data, uint32_t size, uint32_t offset = 0);
 
-private:
     VK_TYPE(VkBuffer) buffer = nullptr;
     VK_TYPE(VkDeviceMemory) memory;
 };

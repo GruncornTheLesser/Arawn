@@ -11,6 +11,8 @@
 
 
 DeferredPass::DeferredPass(Renderer& renderer) {
+    VkSampleCountFlagBits sample_count = settings.sample_count();
+    
     { // create cmd buffers
         VkCommandBufferAllocateInfo info{ 
             VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, 
@@ -23,21 +25,12 @@ DeferredPass::DeferredPass(Renderer& renderer) {
         }
     }
 
-    { // create semaphores
-        VkSemaphoreCreateInfo info{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
-        for (uint32_t i = 0; i < settings.frame_count; ++i) {
-            VK_ASSERT(vkCreateSemaphore(engine.device, &info, nullptr, &finished[i]));
-        }
-    }
-
     { // create pipeline layout
         std::array<VkDescriptorSetLayout, 3> sets{ engine.camera_layout, engine.transform_layout, engine.material_layout };
-        std::array<VkPushConstantRange, 0> ranges;
-        //ranges[0] = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants) };
-
+        
         VkPipelineLayoutCreateInfo info{ 
             VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, nullptr, 0, 
-            sets.size(), sets.data(), ranges.size(), ranges.data()
+            sets.size(), sets.data(), 0, nullptr
         };
         VK_ASSERT(vkCreatePipelineLayout(engine.device, &info, nullptr, &layout));
     }
@@ -67,23 +60,23 @@ DeferredPass::DeferredPass(Renderer& renderer) {
 
         // bindings
         { // create depth attachment reference
-            if (settings.z_prepass_enabled) {
+            if (settings.depth_prepass_enabled()) {
                 depth_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL };
                 VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
                 depth_info = {
-                    0, VK_FORMAT_D32_SFLOAT, settings.sample_count, 
+                    0, VK_FORMAT_D32_SFLOAT, sample_count, 
                     VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
                     VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
                 }; 
             } else {
                 depth_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
                 VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
                 depth_info = { 
-                    0, VK_FORMAT_D32_SFLOAT, settings.sample_count, 
+                    0, VK_FORMAT_D32_SFLOAT, sample_count, 
                     VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
                     VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
                 };
             }
         }
@@ -94,7 +87,7 @@ DeferredPass::DeferredPass(Renderer& renderer) {
 
             VkAttachmentDescription& albedo_info = attachment_info[albedo_ref.attachment];
             albedo_info = {
-                0, VK_FORMAT_R8G8B8A8_UNORM, settings.sample_count, 
+                0, VK_FORMAT_R8G8B8A8_UNORM, sample_count, 
                 VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -105,7 +98,7 @@ DeferredPass::DeferredPass(Renderer& renderer) {
 
             VkAttachmentDescription& normal_info = attachment_info[normal_ref.attachment];
             normal_info = {
-                0, VK_FORMAT_R8G8B8A8_UNORM, settings.sample_count, 
+                0, VK_FORMAT_R8G8B8A8_UNORM, sample_count, 
                 VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -116,7 +109,7 @@ DeferredPass::DeferredPass(Renderer& renderer) {
 
             VkAttachmentDescription& position_info = attachment_info[position_ref.attachment];
             position_info = {
-                0, VK_FORMAT_R32G32B32A32_SFLOAT, settings.sample_count, 
+                0, VK_FORMAT_R32G32B32A32_SFLOAT, sample_count, 
                 VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -127,8 +120,8 @@ DeferredPass::DeferredPass(Renderer& renderer) {
     }
 
     { // create pipeline
-        VkShaderModule vert_module = engine.create_shader("res/import/shader/transform.vert.spv");
-        VkShaderModule frag_module = engine.create_shader("res/import/shader/deferred.frag.spv");
+        VkShaderModule vert_module = engine.create_shader("res/import/shader/transform/tbn.vert.spv");
+        VkShaderModule frag_module = engine.create_shader("res/import/shader/deferred/geometry.frag.spv");
         
         std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages;
         shader_stages[0] = {
@@ -175,12 +168,12 @@ DeferredPass::DeferredPass(Renderer& renderer) {
 
         VkPipelineMultisampleStateCreateInfo multisampling_state{
             VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO, nullptr, 0,
-            settings.sample_count, VK_FALSE
+            sample_count, VK_FALSE
         };
 
         VkPipelineDepthStencilStateCreateInfo depth_stencil_state{
             VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO, nullptr, 0,
-            VK_TRUE, settings.z_prepass_enabled ? VK_FALSE : VK_TRUE,
+            VK_TRUE, settings.depth_prepass_enabled() ? VK_FALSE : VK_TRUE,
             VK_COMPARE_OP_LESS_OR_EQUAL, VK_FALSE, VK_FALSE
         };
 
@@ -226,10 +219,10 @@ DeferredPass::DeferredPass(Renderer& renderer) {
         };
 
         for (uint32_t i = 0; i < settings.frame_count; ++i) {
-            attachments[0] = renderer.depth_attachment.view[i];
-            attachments[1] = renderer.albedo_attachment.view[i];
-            attachments[2] = renderer.normal_attachment.view[i];
-            attachments[3] = renderer.position_attachment.view[i];
+            attachments[0] = renderer.depth_attachment[i].view;
+            attachments[1] = renderer.albedo_attachment[i].view;
+            attachments[2] = renderer.normal_attachment[i].view;
+            attachments[3] = renderer.position_attachment[i].view;
             
             VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &framebuffer[i]));
         }
@@ -243,7 +236,6 @@ DeferredPass::~DeferredPass() {
         vkDestroyPipeline(engine.device, pipeline, nullptr);
         uint32_t i;
         for (i = 0 ; i < MAX_FRAMES_IN_FLIGHT && cmd_buffer[i] != nullptr; ++i) {
-            vkDestroySemaphore(engine.device, finished[i], nullptr);
             vkDestroyFramebuffer(engine.device, framebuffer[i], nullptr);
         }
         vkFreeCommandBuffers(engine.device, engine.graphics.pool, i, cmd_buffer.data());
@@ -256,7 +248,6 @@ DeferredPass::DeferredPass(DeferredPass&& other) {
     if (this == &other) return;
 
     cmd_buffer = other.cmd_buffer;
-    finished = other.finished;
     
     pipeline = other.pipeline;
     renderpass = other.renderpass;
@@ -277,7 +268,6 @@ DeferredPass& DeferredPass::operator=(DeferredPass&& other) {
         
         uint32_t i;
         for (i = 0 ; i < MAX_FRAMES_IN_FLIGHT && cmd_buffer[i] != nullptr; ++i) {
-            vkDestroySemaphore(engine.device, finished[i], nullptr);
             vkDestroyFramebuffer(engine.device, framebuffer[i], nullptr);
         }
         vkFreeCommandBuffers(engine.device, engine.graphics.pool, i, cmd_buffer.data());
@@ -288,7 +278,6 @@ DeferredPass& DeferredPass::operator=(DeferredPass&& other) {
     renderpass = other.renderpass;
     pipeline = other.pipeline;
     cmd_buffer = other.cmd_buffer;
-    finished = other.finished;
     framebuffer = other.framebuffer;
 
     other.cmd_buffer[0] = nullptr;
@@ -342,7 +331,7 @@ void DeferredPass::record(uint32_t frame_index) {
 
     { // draw scene
         // bind camera
-        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].set.descriptor_set, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].descriptor_set, 0, nullptr);
 
         for (Model& model : models) {
             // bind vbo
@@ -353,12 +342,12 @@ void DeferredPass::record(uint32_t frame_index) {
             vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index_buffer, 0, VK_INDEX_TYPE_UINT32);
             
             // bind transform
-            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.uniform[frame_index].set.descriptor_set, 0, nullptr);
+            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.uniform[frame_index].descriptor_set, 0, nullptr);
 
             uint32_t index_offset = 0;
             for (auto& mesh : model.meshes) {
                 // bind material
-                vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &mesh.material.set.descriptor_set, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &mesh.material.uniform.descriptor_set, 0, nullptr);
 
                 // draw mesh
                 vkCmdDrawIndexed(cmd_buffer[frame_index], mesh.vertex_count, 1, index_offset, 0, 0);
@@ -367,11 +356,9 @@ void DeferredPass::record(uint32_t frame_index) {
             }
         }
     }
-    { // end renderpass & cmd_buffer
-        vkCmdEndRenderPass(cmd_buffer[frame_index]);
-        
-        VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
-    }
 
+    vkCmdEndRenderPass(cmd_buffer[frame_index]);
+    
+    VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
 }
 
