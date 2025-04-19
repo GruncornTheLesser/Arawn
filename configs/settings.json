@@ -5,11 +5,11 @@
     "display mode" : "windowed",
     "aspect ratio" : "4:3", // "16:9",
     "resolution" : [ 800, 600 ],
-    "frame count" : 2,
+    "frame count" : 1,
     "vsync" : false,
     // renderer
     "anti alias" : "none",      // none/msaa2/msaa4/msaa8
     "z prepass" : false,
-    "render mode" : "deferred",  // forward/deferred 
+    "render mode" : "forward",  // forward/deferred 
     "culling mode" : "tiled"    // none/clustered/tiled
 }

@@ -24,8 +24,8 @@ struct Camera {
     glm::vec3 position = { 0.0f, 0.0f, 1.0f };
     glm::quat rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-    float fov = 45.0f; // degrees
-    float near = 0.1f;
+    float fov = 70.0f; // degrees
+    float near = 1.0f;
     float far = 1000.0f;
 };
 

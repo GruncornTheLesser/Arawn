@@ -452,9 +452,9 @@ void Renderer::record(uint32_t frame_index) {
     if (config.culling_enabled())       culling_pass.record(frame_index);
     forward_pass.record(frame_index);
 
+    LightHeader light_header { cluster_count, static_cast<uint32_t>(lights.size()) };
+    light_buffer[frame_index].set_value(&light_header, sizeof(LightHeader));
     if (lights.size() > 0) { // update light buffer
-        LightHeader light_header { cluster_count, static_cast<uint32_t>(lights.size()) };
-        light_buffer[frame_index].set_value(&light_header, sizeof(LightHeader));
         light_buffer[frame_index].set_value(lights.data(), sizeof(Light) * lights.size(), sizeof(LightHeader));
     }
 }
@@ -575,6 +575,7 @@ void Renderer::draw() {
                 ++wait_count;
             }
         }
+        
         waits[wait_count] = image_ready[frame_index];
         stages[wait_count] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         ++wait_count;

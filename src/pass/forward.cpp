@@ -261,7 +261,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
         VkPipelineRasterizationStateCreateInfo rasterizer_state{
             VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO, nullptr, 0,
             VK_FALSE, VK_FALSE, VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE, 
-            VK_FALSE, 0.0f, 0.0f, 0.0f, 1.0f
+            (settings.depth_prepass_enabled() && !settings.deferred_pass_enabled()) ? VK_TRUE : VK_FALSE, -5.0f, 0.0f, -1.1f, 1.0f
         };
 
         VkPipelineMultisampleStateCreateInfo multisampling_state{
@@ -271,7 +271,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
 
         VkPipelineDepthStencilStateCreateInfo depth_stencil_state{
             VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO, nullptr, 0,
-            settings.depth_prepass_enabled() ? VK_FALSE : VK_TRUE, 
+            settings.deferred_pass_enabled() ? VK_FALSE : VK_TRUE, 
             (settings.depth_prepass_enabled() || settings.deferred_pass_enabled()) ? VK_FALSE : VK_TRUE, VK_COMPARE_OP_LESS, 
             VK_FALSE, VK_FALSE
         };
@@ -411,20 +411,19 @@ void ForwardPass::record(uint32_t frame_index) {
         info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         VK_ASSERT(vkBeginCommandBuffer(cmd_buffer[frame_index], &info));
     }
-
-    //if (renderer.config.culling_enabled()) {
-    //    { // acquire cluster buffer
-    //        VkBufferMemoryBarrier barrier{
-    //            VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER, nullptr, 
-    //            0, VK_ACCESS_SHADER_READ_BIT,
-    //            VK_QUEUE_FAMILY_EXTERNAL, VK_QUEUE_FAMILY_IGNORED, 
-    //            renderer.cluster_buffer[frame_index].buffer, 0, VK_WHOLE_SIZE 
-    //        };
-    //        vkCmdPipelineBarrier(cmd_buffer[frame_index], 
-    //            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,  
-    //            0, 0, nullptr, 1, &barrier, 0, nullptr
-    //        );
-    //    }
+    //if (renderer.config.culling_enabled())  { // cluster buffer memory barrier
+    //    std::array<VkBufferMemoryBarrier, 1> buffer_barriers;
+    //    buffer_barriers[0] = { 
+    //        VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER, nullptr, 
+    //        0, VK_ACCESS_SHADER_READ_BIT,
+    //        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, 
+    //        renderer.cluster_buffer[frame_index].buffer, 0, VK_WHOLE_SIZE
+    //    };
+    //
+    //    vkCmdPipelineBarrier(
+    //        cmd_buffer[frame_index], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
+    //        0, 0, nullptr, buffer_barriers.size(), buffer_barriers.data(), 0, nullptr
+    //    );
     //}
 
     { // begin renderpass

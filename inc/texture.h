@@ -35,7 +35,7 @@ public:
     Texture(const Texture& other) = delete;
     Texture& operator=(const Texture& other) = delete;
 
-private:
+// private:
     VK_TYPE(VkImage) image = nullptr;
     VK_TYPE(VkDeviceMemory) memory;
     VK_TYPE(VkImageView) view;

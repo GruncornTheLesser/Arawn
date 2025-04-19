@@ -2,11 +2,18 @@
 #define TILE_SIZE 16
 #define MAX_LIGHTS_PER_TILE 127
 
+const float PI      = 3.14;
+const float EPSILON = 0.01;
+
 struct Light {
     vec3 position;
     float radius;
     vec3 colour;
     float intensity;
+};
+
+struct Frustum {
+	vec4 planes[4];
 };
 
 struct Cluster {
@@ -43,6 +50,10 @@ layout(std430, set = 3, binding = 0) readonly buffer LightArray {
     Light lights[];
 };
 
+layout(std430, set=3, binding=1) readonly buffer Frustums {
+	Frustum frustums[]; // indices[0] = count;
+};
+
 layout(std430, set=3, binding=2) readonly buffer Clusters {
 	Cluster clusters[]; // indices[0] = count;
 };
@@ -57,9 +68,6 @@ const uint albedo_texture_flag = 0x00000001;
 const uint metallic_texture_flag = 0x00000002;
 const uint roughness_texture_flag = 0x00000004;
 const uint normal_texture_flag = 0x00000008;
-
-const float PI      = 3.14;
-const float EPSILON = 0.01;
 
 vec3 F_Schlick(float HdotV, vec3 F0) {
     return F0 + (1.0 - F0) * pow(1.0 - HdotV, 5.0);
@@ -119,7 +127,7 @@ void main() {
     } else {
         roughness = material.roughness;
     }
-
+    
     vec3 N = normalize(normal);
     vec3 V = normalize(frag_position - eye);
 

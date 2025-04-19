@@ -51,8 +51,12 @@ int main() {
     {
         Model::Load("res/model/cube/cube.obj");
         Model& floor = models.back();
-        floor.transform.scale = glm::vec3(300.0f, 0.1f, 300.0f);
+        floor.transform.scale = glm::vec3(220.0f, 0.1f, 220.0f);
         floor.transform.position = glm::vec3(0, -0.05f, 0.0f);
+
+        Model::Load("res/model/cube/cube.obj");
+        Model& box = models.back();
+        floor.transform.scale = glm::vec3(20.0f);        
     }
     
     {
@@ -70,7 +74,7 @@ int main() {
         for (int x = -count.x / 2; x < count.x / 2; ++x) 
             for (int y = 0; y < count.y; ++y) 
                 for (int z = -count.z / 2; z < count.z / 2; ++z) {
-                    lights.emplace_back(glm::vec3(x, 0, z) * glm::vec3(20), 10.0f, 
+                    lights.emplace_back(glm::vec3(x, 0, z) * glm::vec3(20), 15.0f, 
                         1000.0f * colours[(y * count.x * count.z + (z + count.z / 2) * count.z + x + count.x / 2) % 7], 2.0f);
         }
         
