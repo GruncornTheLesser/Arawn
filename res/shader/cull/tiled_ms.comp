@@ -1,9 +1,11 @@
-#version 450
+#version 460
 #extension GL_KHR_shader_subgroup_basic : enable
 #extension GL_KHR_shader_subgroup_arithmetic : enable
-
 #define TILE_SIZE 16
 #define MAX_LIGHTS_PER_TILE 127
+
+const float PI      = 3.14;
+const float EPSILON = 0.01;
 
 struct Light { 
 	vec3 position; // position + radius
@@ -49,7 +51,7 @@ layout(set=1, binding = 3) uniform sampler2DMS depth_sampler;
 
 
 float linearize_depth(float depth) {
-    return (near * far) / (far - depth * (far - near));
+    return (near * far) / max(far - clamp(depth, 0, 1) * (far - near), EPSILON);
 }
 
 bool sphere_inside_plane(vec3 pos, float rad, vec4 plane) {
@@ -57,49 +59,69 @@ bool sphere_inside_plane(vec3 pos, float rad, vec4 plane) {
 }
 
 bool sphere_inside_frustum(Light light, Frustum frustum, float z_near, float z_far) {
-	const float bias = 2.0f;
 	vec4 position = (view * vec4(light.position.xyz, 1));
 	float z = -position.z;
-	light.radius += bias;
 	if (z + light.radius < z_near || z - light.radius > z_far) { 
 		return false;
 	}
 	// if sphere insides Frustum plane
-	for (uint i = 0; i < 4; ++i) {
-		if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[i])) {
-			return false;
-		}
-	}
+	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[0])) return false;
+	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[1])) return false;
+	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[2])) return false;
+	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[3])) return false;
 	
 	return true;
 }
 
 
-layout (local_size_x = TILE_SIZE, local_size_y = TILE_SIZE) in;
+layout (local_size_x=16, local_size_y=16) in;
+
+shared uint subgroup_count;
+shared float subgroup_z_min[64]; // 64 because smallest subgroup size == 4
+shared float subgroup_z_max[64]; // 16x16/4 = 64
 
 void main() {
+	if (gl_GlobalInvocationID.x >= screen_size.x) return;
+	if (gl_GlobalInvocationID.y >= screen_size.y) return;
+
+	const float bias = 1.0;
 	float depth = texelFetch(depth_sampler, ivec2(gl_GlobalInvocationID.xy), 0).r;
-	depth = linearize_depth(depth); // linearize first to get better comparison
-
-	float z_far = subgroupMax(depth);  // min
-	float z_near = subgroupMin(depth); // max 
-
-	if (!subgroupElect()) {
-		return;
+	
+	if (gl_LocalInvocationID.xy == uvec2(0)) {
+		atomicExchange(subgroup_count, 0);
 	}
 	
-	uint cluster_index = gl_WorkGroupID.x + 
-						 gl_WorkGroupID.y * gl_NumWorkGroups.x;
-
-	uint count = 0;
-	for (uint light_index = 0; light_index < light_count; ++light_index) {
-		if (sphere_inside_frustum(lights[light_index], frustums[cluster_index], z_near, z_far)) { 
-			clusters[cluster_index].indices[count] = light_index;
-			if (++count == MAX_LIGHTS_PER_TILE) {
-				break;
-			}
-		}
+	depth = linearize_depth(depth);
+	float z_min = subgroupMin(depth);
+	float z_max = subgroupMax(depth);
+	
+	if (subgroupElect()) {
+		uint index = atomicAdd(subgroup_count, 1);
+		subgroup_z_min[index] = z_min;
+		subgroup_z_max[index] = z_max;
 	}
 
-	clusters[cluster_index].light_count = count;
+	if (gl_LocalInvocationID.xy == uvec2(0)) {
+		uint workgroup_index = gl_WorkGroupID.x + 
+						       gl_WorkGroupID.y * gl_NumWorkGroups.x;
+
+		float z_min = subgroup_z_min[0];
+		float z_max = subgroup_z_min[0];
+		for (uint i = 1; i < subgroup_count; ++i) {
+			z_min = min(z_min, subgroup_z_min[i]);
+			z_max = max(z_max, subgroup_z_max[i]);
+		}
+
+		uint count = 0;
+		for (uint light_index = 0; light_index < light_count; ++light_index) {
+			if (sphere_inside_frustum(lights[light_index], frustums[workgroup_index], z_min, z_max)) { 
+				clusters[workgroup_index].indices[count] = light_index;
+				if (++count == MAX_LIGHTS_PER_TILE) {
+					break;
+				}
+			}
+		}
+
+		clusters[workgroup_index].light_count = count;	
+	}
 }
