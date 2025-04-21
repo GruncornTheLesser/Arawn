@@ -116,7 +116,7 @@ void main() {
     F0 = mix(F0, albedo, metallic);
     
     // ambient component
-    out_colour = vec4(vec3(0.01) * albedo, 1.0);
+    out_colour = vec4(0.01 * albedo, 1.0);
 
     // for each light
     for (uint i = 0; i < light_count; ++i) {

@@ -1,5 +1,5 @@
 #version 450
-#define MAX_LIGHTS_PER_TILE 127
+#define MAX_LIGHTS_PER_CLUSTER 255
 
 const float PI      = 3.14;
 const float EPSILON = 0.01;
@@ -17,7 +17,7 @@ struct Frustum {
 
 struct Cluster {
 	uint light_count;
-	uint indices[MAX_LIGHTS_PER_TILE];
+	uint indices[MAX_LIGHTS_PER_CLUSTER];
 };
 
 layout(std140, set = 0, binding = 0) uniform Camera {
@@ -30,14 +30,14 @@ layout(std140, set = 0, binding = 0) uniform Camera {
     vec3 eye;
 };
 
-layout(set = 1, input_attachment_index = 0, binding = 0) uniform subpassInput albedo_attachment;
-layout(set = 1, input_attachment_index = 0, binding = 1) uniform subpassInput normal_attachment;
-layout(set = 1, input_attachment_index = 0, binding = 2) uniform subpassInput position_attachment;
+layout(set = 1, input_attachment_index = 0, binding = 0) uniform subpassInputMS albedo_attachment;
+layout(set = 1, input_attachment_index = 0, binding = 1) uniform subpassInputMS normal_attachment;
+layout(set = 1, input_attachment_index = 0, binding = 2) uniform subpassInputMS position_attachment;
 
 layout(std430, set=2, binding=0) readonly buffer LightArray { uvec3 cluster_count; uint light_count; Light lights[]; };
 layout(std430, set=2, binding=1) readonly buffer FrustumArray { Frustum frustums[]; };
 layout(std430, set=2, binding=2) readonly buffer ClusterArray { Cluster clusters[]; };
-
+layout(set=2, binding=3) uniform sampler2DMS depth_sampler;
 
 layout(location = 0) out vec4 out_colour;
 
@@ -46,16 +46,17 @@ float D_GGX(float NdotH, float r);
 float G_SchlickGGX(float NdotV, float roughness);
 float G_Smith(float NdotV, float NdotL, float roughness);
 float attenuate(vec3 light_position, vec3 frag_position, float radius, float intensity);
+float linearize_depth(float depth);
 
 void main() {
-    vec4 in_albedo = subpassLoad(albedo_attachment);
+    vec4 in_albedo = subpassLoad(albedo_attachment, gl_SampleID);
     vec3 albedo = in_albedo.rgb;
 
-    vec4 in_normal = subpassLoad(normal_attachment);
+    vec4 in_normal = subpassLoad(normal_attachment, gl_SampleID);
     vec3 normal = in_normal.rgb;
     float metallic = in_normal.a;
 
-    vec4 in_position = subpassLoad(position_attachment);
+    vec4 in_position = subpassLoad(position_attachment, gl_SampleID);
     vec3 frag_position = in_position.rgb;
     float roughness = in_position.a;
 
@@ -67,10 +68,14 @@ void main() {
     
     // ambient component
     out_colour = vec4(0.01 * albedo, 1.0);
+    uvec3 clusterID = uvec3(
+        vec2(gl_FragCoord.xy * cluster_count.xy) / screen_size.xy,  
+        cluster_count.z / linearize_depth(texelFetch(depth_sampler, ivec2(gl_FragCoord.xy), gl_SampleID).r)
+    );
 
-    // for each light
-    uvec2 tilecoord = uvec2(gl_FragCoord.xy) * cluster_count.xy / screen_size.xy;
-    uint cluster_index = tilecoord.x + tilecoord.y * cluster_count.x;
+    uint cluster_index = clusterID.x + 
+                         clusterID.y * cluster_count.x + 
+                         clusterID.z * cluster_count.x * cluster_count.y;
     for (uint i = 0; i < clusters[cluster_index].light_count; ++i) {
         
         Light light = lights[clusters[cluster_index].indices[i]];
@@ -121,3 +126,8 @@ float attenuate(vec3 light_position, vec3 frag_position, float radius, float int
     float f = offset * (x2 - 1);                            // offset
     return clamp(f / (f - x2), 0, 1);
 }
+
+float linearize_depth(float depth) {
+    return (near * far) / max(far - depth * (far - near), EPSILON);
+}
+

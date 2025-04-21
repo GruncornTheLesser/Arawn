@@ -1,5 +1,5 @@
 #version 450
-#define MAX_LIGHTS_PER_TILE 127
+#define MAX_LIGHTS_PER_CLUSTER 255
 
 const float PI      = 3.14;
 const float EPSILON = 0.01;
@@ -17,7 +17,7 @@ struct Frustum {
 
 struct Cluster {
 	uint light_count;
-	uint indices[MAX_LIGHTS_PER_TILE];
+	uint indices[MAX_LIGHTS_PER_CLUSTER];
 };
 
 layout(std140, set = 0, binding = 0) uniform Camera {
@@ -37,8 +37,7 @@ layout(set = 1, input_attachment_index = 0, binding = 2) uniform subpassInput po
 layout(std430, set=2, binding=0) readonly buffer LightArray { uvec3 cluster_count; uint light_count; Light lights[]; };
 layout(std430, set=2, binding=1) readonly buffer FrustumArray { Frustum frustums[]; };
 layout(std430, set=2, binding=2) readonly buffer ClusterArray { Cluster clusters[]; };
-
-
+layout(set=2, binding=3) uniform sampler2D depth_sampler;
 layout(location = 0) out vec4 out_colour;
 
 vec3 F_Schlick(float HdotV, vec3 F0);
@@ -46,6 +45,7 @@ float D_GGX(float NdotH, float r);
 float G_SchlickGGX(float NdotV, float roughness);
 float G_Smith(float NdotV, float NdotL, float roughness);
 float attenuate(vec3 light_position, vec3 frag_position, float radius, float intensity);
+float linearize_depth(float depth);
 
 void main() {
     vec4 in_albedo = subpassLoad(albedo_attachment);
@@ -69,8 +69,14 @@ void main() {
     out_colour = vec4(0.01 * albedo, 1.0);
 
     // for each light
-    uvec2 tilecoord = uvec2(gl_FragCoord.xy) * cluster_count.xy / screen_size.xy;
-    uint cluster_index = tilecoord.x + tilecoord.y * cluster_count.x;
+    uvec3 clusterID = uvec3(
+        vec2(gl_FragCoord.xy * cluster_count.xy) / screen_size.xy,  
+        cluster_count.z / linearize_depth(texelFetch(depth_sampler, ivec2(gl_FragCoord.xy), 0).r)
+    );
+    uint cluster_index = clusterID.x + 
+                         clusterID.y * cluster_count.x + 
+                         clusterID.z * cluster_count.x * cluster_count.y;
+    
     for (uint i = 0; i < clusters[cluster_index].light_count; ++i) {
         
         Light light = lights[clusters[cluster_index].indices[i]];
@@ -120,4 +126,8 @@ float attenuate(vec3 light_position, vec3 frag_position, float radius, float int
     float x2 = dot(d, d) / max(radius * radius, EPSILON);   // normalized dist squared 
     float f = offset * (x2 - 1);                            // offset
     return clamp(f / (f - x2), 0, 1);
+}
+
+float linearize_depth(float depth) {
+    return (near * far) / max(far - depth * (far - near), EPSILON);
 }

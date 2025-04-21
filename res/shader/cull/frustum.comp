@@ -1,5 +1,4 @@
 #version 450
-#define TILE_SIZE 16
 
 struct Light {
     vec3 position;
@@ -21,56 +20,37 @@ layout(std140, set=0, binding=0) uniform Camera {
     vec3 eye;
 };
 
-layout(std430, set = 1, binding = 0) readonly buffer LightArray {
-    uvec3 cluster_count;
-    uint light_count;
-    Light lights[];
-};
+layout(std430, set=1, binding = 0) readonly buffer LightArray { uvec3 cluster_count; uint light_count; Light lights[]; };
+layout(std430, set=1, binding=1) buffer FrustumBuffer { Frustum frustums[]; };
 
-
-layout(std430, set=1, binding=1) buffer FrustumBuffer { // axis alligned bounding box
-    Frustum frustums[];
-};
-
-vec4 ray(uvec2 offset) {
-	vec2 screen = TILE_SIZE * (gl_WorkGroupID.xy + offset) / vec2(screen_size);
-	vec4 view_position = inv_proj * vec4(screen * 2 - 1, 1, 1.0);
+vec4 view_ray(uvec2 offset, uint tile_size) {
+	vec2 screen = tile_size * (gl_WorkGroupID.xy + offset) / vec2(screen_size);
+	vec4 view_position = inv_proj * vec4(screen * 2.0 - 1.0, 1, 1.0);
 	return view_position / view_position.w;
 }
 
 vec4 compute_plane(vec3 p1, vec3 p2) {
     return vec4(normalize(cross(p1, p2)), 0);
 }
-layout(local_size_x = 1, local_size_y = 1) in; // 1 innvocation per work group
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in; // 1 innvocation per work group
 
 void main() {
     uint index = gl_WorkGroupID.x +
                  gl_WorkGroupID.y * gl_NumWorkGroups.x;
     
-	vec3 rays[4];
-	rays[0] = ray(uvec2(0, 0)).xyz; // top left
-	rays[1] = ray(uvec2(1, 0)).xyz; // top right
-	rays[2] = ray(uvec2(0, 1)).xyz; // bottom left
-	rays[3] = ray(uvec2(1, 1)).xyz; // bottom right
+	uint tile_size = (screen_size.x - 1) / cluster_count.x + 1;
 
-	vec3 nears[4];
-    nears[0] = rays[0] * near;
-	nears[1] = rays[1] * near;
-	nears[2] = rays[2] * near;
-	nears[3] = rays[3] * near;
-	
-	vec3 fars[4];
-	fars[0]  = rays[0] * far;
-	fars[1]  = rays[1] * far;
-	fars[2]  = rays[2] * far;
-	fars[3]  = rays[3] * far;
+	vec3 view_position[4];
+	view_position[0] = view_ray(uvec2(0, 0), tile_size).xyz; // top left
+	view_position[1] = view_ray(uvec2(1, 0), tile_size).xyz; // top right
+	view_position[2] = view_ray(uvec2(0, 1), tile_size).xyz; // bottom left
+	view_position[3] = view_ray(uvec2(1, 1), tile_size).xyz; // bottom right
 
 	vec4 planes[4];
-	planes[0] = compute_plane(nears[0], fars[2]);
-	planes[1] = compute_plane(nears[3], fars[1]);
-	planes[2] = compute_plane(nears[1], fars[0]);
-	planes[3] = compute_plane(nears[2], fars[3]);
+	planes[0] = compute_plane(view_position[0], view_position[2]);
+	planes[1] = compute_plane(view_position[3], view_position[1]);
+	planes[2] = compute_plane(view_position[1], view_position[0]);
+	planes[3] = compute_plane(view_position[2], view_position[3]);
 
     frustums[index].planes = planes;
-
 }

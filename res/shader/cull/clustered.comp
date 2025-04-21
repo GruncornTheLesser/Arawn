@@ -1,0 +1,88 @@
+#version 460
+#extension GL_KHR_shader_subgroup_basic : enable
+#extension GL_KHR_shader_subgroup_arithmetic : enable
+
+#define MAX_LIGHTS_PER_CLUSTER 255
+
+const float PI      = 3.14;
+const float EPSILON = 0.01;
+
+struct Light { 
+	vec3 position; // position + radius
+	float radius;
+	vec3 colour;
+	float intensity; 
+};
+
+struct Frustum {
+	vec4 planes[4];
+};
+
+struct Cluster {
+	uint light_count;
+	uint indices[MAX_LIGHTS_PER_CLUSTER];
+};
+
+layout(std140, set=0, binding=0) uniform Camera {
+    mat4 proj;
+    mat4 view;
+    mat4 inv_proj;
+    uvec2 screen_size;
+	float near;
+	float far;
+    vec3 eye;
+};
+
+layout(std430, set=1, binding=0) readonly buffer LightArray { uvec3 cluster_count; uint light_count; Light lights[]; };
+layout(std430, set=1, binding=1) readonly buffer FrustumArray { Frustum frustums[]; };
+layout(std430, set=1, binding=2) buffer ClusterArray { Cluster clusters[]; };
+
+
+float linearize_depth(float depth) {
+    return (near * far) / max(far - depth * (far - near), EPSILON);
+}
+
+bool sphere_inside_plane(vec3 pos, float rad, vec4 plane) {
+	return dot(plane.xyz, pos) - plane.w < -rad;
+}
+
+bool sphere_inside_frustum(Light light, Frustum frustum, float z_near, float z_far) {
+	vec4 position = (view * vec4(light.position.xyz, 1));
+	float z = -position.z;
+	
+	// if inside depth range
+	if (z + light.radius < z_near || z - light.radius > z_far) return false;
+
+	// if sphere insides Frustum planes
+	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[0])) return false;
+	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[1])) return false;
+	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[2])) return false;
+	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[3])) return false;
+	
+	return true;
+}
+
+
+layout (local_size_x=1, local_size_y=1, local_size_z=1) in;
+
+void main() {
+	uint frustum_index = gl_WorkGroupID.x + 
+					  	 gl_WorkGroupID.y * cluster_count.x;
+	uint cluster_index = frustum_index + 
+						 gl_WorkGroupID.z * cluster_count.x * cluster_count.y;
+
+	float z_min = near + (far - near) *  gl_WorkGroupID.z      / cluster_count.z;
+	float z_max = near + (far - near) * (gl_WorkGroupID.z + 1) / cluster_count.z;
+
+	uint count = 0;
+	for (uint light_index = 0; light_index < light_count; ++light_index) {
+		if (sphere_inside_frustum(lights[light_index], frustums[frustum_index], z_min, z_max)) { 
+			clusters[cluster_index].indices[count] = light_index;
+			if (++count == MAX_LIGHTS_PER_CLUSTER) {
+				break;
+			}
+		}
+	}
+
+	clusters[cluster_index].light_count = count;	
+}

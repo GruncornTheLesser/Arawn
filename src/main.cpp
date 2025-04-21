@@ -53,7 +53,6 @@ int main() {
         Model& floor = models.back();
         floor.transform.scale = glm::vec3(220.0f, 0.1f, 220.0f);
         floor.transform.position = glm::vec3(0, -0.05f, 0.0f);
-
         Model::Load("res/model/cube/cube.obj");
         Model& box = models.back();
         floor.transform.scale = glm::vec3(20.0f);        
@@ -67,17 +66,18 @@ int main() {
             glm::vec3(1, 0, 0),
             glm::vec3(1, 1, 1),
             glm::vec3(1, 1, 0),
-            glm::vec3(1, 1, 1)  
+            glm::vec3(1, 1, 1)
         };
 
-        glm::ivec3 count{ 10, 1, 10 };
+        glm::ivec3 count{ 20, 10, 20 }; // 4000
         for (int x = -count.x / 2; x < count.x / 2; ++x) 
             for (int y = 0; y < count.y; ++y) 
                 for (int z = -count.z / 2; z < count.z / 2; ++z) {
-                    lights.emplace_back(glm::vec3(x, 0, z) * glm::vec3(20), 15.0f, 
-                        1000.0f * colours[(y * count.x * count.z + (z + count.z / 2) * count.z + x + count.x / 2) % 7], 2.0f);
+                    uint32_t light_index = (x + count.x) + 
+                                           (y + count.y) * count.x + 
+                                           (z + count.z) * count.x * count.y;
+                    lights.emplace_back(glm::vec3(x, y + 1, z) * glm::vec3(10), 20.0f, colours[light_index % colours.size()] * 5.0f, 2.0f);
         }
-        
     }
     
     while (!window.closed()) {

@@ -119,7 +119,6 @@ UniformSet::UniformSet(VkDescriptorSetLayout layout, std::span<Uniform> bindings
                     write_info.pBufferInfo = nullptr;
                 }
             }
-
         }
 
         vkUpdateDescriptorSets(engine.device, write_count, write_infos.data(), 0, nullptr);

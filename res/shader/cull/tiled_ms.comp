@@ -51,7 +51,7 @@ layout(set=1, binding = 3) uniform sampler2DMS depth_sampler;
 
 
 float linearize_depth(float depth) {
-    return (near * far) / max(far - clamp(depth, 0, 1) * (far - near), EPSILON);
+    return (near * far) / max(far - depth * (far - near), EPSILON);
 }
 
 bool sphere_inside_plane(vec3 pos, float rad, vec4 plane) {
@@ -84,7 +84,6 @@ void main() {
 	if (gl_GlobalInvocationID.x >= screen_size.x) return;
 	if (gl_GlobalInvocationID.y >= screen_size.y) return;
 
-	const float bias = 1.0;
 	float depth = texelFetch(depth_sampler, ivec2(gl_GlobalInvocationID.xy), 0).r;
 	
 	if (gl_LocalInvocationID.xy == uvec2(0)) {

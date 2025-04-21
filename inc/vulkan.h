@@ -49,11 +49,6 @@ void log_error(std::string_view msg, std::source_location loc = std::source_loca
 #define VK_ENUM(ENUM) uint32_t
 #endif
 
-#ifndef TILE_SIZE
-#define TILE_SIZE 16
-#endif
-
-
 #ifndef MAX_FRAMES_IN_FLIGHT
 #define MAX_FRAMES_IN_FLIGHT 4
 #endif

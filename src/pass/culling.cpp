@@ -53,7 +53,7 @@ CullingPass::CullingPass(Renderer& renderer) {
 
         vkDestroyShaderModule(engine.device, comp_module, nullptr);
     }
-
+    
     {
         VkFence cmd_finished;
         {
@@ -90,7 +90,7 @@ CullingPass::CullingPass(Renderer& renderer) {
             std::array<VkDescriptorSet, 2> sets = { camera.uniform[0].descriptor_set, renderer.light_attachment_set[0].descriptor_set };
             vkCmdBindDescriptorSets(cmd_buffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, layout, 0, 2, sets.data(), 0, nullptr);
             
-            vkCmdDispatch(cmd_buffer[0], renderer.cluster_count.x, renderer.cluster_count.y, renderer.cluster_count.z);
+            vkCmdDispatch(cmd_buffer[0], renderer.cluster_count.x, renderer.cluster_count.y, 1);
 
             VK_ASSERT(vkEndCommandBuffer(cmd_buffer[0]));
         }

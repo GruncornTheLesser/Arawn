@@ -480,7 +480,7 @@ Engine::Engine() {
             depth_binding.binding = 3;
             depth_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             depth_binding.descriptorCount = 1;
-            depth_binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            depth_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
             depth_binding.pImmutableSamplers = nullptr;
 
             VkDescriptorSetLayoutCreateInfo info{};

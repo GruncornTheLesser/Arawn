@@ -1,6 +1,5 @@
 #version 450
-#define TILE_SIZE 16
-#define MAX_LIGHTS_PER_TILE 127
+#define MAX_LIGHTS_PER_CLUSTER 255
 
 const float PI      = 3.14;
 const float EPSILON = 0.01;
@@ -18,7 +17,7 @@ struct Frustum {
 
 struct Cluster {
 	uint light_count;
-	uint indices[MAX_LIGHTS_PER_TILE];
+	uint indices[MAX_LIGHTS_PER_CLUSTER];
 };
 
 
@@ -64,6 +63,7 @@ float D_GGX(float NdotH, float r);
 float G_SchlickGGX(float NdotV, float roughness);
 float G_Smith(float NdotV, float NdotL, float roughness);
 float attenuate(vec3 light_position, vec3 frag_position, float radius, float intensity);
+float linearize_depth(float depth);
 
 void main() {
     vec3 albedo;
@@ -75,7 +75,7 @@ void main() {
 
     vec3 normal;
     if ((material.flags & normal_texture_flag) == normal_texture_flag) {
-        normal = texture(normal_map, frag_texcoord).rgb * 2.0 - 1.0;
+        normal = texture(normal_map, frag_texcoord).rgb * 2.0 - 1;
         normal = normalize(TBN * normal);
     } else {
         normal = TBN[2];
@@ -104,8 +104,15 @@ void main() {
     // ambient component
     out_colour = vec4(0.01 * albedo, 1.0);
 
-    uvec2 tilecoord = uvec2(gl_FragCoord.xy) * cluster_count.xy / screen_size.xy;
-    uint cluster_index = tilecoord.x + tilecoord.y * cluster_count.x;
+    uvec3 clusterID = uvec3(
+        vec2(gl_FragCoord.xy * cluster_count.xy) / screen_size.xy,  
+        cluster_count.z / (far - near) * gl_FragCoord.z / gl_FragCoord.w
+    );
+
+    uint cluster_index = clusterID.x + 
+                         clusterID.y * cluster_count.x + 
+                         clusterID.z * cluster_count.x * cluster_count.y;
+
     for (uint i = 0; i < clusters[cluster_index].light_count; ++i) {
         
         Light light = lights[clusters[cluster_index].indices[i]];
@@ -117,7 +124,7 @@ void main() {
         float NdotL = max(dot(N, L), EPSILON);
         float HdotV = max(dot(H, V), EPSILON);
         
-        float A = attenuate(light.position, frag_position, light.radius, light.intensity); // attenuation
+        float A = attenuate(light.position, frag_position, light.radius, light.intensity);
         float D = D_GGX(NdotH, roughness);
         float G = G_Smith(NdotV, NdotL, roughness);
         vec3  F = F_Schlick(HdotV, F0);

@@ -32,7 +32,7 @@ public:
 private:
     Configuration config;
 
-    glm::uvec3 cluster_count; // resolution / tile_size + 1
+    glm::uvec3 cluster_count;
     uint32_t frame_index = 0;
     uint32_t frame_count = 0;
 

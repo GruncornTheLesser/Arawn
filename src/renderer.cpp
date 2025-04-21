@@ -131,11 +131,11 @@ void Renderer::recreate() {
 
     switch (settings.culling_mode()) {
         case CullingMode::CLUSTERED: {
-            cluster_count = glm::uvec3((swapchain.extent - glm::uvec2(1)) / glm::uvec2(32, 32) + glm::uvec2(1), 12);
+            cluster_count = glm::uvec3(glm::ceil(glm::vec2(swapchain.extent) / glm::vec2(32)), 12);
             break; 
         }
         case CullingMode::TILED: {
-            cluster_count = glm::uvec3((swapchain.extent - glm::uvec2(1)) / glm::uvec2(16) + glm::uvec2(1), 1);
+            cluster_count = glm::uvec3(glm::ceil(glm::vec2(swapchain.extent) / glm::vec2(16)), 1);
             break; 
         }
         case CullingMode::NONE: {
@@ -146,7 +146,7 @@ void Renderer::recreate() {
 
     for (uint32_t i = 0; i < settings.frame_count; ++i) { // recreate texture attachments
         // recreate depth attachment
-        if (settings.culling_mode() == CullingMode::TILED) {
+        if (settings.culling_enabled()) {
             depth_attachment[i] = Texture(
                 nullptr, swapchain.extent.x, swapchain.extent.y, 1, VK_FORMAT_D32_SFLOAT, 
                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 
@@ -188,7 +188,7 @@ void Renderer::recreate() {
             );
 
             normal_attachment[i] = Texture(
-                nullptr, swapchain.extent.x, swapchain.extent.y, 1, VK_FORMAT_R8G8B8A8_UNORM,
+                nullptr, swapchain.extent.x, swapchain.extent.y, 1, VK_FORMAT_R32G32B32A32_SFLOAT,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 
                 VK_IMAGE_ASPECT_COLOR_BIT, sample_count,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -243,17 +243,10 @@ void Renderer::recreate() {
 
         // recreate frustum and cluster buffer
         if (settings.culling_enabled()) {
-            uint32_t cell_count, cell_size;
-            if (settings.culling_mode() == CullingMode::TILED) {
-                cell_count = (swapchain.extent.x / TILE_SIZE + 1) * (swapchain.extent.y / TILE_SIZE + 1);
-                cell_size = 1 + MAX_LIGHTS_PER_TILE;
-            } else {
-                cell_count = cluster_count.x * cluster_count.y * cluster_count.z;
-                cell_size = 1 + MAX_LIGHTS_PER_CLUSTER;
-            }
+            uint32_t cell_size = 1 + (settings.culling_mode() == CullingMode::TILED ? MAX_LIGHTS_PER_TILE : MAX_LIGHTS_PER_CLUSTER);
             
             frustum_buffer = Buffer( 
-                nullptr, sizeof(Frustum) * cell_count, 
+                nullptr, sizeof(Frustum) * cluster_count.x * cluster_count.y, 
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
                 std::array<uint32_t, 2>() = { engine.compute.family, engine.graphics.family }
@@ -261,7 +254,7 @@ void Renderer::recreate() {
 
             for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
                 cluster_buffer[i] = Buffer( 
-                    nullptr, sizeof(uint32_t) * cell_size * cell_count,
+                    nullptr, sizeof(uint32_t) * cell_size * cluster_count.x * cluster_count.y * cluster_count.z,
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 
                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
                     std::array<uint32_t, 2>() = { engine.compute.family, engine.graphics.family }
@@ -285,10 +278,11 @@ void Renderer::recreate() {
                     break;
                 }
                 case CullingMode::CLUSTERED: {
-                    light_attachment_set[i] = UniformSet(engine.light_layout, std::array<Uniform, 3>() = { 
+                    light_attachment_set[i] = UniformSet(engine.light_layout, std::array<Uniform, 4>() = { 
                         StorageBuffer{ &light_buffer[i] }, 
                         StorageBuffer{ &frustum_buffer }, 
-                        StorageBuffer{ &cluster_buffer[i] }
+                        StorageBuffer{ &cluster_buffer[i] }, 
+                        DepthAttachment{ &depth_attachment[i] }
                     });
                     break;
                 }
@@ -303,7 +297,6 @@ void Renderer::recreate() {
                 }
             }
         }
-        
     }
 
     { // recreate sync objects
@@ -420,6 +413,11 @@ void Renderer::recreate() {
         }
     }
 
+    if (settings.culling_enabled()) { // write cluster count to light buffer for frustum creation
+        LightHeader light_header { cluster_count, static_cast<uint32_t>(lights.size()) };
+        light_buffer[0].set_value(&light_header, sizeof(LightHeader));
+    }
+
     { // recreate passes
         if (settings.depth_prepass_enabled()) {
             depth_pass = DepthPass(*this);
@@ -427,7 +425,7 @@ void Renderer::recreate() {
             depth_pass = DepthPass();
         }
 
-        if (settings.render_mode() == RenderMode::DEFERRED) {
+        if (settings.deferred_pass_enabled()) {
             deferred_pass = DeferredPass(*this);
         } else {
             deferred_pass = DeferredPass();
