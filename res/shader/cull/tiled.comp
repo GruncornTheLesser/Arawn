@@ -33,19 +33,9 @@ layout(std140, set=0, binding=0) uniform Camera {
     vec3 eye;
 };
 
-layout(std430, set=1, binding=0) buffer Lights {
-    uvec3 cluster_count;
-    uint light_count;
-    Light lights[];
-};
-
-layout(std430, set=1, binding=1) buffer Frustums {
-	Frustum frustums[];
-};
-
-layout(std430, set=1, binding=2) buffer Clusters {
-	Cluster clusters[]; // indices[0] = count;
-};
+layout(std430, set=1, binding=0) readonly buffer LightArray { uvec3 cluster_count; uint light_count; Light lights[]; };
+layout(std430, set=1, binding=1) readonly buffer FrustumArray { Frustum frustums[]; };
+layout(std430, set=1, binding=2) buffer ClusterArray { Cluster clusters[]; };
 
 layout(set=1, binding = 3) uniform sampler2D depth_sampler;
 

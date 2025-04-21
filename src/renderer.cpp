@@ -231,8 +231,7 @@ void Renderer::recreate() {
     }
 
     { // recreate light buffer attachments
-        // recreate light buffer
-        
+        // recreate light buffer        
         for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             light_buffer[i] = Buffer( 
                 nullptr, sizeof(LightHeader) + sizeof(Light) * MAX_LIGHTS, 
@@ -242,7 +241,7 @@ void Renderer::recreate() {
             );
         }
 
-        // recreate frustum and culled buffer
+        // recreate frustum and cluster buffer
         if (settings.culling_enabled()) {
             uint32_t cell_count, cell_size;
             if (settings.culling_mode() == CullingMode::TILED) {
@@ -270,6 +269,7 @@ void Renderer::recreate() {
             }
         } else {
             frustum_buffer = Buffer();
+
             for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
                 cluster_buffer[i] = Buffer();
             }
@@ -280,7 +280,7 @@ void Renderer::recreate() {
             switch (settings.culling_mode()) {
                 case CullingMode::NONE: {
                     light_attachment_set[i] = UniformSet(engine.light_layout, std::array<Uniform, 1>() = { 
-                            StorageBuffer{ &light_buffer[i] }
+                        StorageBuffer{ &light_buffer[i] }
                     });
                     break;
                 }
@@ -489,103 +489,103 @@ void Renderer::draw() {
 
     VK_ASSERT(vkResetFences(engine.device, 1, &in_flight[frame_index]));
     
+
+    std::array<VkPipelineStageFlags, 3> stages;
+    std::array<VkSemaphore, 3> waits;
+
     if (config.depth_prepass_enabled()) {
         /*
         waits on nothing, signals depth_ready, signals depth_ready_2 if enabled
-        depth_ready_2 is only enabled when render_mode==deferred, culling_mode==tile and depth_prepass == true
+        depth_ready_2 is only enabled when render_mode==deferred, culling_mode==tiled
         */
         VkSubmitInfo info{ 
             VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
-            0, nullptr, nullptr, 
+            0, waits.data(), stages.data(),
             1, &depth_pass.cmd_buffer[frame_index], 
-            (config.deferred_pass_enabled() && config.culling_mode() == CullingMode::TILED) ? 2u : 1u, &depth_ready[frame_index * 2]
+            1, &depth_ready[frame_index * 2]
         };
+
+        if (config.deferred_pass_enabled() && config.culling_mode() == CullingMode::TILED) {
+            info.signalSemaphoreCount++;
+        }
+
         VK_ASSERT(vkQueueSubmit(engine.graphics.queue, 1, &info, nullptr));
     }
     
     if (config.deferred_pass_enabled()) {
-        VkPipelineStageFlags stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         VkSubmitInfo info{ 
             VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
-            config.depth_prepass_enabled() ? 1u : 0u, &depth_ready[frame_index * 2], &stage, 
+            0, waits.data(), stages.data(),
             1, &deferred_pass.cmd_buffer[frame_index], 
             1, &defer_ready[frame_index]
         };
+
+        if (config.depth_prepass_enabled()) {
+            // wait on depth ready
+            waits[info.waitSemaphoreCount] = depth_ready[frame_index * 2];
+            stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            ++info.waitSemaphoreCount;
+        }
+
         VK_ASSERT(vkQueueSubmit(engine.graphics.queue, 1, &info, nullptr));
     }
 
     if (config.culling_enabled()) {
-        /*
-        wait on depth_ready_1 if culling_mode == tiled, render_mode == forward,  depth_prepass == true
-        wait on depth_ready_2 if culling_mode == tiled, render_mode == deferred, depth_prepass == true
-        wait on defer_ready   if culling_mode == tiled, render_mode == deferred, depth_prepass == false
-        */
-
-        VkPipelineStageFlags stage;
-        VkSemaphore wait;
         VkSubmitInfo info{ 
             VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
-            0, &wait, &stage, 
+            0, waits.data(), stages.data(), 
             1, &culling_pass.cmd_buffer[frame_index], 
             1, &light_ready[frame_index]
         };
+        
         if (config.culling_mode() == CullingMode::TILED) {
-            info.waitSemaphoreCount = 1;
-            stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            if (config.render_mode() == RenderMode::DEFERRED) {
-                if (config.depth_mode() == DepthMode::ENABLED) {
-                    wait = depth_ready[frame_index * 2 + 1];
-                } else {
-                    wait = defer_ready[frame_index];
-                }
-            } else if (config.depth_mode() == DepthMode::ENABLED) {
-                wait = depth_ready[frame_index * 2];
+            if (config.depth_mode() == DepthMode::ENABLED) {
+                if (config.render_mode() == RenderMode::DEFERRED) waits[info.waitSemaphoreCount] = depth_ready[frame_index * 2 + 1];
+                else                                              waits[info.waitSemaphoreCount] = depth_ready[frame_index * 2];
+            } else {
+                waits[info.waitSemaphoreCount] = defer_ready[frame_index];
             }
+            stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            ++info.waitSemaphoreCount;
         }
         
         VK_ASSERT(vkQueueSubmit(engine.compute.queue, 1, &info, nullptr));
     }
 
     { // forward pass
-        /*
-        wait on light if culling pass enabled
-        wait_on defer if deferred pass enabled && !(culling_mode == tiled && !depth_enabled)
-        wait on depth if depth enabled && culling pass != tiled
-        */
-        uint32_t wait_count = 0;
-        std::array<VkSemaphore, 3> waits;
-        std::array<VkPipelineStageFlags, 3> stages;
-
-        if (config.culling_enabled()) {
-            waits[wait_count] = light_ready[frame_index];
-            stages[wait_count] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            ++wait_count;
-        }
-        
-        if (config.deferred_pass_enabled()) {
-            if (config.culling_mode() != CullingMode::TILED || config.depth_prepass_enabled()) {
-                waits[wait_count] = defer_ready[frame_index];
-                stages[wait_count] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-                ++wait_count;
-            }
-        } else {
-            if (config.depth_prepass_enabled() && config.culling_mode() != CullingMode::TILED) {
-                waits[wait_count] = depth_ready[frame_index * 2];
-                stages[wait_count] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-                ++wait_count;
-            }
-        }
-        
-        waits[wait_count] = image_ready[frame_index];
-        stages[wait_count] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        ++wait_count;
-
         VkSubmitInfo info{ 
             VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
-            wait_count, waits.data(), stages.data(), 
+            0, waits.data(), stages.data(), 
             1, &forward_pass.cmd_buffer[frame_index], 
             1, &frame_ready[frame_index]
         };
+        
+        {
+            waits[info.waitSemaphoreCount] = image_ready[frame_index];
+            stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            ++info.waitSemaphoreCount;
+        }
+
+        if (config.culling_enabled()) {
+            waits[info.waitSemaphoreCount] = light_ready[frame_index];
+            stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            ++info.waitSemaphoreCount;
+        }
+        
+        if (config.deferred_pass_enabled()) {
+            if (config.depth_prepass_enabled() || config.culling_mode() != CullingMode::TILED) {
+                waits[info.waitSemaphoreCount] = defer_ready[frame_index];
+                stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                ++info.waitSemaphoreCount;
+            }
+        } else {
+            if (config.depth_prepass_enabled() && config.culling_mode() != CullingMode::TILED) {
+                waits[info.waitSemaphoreCount] = depth_ready[frame_index * 2];
+                stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                ++info.waitSemaphoreCount;
+            }
+        }
+        
         vkQueueSubmit(engine.graphics.queue, 1, &info, in_flight[frame_index]);
     }
 

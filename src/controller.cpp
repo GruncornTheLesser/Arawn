@@ -34,7 +34,7 @@ Controller::Controller() {
     };
 
     window.on(KeyDown{ Key::F }) += [&](auto& event) {
-        window.set_display_mode(static_cast<DisplayMode>((static_cast<uint32_t>(window.get_display_mode()) + 1) % 3));
+        window.set_display_mode(window.get_display_mode() == DisplayMode::WINDOWED ? DisplayMode::FULLSCREEN : DisplayMode::WINDOWED);
     };
     
     // resolution controls

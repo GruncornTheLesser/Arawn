@@ -22,7 +22,7 @@ struct Cluster {
 };
 
 
-layout (std140, set = 0, binding = 0) uniform Camera {
+layout (std140, set=0, binding=0) uniform Camera {
     mat4 proj;
     mat4 view;
     mat4 inv_proj;
@@ -32,31 +32,21 @@ layout (std140, set = 0, binding = 0) uniform Camera {
     vec3 eye;
 };
 
-layout (std140, set = 2, binding = 0) uniform Material {
+// layout (std140, set=1, binding=0) uniform Transform; 
+layout (std140, set=2, binding=0) uniform Material {
     vec3 albedo;
     float metallic;
     float roughness;
     uint flags;
 } material;
+layout(set=2, binding=1) uniform sampler2D albedo_map;
+layout(set=2, binding=2) uniform sampler2D metallic_map;
+layout(set=2, binding=3) uniform sampler2D roughness_map;
+layout(set=2, binding=4) uniform sampler2D normal_map;
 
-layout(set = 2, binding = 1) uniform sampler2D albedo_map;
-layout(set = 2, binding = 2) uniform sampler2D metallic_map;
-layout(set = 2, binding = 3) uniform sampler2D roughness_map;
-layout(set = 2, binding = 4) uniform sampler2D normal_map;
-
-layout(std430, set = 3, binding = 0) readonly buffer LightArray {
-    uvec3 cluster_count;
-    uint light_count;
-    Light lights[];
-};
-
-layout(std430, set=3, binding=1) readonly buffer Frustums {
-	Frustum frustums[]; // indices[0] = count;
-};
-
-layout(std430, set=3, binding=2) readonly buffer Clusters {
-	Cluster clusters[]; // indices[0] = count;
-};
+layout(std430, set=3, binding=0) readonly buffer LightArray { uvec3 cluster_count; uint light_count; Light lights[]; };
+layout(std430, set=3, binding=1) readonly buffer FrustumArray { Frustum frustums[]; };
+layout(std430, set=3, binding=2) readonly buffer ClusterArray { Cluster clusters[]; };
 
 layout(location = 0) in vec3 frag_position; // world position
 layout(location = 1) in vec2 frag_texcoord;
@@ -69,34 +59,11 @@ const uint metallic_texture_flag = 0x00000002;
 const uint roughness_texture_flag = 0x00000004;
 const uint normal_texture_flag = 0x00000008;
 
-vec3 F_Schlick(float HdotV, vec3 F0) {
-    return F0 + (1.0 - F0) * pow(1.0 - HdotV, 5.0);
-}
-
-float D_GGX(float NdotH, float r) {
-    float a = r * r;
-    float a2 = a * a;
-    float d = (NdotH * (a2 - 1.0) + 1.0);
-    return a2 / max(PI * d * d, EPSILON);
-}
-
-float G_SchlickGGX(float NdotV, float roughness) {
-    float r = roughness + 1;
-    float k = r * r / 8.0;
-    return NdotV / max(NdotV * (1.0 - k) + k, EPSILON);
-}
-
-float G_Smith(float NdotV, float NdotL, float roughness) {
-    return G_SchlickGGX(NdotL, roughness) * G_SchlickGGX(NdotV, roughness);
-}
-
-float attenuate(vec3 light_position, vec3 frag_position, float radius, float intensity) {
-    const float offset = 0.1;
-    vec3 d = light_position - frag_position;    // difference
-    float x2 = dot(d, d) / (radius * radius);   // normalized dist squared 
-    float f = offset * (x2 - 1); // offset
-    return clamp(f / (f - x2), 0, 1);
-}
+vec3 F_Schlick(float HdotV, vec3 F0);
+float D_GGX(float NdotH, float r);
+float G_SchlickGGX(float NdotV, float roughness);
+float G_Smith(float NdotV, float NdotL, float roughness);
+float attenuate(vec3 light_position, vec3 frag_position, float radius, float intensity);
 
 void main() {
     vec3 albedo;
@@ -137,7 +104,6 @@ void main() {
     // ambient component
     out_colour = vec4(vec3(0.01) * albedo, 1.0);
 
-    // for each light
     uvec2 tilecoord = uvec2(gl_FragCoord.xy / uvec2(TILE_SIZE));
     uint cluster_index = tilecoord.x + tilecoord.y * cluster_count.x;
     for (uint i = 0; i < clusters[cluster_index].light_count; ++i) {
@@ -162,3 +128,31 @@ void main() {
     }
 }
 
+vec3 F_Schlick(float HdotV, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(1.0 - HdotV, 5.0);
+}
+
+float D_GGX(float NdotH, float r) {
+    float a = r * r;
+    float a2 = a * a;
+    float d = (NdotH * (a2 - 1.0) + 1.0);
+    return a2 / max(PI * d * d, EPSILON);
+}
+
+float G_SchlickGGX(float NdotV, float roughness) {
+    float r = roughness + 1;
+    float k = r * r / 8.0;
+    return NdotV / max(NdotV * (1.0 - k) + k, EPSILON);
+}
+
+float G_Smith(float NdotV, float NdotL, float roughness) {
+    return G_SchlickGGX(NdotL, roughness) * G_SchlickGGX(NdotV, roughness);
+}
+
+float attenuate(vec3 light_position, vec3 frag_position, float radius, float intensity) {
+    const float offset=0.1;
+    vec3 d = light_position - frag_position;    // difference
+    float x2 = dot(d, d) / (radius * radius);   // normalized dist squared 
+    float f = offset * (x2 - 1); // offset
+    return clamp(f / (f - x2), 0, 1);
+}

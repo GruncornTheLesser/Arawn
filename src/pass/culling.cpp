@@ -160,24 +160,6 @@ void CullingPass::record(uint32_t frame_index) {
         info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         VK_ASSERT(vkBeginCommandBuffer(cmd_buffer[frame_index], &info));
     }
-    
-    //{ // depth image memory barrier
-    //    std::array<VkImageMemoryBarrier, 1> image_barriers;
-    //    image_barriers[0] = { 
-    //        VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, nullptr, 
-    //        0, VK_ACCESS_SHADER_READ_BIT, 
-    //        VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, 
-    //        VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-    //        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, 
-    //        renderer.depth_attachment[frame_index].image, 
-    //        { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
-    //    };
-    //
-    //    vkCmdPipelineBarrier(cmd_buffer[frame_index], 
-    //        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 
-    //        0, nullptr, 0, nullptr, image_barriers.size(), image_barriers.data()
-    //    );
-    //}
 
     { // dispatch culling
         vkCmdBindPipeline(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
@@ -187,21 +169,6 @@ void CullingPass::record(uint32_t frame_index) {
 
         vkCmdDispatch(cmd_buffer[frame_index], renderer.cluster_count.x, renderer.cluster_count.y, renderer.cluster_count.z);
     }
-
-    //{ // cluster buffer memory barrier
-    //    std::array<VkBufferMemoryBarrier, 1> buffer_barriers;
-    //    buffer_barriers[0] = { 
-    //        VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER, nullptr, 
-    //        VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-    //        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, 
-    //        renderer.cluster_buffer[frame_index].buffer, 0, VK_WHOLE_SIZE
-    //    };
-    //
-    //    vkCmdPipelineBarrier(
-    //        cmd_buffer[frame_index], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 
-    //        0, 0, nullptr, buffer_barriers.size(), buffer_barriers.data(), 0, nullptr
-    //    );
-    //}
     
     VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
 }

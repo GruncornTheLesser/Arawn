@@ -163,7 +163,7 @@ DeferredPass::DeferredPass(Renderer& renderer) {
         VkPipelineRasterizationStateCreateInfo rasterizer_state{
             VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO, nullptr, 0,
             VK_FALSE, VK_FALSE, VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE, 
-            VK_TRUE, -5.0f, 0.0f, -1.1f, 1.0f
+            (settings.depth_prepass_enabled() ? VK_TRUE : VK_FALSE) , -5.0f, 0.0f, -1.1f, 1.0f
         };
 
         VkPipelineMultisampleStateCreateInfo multisampling_state{
@@ -296,10 +296,10 @@ void DeferredPass::record(uint32_t frame_index) {
 
     { // begin renderpass
         std::array<VkClearValue, 4> clear;
-        clear[0].depthStencil = { 1.0f, 0 };
-        clear[1].color = { 0.1, 0.0, 0.1, 0.0 };
-        clear[2].color = { 0.0, 0.0, 0.0, 0.0 };
-        clear[3].color = { 0.0, 0.0, 0.0, 0.0 };
+        clear[0].depthStencil = { 1.0f, 0 }; // depth
+        clear[1].color = { 0.0, 0.0, 0.0 };  // alebdo
+        clear[2].color = { 0.0, 0.0, 0.0 };  // normal
+        clear[3].color = { 0.0, 0.0, 0.0 };  // position
 
         VkRenderPassBeginInfo info{
             VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, nullptr, 

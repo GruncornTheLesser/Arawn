@@ -25,23 +25,19 @@ ForwardPass::ForwardPass(Renderer& renderer) {
     { // create pipeline layout
         if (settings.deferred_pass_enabled()) {
             std::array<VkDescriptorSetLayout, 3> sets{ engine.camera_layout, engine.attachment_layout, engine.light_layout };
-            std::array<VkPushConstantRange, 0> ranges;
-            //ranges[0] = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants) };
-        
+            
             VkPipelineLayoutCreateInfo info{ 
                 VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, nullptr, 0, 
-                sets.size(), sets.data(), ranges.size(), ranges.data()
+                sets.size(), sets.data(), 0, nullptr
             };
             
             VK_ASSERT(vkCreatePipelineLayout(engine.device, &info, nullptr, &layout));
         } else {
             std::array<VkDescriptorSetLayout, 4> sets{ engine.camera_layout, engine.transform_layout, engine.material_layout, engine.light_layout };
-            std::array<VkPushConstantRange, 0> ranges;
-            //ranges[0] = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants) };
-        
+            
             VkPipelineLayoutCreateInfo info{ 
                 VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, nullptr, 0, 
-                sets.size(), sets.data(), ranges.size(), ranges.data()
+                sets.size(), sets.data(), 0, nullptr
             };
             
             VK_ASSERT(vkCreatePipelineLayout(engine.device, &info, nullptr, &layout));
@@ -186,7 +182,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
                     break;
                 }
                 case CullingMode::CLUSTERED: {
-                    if (settings.msaa_enabled()) frag_module = engine.create_shader("res/import/shader/deferred/clustered_ms.frag.spv"); // TODO
+                    if (settings.msaa_enabled()) frag_module = engine.create_shader("res/import/shader/deferred/clustered_ms.frag.spv");
                     else                         frag_module = engine.create_shader("res/import/shader/deferred/clustered.frag.spv");
                     break;
                 }
@@ -411,25 +407,11 @@ void ForwardPass::record(uint32_t frame_index) {
         info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         VK_ASSERT(vkBeginCommandBuffer(cmd_buffer[frame_index], &info));
     }
-    //if (renderer.config.culling_enabled())  { // cluster buffer memory barrier
-    //    std::array<VkBufferMemoryBarrier, 1> buffer_barriers;
-    //    buffer_barriers[0] = { 
-    //        VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER, nullptr, 
-    //        0, VK_ACCESS_SHADER_READ_BIT,
-    //        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, 
-    //        renderer.cluster_buffer[frame_index].buffer, 0, VK_WHOLE_SIZE
-    //    };
-    //
-    //    vkCmdPipelineBarrier(
-    //        cmd_buffer[frame_index], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
-    //        0, 0, nullptr, buffer_barriers.size(), buffer_barriers.data(), 0, nullptr
-    //    );
-    //}
 
     { // begin renderpass
         std::array<VkClearValue, 2> clear;
         clear[0].depthStencil = { 1.0f, 0 };
-        clear[1].color = { 0.0, 0.00, 0.0 };
+        clear[1].color = { 0.0, 0.0, 0.0 };
 
         VkRenderPassBeginInfo info{};
         info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -462,19 +444,17 @@ void ForwardPass::record(uint32_t frame_index) {
     }
 
     if (settings.deferred_pass_enabled()) {
-        // bind camera
-        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].descriptor_set, 0, nullptr);
-        
-        // bind input attachments
-        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &renderer.input_attachment_set[frame_index].descriptor_set, 0, nullptr);
-
-        // bind lights
-        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &renderer.light_attachment_set[frame_index].descriptor_set, 0, nullptr);
+        std::array<VkDescriptorSet, 3> sets = {
+            camera.uniform[frame_index].descriptor_set, 
+            renderer.input_attachment_set[frame_index].descriptor_set, 
+            renderer.light_attachment_set[frame_index].descriptor_set 
+        };
+        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, sets.size(), sets.data(), 0, nullptr);
 
         // draw fullscreen quad(vertices embedded in fullscreen.vert)
         vkCmdDraw(cmd_buffer[frame_index], 6, 1, 0, 0);
 
-    } else { // draw scene
+    } else { // forward pass
         // bind camera
         vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].descriptor_set, 0, nullptr);
 
