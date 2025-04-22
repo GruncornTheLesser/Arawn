@@ -65,7 +65,7 @@ DeferredPass::DeferredPass(Renderer& renderer) {
                 VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
                 depth_info = {
                     0, VK_FORMAT_D32_SFLOAT, sample_count, 
-                    VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
+                    VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE, 
                     VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
                     VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
                 }; 

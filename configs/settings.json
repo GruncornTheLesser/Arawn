@@ -8,8 +8,11 @@
     "frame count" : 2,
     "vsync" : true,
     // renderer
-    "anti alias" : "none",      // none/msaa2/msaa4/msaa8
-    "z prepass" : false,
-    "render mode" : "forward",     // forward/deferred
-    "culling mode" : "clustered"    // none/clustered/tiled
+    "anti alias" : "msaa8",  
+    "z prepass" : true,
+    "render mode" : "deferred",
+    "culling mode" : "tiled"
 }
+// none/msaa2/msaa4/msaa8
+// forward/deferred
+// none/clustered/tiled

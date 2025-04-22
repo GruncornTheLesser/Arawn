@@ -54,7 +54,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
         
         VkSubpassDescription subpass {
             0, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 
-            input_ref.data(), 1, &colour_ref, nullptr, &depth_ref, 0, nullptr
+            input_ref.data(), 1, &colour_ref, nullptr, nullptr, 0, nullptr
         };
 
         VkRenderPassCreateInfo info{
@@ -70,11 +70,12 @@ ForwardPass::ForwardPass(Renderer& renderer) {
         */
 
         // bindings
-        { // create depth attachment reference
+        if (!settings.deferred_pass_enabled()) { // create depth attachment reference
+            subpass.pDepthStencilAttachment = &depth_ref;
             depth_ref = { info.attachmentCount++, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
             
             VkAttachmentDescription& depth_info = attachment_info[depth_ref.attachment];
-            if (settings.depth_prepass_enabled() || settings.deferred_pass_enabled()) {
+            if (settings.depth_prepass_enabled()) {
                 depth_info = { 
                     0, VK_FORMAT_D32_SFLOAT, sample_count, 
                     VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
@@ -86,7 +87,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
                     0, VK_FORMAT_D32_SFLOAT, sample_count, 
                     VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
                     VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
                 };
             }
         }
@@ -317,8 +318,10 @@ ForwardPass::ForwardPass(Renderer& renderer) {
             info.attachmentCount = 0;
 
             // depth attachment
-            attachments[info.attachmentCount++] = renderer.depth_attachment[frame_i].view;
-            
+            if (!settings.deferred_pass_enabled()) {
+                attachments[info.attachmentCount++] = renderer.depth_attachment[frame_i].view;
+            }
+
             if (settings.msaa_enabled()) { // colour attachment
                 attachments[info.attachmentCount++] = renderer.msaa_attachment[frame_i].view;
             }

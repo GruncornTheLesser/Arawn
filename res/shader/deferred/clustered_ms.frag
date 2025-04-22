@@ -46,7 +46,7 @@ float D_GGX(float NdotH, float r);
 float G_SchlickGGX(float NdotV, float roughness);
 float G_Smith(float NdotV, float NdotL, float roughness);
 float attenuate(vec3 light_position, vec3 frag_position, float radius, float intensity);
-float linearize_depth(float depth);
+float linearize_depth_normalized(float depth);
 
 void main() {
     vec4 in_albedo = subpassLoad(albedo_attachment, gl_SampleID);
@@ -69,8 +69,8 @@ void main() {
     // ambient component
     out_colour = vec4(0.01 * albedo, 1.0);
     uvec3 clusterID = uvec3(
-        vec2(gl_FragCoord.xy * cluster_count.xy) / screen_size.xy,  
-        cluster_count.z / linearize_depth(texelFetch(depth_sampler, ivec2(gl_FragCoord.xy), gl_SampleID).r)
+        vec2(gl_FragCoord.xy * cluster_count.xy) / screen_size.xy, 
+        cluster_count.z * linearize_depth_normalized(texelFetch(depth_sampler, ivec2(gl_FragCoord.xy), gl_SampleID).r)
     );
 
     uint cluster_index = clusterID.x + 
@@ -127,7 +127,7 @@ float attenuate(vec3 light_position, vec3 frag_position, float radius, float int
     return clamp(f / (f - x2), 0, 1);
 }
 
-float linearize_depth(float depth) {
-    return (near * far) / max(far - depth * (far - near), EPSILON);
+float linearize_depth_normalized(float depth) {
+    return near * depth / (far - depth * (far - near));
 }
 

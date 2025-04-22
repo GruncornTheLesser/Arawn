@@ -33,48 +33,18 @@ layout(std140, set=0, binding=0) uniform Camera {
     vec3 eye;
 };
 
-layout(std430, set=1, binding=0) buffer Lights {
-    uvec3 cluster_count;
-    uint light_count;
-    Light lights[];
-};
-
-layout(std430, set=1, binding=1) buffer Frustums {
-	Frustum frustums[];
-};
-
-layout(std430, set=1, binding=2) buffer Clusters {
-	Cluster clusters[]; // indices[0] = count;
-};
+layout(std430, set=1, binding=0) buffer Lights { uvec3 cluster_count; uint light_count; Light lights[]; };
+layout(std430, set=1, binding=1) buffer Frustums { Frustum frustums[]; };
+layout(std430, set=1, binding=2) buffer Clusters { Cluster clusters[]; };
 
 layout(set=1, binding = 3) uniform sampler2DMS depth_sampler;
 
-
-float linearize_depth(float depth) {
-    return (near * far) / max(far - depth * (far - near), EPSILON);
-}
-
-bool sphere_inside_plane(vec3 pos, float rad, vec4 plane) {
-	return dot(plane.xyz, pos) - plane.w < -rad;
-}
-
-bool sphere_inside_frustum(Light light, Frustum frustum, float z_near, float z_far) {
-	vec4 position = (view * vec4(light.position.xyz, 1));
-	float z = -position.z;
-	if (z + light.radius < z_near || z - light.radius > z_far) { 
-		return false;
-	}
-	// if sphere insides Frustum plane
-	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[0])) return false;
-	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[1])) return false;
-	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[2])) return false;
-	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[3])) return false;
-	
-	return true;
-}
-
-
 layout (local_size_x=16, local_size_y=16) in;
+
+float linearize_depth(float depth);
+bool sphere_inside_plane(vec3 pos, float rad, vec4 plane);
+bool sphere_inside_frustum(Light light, Frustum frustum, float z_near, float z_far);
+
 
 shared uint subgroup_count;
 shared float subgroup_z_min[64]; // 64 because smallest subgroup size == 4
@@ -123,4 +93,28 @@ void main() {
 
 		clusters[workgroup_index].light_count = count;	
 	}
+}
+
+
+float linearize_depth(float depth) {
+    return near * far / (far - depth * (far - near));
+}
+
+bool sphere_inside_plane(vec3 pos, float rad, vec4 plane) {
+	return dot(plane.xyz, pos) - plane.w < -rad;
+}
+
+bool sphere_inside_frustum(Light light, Frustum frustum, float z_near, float z_far) {
+	vec4 position = (view * vec4(light.position.xyz, 1));
+	float z = -position.z;
+	if (z + light.radius < z_near || z - light.radius > z_far) { 
+		return false;
+	}
+	// if sphere insides Frustum plane
+	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[0])) return false;
+	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[1])) return false;
+	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[2])) return false;
+	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[3])) return false;
+	
+	return true;
 }
