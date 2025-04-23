@@ -1,19 +1,15 @@
 <a id="readme-top"></a>
 <!--Don't go too crazy for these numbers-->
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![Unlicense License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
+[![Contributors][contributors-shield]][contributors-url] [![Forks][forks-shield]][forks-url] [![Stargazers][stars-shield]][stars-url] [![Issues][issues-shield]][issues-url] [![Unlicense License][license-shield]][license-url]
 
 <!-- HEADER -->
 <br />
 <div align="center">
+  <!--
   <a href="https://github.com/GruncornTheLesser/Arawn">
     <img src="images/logo.png" alt="Logo" width="80" height="80">
   </a>
-
+  -->
   <h3 align="center">ARAWN</h3>
 
   <p align="center">
@@ -52,15 +48,10 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-[![Product Name Screen Shot][product-screenshot]]
-
-some more description...
+![product-screenshot]
 
 ##### Built With
-[![Entt][Entt]][Entt-url]
-[![Cmake][Cmake]][CMake-url]
-[![Vulkan][Vulkan]][Vulkan-url]
-[![GLFW][GLFW]][GLFW-url]
+[![Cmake][Cmake]][CMake-url] [![Vulkan][Vulkan]][Vulkan-url] [![GLFW][GLFW]][GLFW-url]
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -71,7 +62,21 @@ some more description...
 - a c++23 compiler ([GCC](https://gcc.gnu.org/), [Clang](https://clangd.llvm.org/) or [MSVC](https://visualstudio.microsoft.com/vs/features/cplusplus/))
 - [Cmake](https://cmake.org/download/)
 - [VulkanSDK](https://vulkan.lunarg.com/doc/view/latest/linux/getting_started_ubuntu.html)
-- [GLFW](https://www.glfw.org/)
+###### Ubuntu 24.04 
+```sh
+> wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
+> sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list
+> sudo apt update
+> sudo apt install vulkan-sdk cmake
+```
+
+###### Windows
+```sh
+> winget install Kitware.CMake
+> winget install LunarG.VulkanSDK
+```
+
+
 
 ### Installation
 ```sh
@@ -82,13 +87,33 @@ some more description...
 ```
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-<!-- USAGE EXAMPLES -->
 ## Usage
+`cfg\settings.json` defines the configuration of the renderer:
+```json
+{
+    "device" : "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "display mode" : "windowed",    // windowed/fullscreen/exclusive
+    "aspect ratio" : "4:3",         // "4:3"/"16:9"
+    "resolution" : [ 800, 600 ],
+    "frame count" : 2,
+    "vsync" : true,
+    "z prepass" : true,
+    "anti alias" : "msaa8",         // none/msaa2/msaa4/msaa8
+    "render mode" : "forward",      // forward/deferred
+    "culling mode" : "clustered"    // none/clustered/tiled
+}
+```
+- `R` to reload the renderer with the current configuration
+- `W` `A` `S` `D` to move the camera
+- `+` and `-` to change the resolution
+- left click and drag to rotate the camera
+
+###### note: 
+changes to device requires the application is restarted. If the the device string does not match, a device is selected automatically.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 [contributors-shield]: https://img.shields.io/github/contributors/GruncornTheLesser/Arawn.svg?style=for-the-badge
 [contributors-url]: https://github.com/GruncornTheLesser/Arawn/graphs/contributors
 [forks-shield]: https://img.shields.io/github/forks/GruncornTheLesser/Arawn.svg?style=for-the-badge
@@ -99,8 +124,6 @@ some more description...
 [issues-url]: https://github.com/GruncornTheLesser/Arawn/issues
 [license-shield]: https://img.shields.io/github/license/GruncornTheLesser/Arawn.svg?style=for-the-badge
 [license-url]: https://github.com/GruncornTheLesser/Arawn/blob/master/LICENSE.txt
-[Entt-url]: https://github.com/skypjack/entt
-[Entt]: https://img.shields.io/badge/entt-000000?style=for-the-badge&logo=entt&logoColor=White&logoSize=auto&logoWidth=auto
 [CMake-url]: https://cmake.org/
 [CMake]: https://img.shields.io/badge/cmake-004078?style=for-the-badge&logo=cmake&logoColor=White&logoSize=auto&logoWidth=auto
 [Vulkan-url]: https://www.vulkan.org/
@@ -108,7 +131,4 @@ some more description...
 [GLFW-url]: https://www.glfw.org/
 [GLFW]: https://img.shields.io/badge/GLFW-fb7e13?style=for-the-badge&logo=GLFW&logoColor=White&logoSize=auto&logoWidth=auto
 [GLM-url]: https://www.glfw.org/
-[GLM]: https://img.shields.io/badge/GLM-fb7e13?style=for-the-badge&logo=GLM&logoColor=White&logoSize=auto&logoWidth=auto
-[product-screenshot]: images/screenshot.png
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://www.linkedin.com/in/michael-p-wilkinson/
+[product-screenshot]: res/image/screenshot.png

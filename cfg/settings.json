@@ -1,18 +1,15 @@
 {
-    // engine
     "device" : "NVIDIA GeForce RTX 3060 Laptop GPU",
-    // swapchain
     "display mode" : "windowed",
     "aspect ratio" : "4:3", // "16:9",
     "resolution" : [ 800, 600 ],
     "frame count" : 2,
     "vsync" : true,
-    // renderer
-    "anti alias" : "msaa8",  
-    "z prepass" : false,
-    "render mode" : "forward",
-    "culling mode" : "none"
+    "z prepass" : true,
+    "anti alias" : "msaa8",         // none/msaa2/msaa4/msaa8
+    "render mode" : "forward",      // forward/deferred
+    "culling mode" : "clustered"    // none/clustered/tiled
 }
-// none/msaa2/msaa4/msaa8
-// forward/deferred
-// none/clustered/tiled
+
+
+
