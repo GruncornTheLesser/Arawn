@@ -25,16 +25,14 @@ endif()
 
 FetchContent_Declare(GLFW GIT_REPOSITORY https://github.com/glfw/glfw GIT_TAG 3.4)
 FetchContent_Declare(GLM GIT_REPOSITORY https://github.com/g-truc/glm GIT_TAG 1.0.1)
-FetchContent_Declare(ENTT GIT_REPOSITORY https://github.com/skypjack/entt GIT_TAG v3.14.0)
 FetchContent_Declare(STB GIT_REPOSITORY https://github.com/nothings/stb GIT_TAG master)
 FetchContent_Declare(TINYOBJ GIT_REPOSITORY https://github.com/tinyobjloader/tinyobjloader GIT_TAG release)
-FetchContent_MakeAvailable(GLFW GLM ENTT STB TINYOBJ)
+FetchContent_MakeAvailable(GLFW GLM STB TINYOBJ)
 
 target_include_directories(arawn 
 	PRIVATE ${Vulkan_INCLUDE_DIRS} 
 	PRIVATE ${glfw_SOURCE_DIR}/include
 	PRIVATE ${glm_SOURCE_DIR}
-	PRIVATE ${entt_SOURCE_DIR}/single_include
 	PRIVATE ${stb_SOURCE_DIR}
 	PRIVATE ${tinyobjloader_SOURCE_DIR}
 )
@@ -54,9 +52,6 @@ elseif(DEFINED ENV{VULKAN_SDK})
 	message(STATUS "using vulkan sdk")
 	if(WIN32)
 		set(GLSLC_EXECUTABLE "$ENV{VULKAN_SDK}\\Bin\\glslc.exe")
-		
-		
-
 	elseif(UNIX)
 		set(GLSLC_EXECUTABLE "$ENV{VULKAN_SDK}/Bin/glslc")
 	else()
@@ -75,19 +70,30 @@ if(WIN32)
 	file(GLOB_RECURSE SHADERS "res/*.vert" "res/*.frag" "res/*.comp" "res/*.geom")
 elseif(UNIX)
 	set(RESOURCE_DIR "${PROJECT_SOURCE_DIR}/res")
-	set(IMPORT_DIR "${RESOURCE_DIR}/import/")
+	set(IMPORT_DIR "${RESOURCE_DIR}/import")
 	
 	file(GLOB_RECURSE SHADERS "res/*.vert" "res/*.frag" "res/*.comp" "res/*.geom")
 else()
 	message(FATAL_ERROR "ARAWN: unsupported platform cannot compile shaders")
 endif()
 
-set(SHADER_INDEX 1)
 foreach(SHADER ${SHADERS})
 	file(RELATIVE_PATH SHADER_DIR ${RESOURCE_DIR} ${SHADER})
-	set(TARGET "${IMPORT_DIR}${SHADER_DIR}.spv")
-	get_filename_component(TARGET_DIR ${TARGET} DIRECTORY)
+	set(TARGET "${IMPORT_DIR}/${SHADER_DIR}.spv")
 	
+	get_filename_component(TARGET_NAME ${TARGET} NAME_WE)
+	string(REPLACE "." "_" TARGET_NAME "${TARGET_NAME}")
+	string(REPLACE "/" "_" TARGET_NAME "${TARGET_NAME}")
+
+	if(DEFINED ${TARGET_NAME}_INDEX)
+		math(EXPR ${TARGET_NAME}_INDEX "${${TARGET_NAME}_INDEX} + 1")
+		set(TARGET_NAME "${TARGET_NAME}_shader_${${TARGET_NAME}_INDEX}")
+	else() 
+		set(${TARGET_NAME}_INDEX 0)
+		set(TARGET_NAME "${TARGET_NAME}_shader")
+	endif()
+
+	get_filename_component(TARGET_DIR ${TARGET} DIRECTORY)
 	add_custom_command(
 		OUTPUT ${TARGET}
 		COMMAND ${CMAKE_COMMAND} -E make_directory ${TARGET_DIR}
@@ -96,10 +102,8 @@ foreach(SHADER ${SHADERS})
 		COMMENT "shader compiled: ${SHADER_DIR}"
 	)
 
-	add_custom_target(compile_shader_${SHADER_INDEX} DEPENDS ${TARGET})
-	add_dependencies(arawn compile_shader_${SHADER_INDEX})
-
-	math(EXPR SHADER_INDEX "${SHADER_INDEX} + 1")
+	add_custom_target(${TARGET_NAME} DEPENDS ${TARGET})
+	add_dependencies(arawn ${TARGET_NAME})
 endforeach()
 
 add_custom_target(compile_shaders ALL DEPENDS ${SHADERS})
