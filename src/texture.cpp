@@ -131,7 +131,7 @@ Texture::Texture(
             VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, nullptr, 
             0, 0, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_UNDEFINED, 
             VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, image, 
-            { aspect, 0, 1, 1 }
+            { aspect, 0, 1, 0, 1 }
         };
         int32_t mip_width = width;
         int32_t mip_height = height;

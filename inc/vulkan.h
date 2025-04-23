@@ -66,5 +66,5 @@ void log_error(std::string_view msg, std::source_location loc = std::source_loca
 #endif
 
 #ifndef MAX_MIPMAP_LEVEL 
-#define MAX_MIPMAP_LEVEL 1 // 12
+#define MAX_MIPMAP_LEVEL 12
 #endif

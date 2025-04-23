@@ -9,9 +9,9 @@
     "vsync" : true,
     // renderer
     "anti alias" : "msaa8",  
-    "z prepass" : true,
-    "render mode" : "deferred",
-    "culling mode" : "tiled"
+    "z prepass" : false,
+    "render mode" : "forward",
+    "culling mode" : "none"
 }
 // none/msaa2/msaa4/msaa8
 // forward/deferred

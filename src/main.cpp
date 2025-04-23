@@ -31,7 +31,7 @@ TODOLIST:
  * performance metrics
 */
 
-Settings    settings("configs/settings.json");
+Settings    settings("cfg/settings.json");
 Engine      engine;
 Window      window;
 Swapchain   swapchain;
@@ -42,20 +42,17 @@ std::vector<Model> models;
 std::vector<Light> lights;
 
 int main() {
-    //{
-    //    Model::Load("res/model/sponza/sponza.obj");
-    //    for (auto& model : models) {
-    //        model.transform.scale = glm::vec3(0.1f);
-    //    }
-    //}
+    {
+        Model::Load("res/model/sponza/sponza.obj");
+        for (auto& model : models) {
+            model.transform.scale = glm::vec3(0.1f);
+        }
+    }
     {
         Model::Load("res/model/cube/cube.obj");
         Model& floor = models.back();
         floor.transform.scale = glm::vec3(220.0f, 0.1f, 220.0f);
-        floor.transform.position = glm::vec3(0, -0.05f, 0.0f);
-        Model::Load("res/model/cube/cube.obj");
-        Model& box = models.back();
-        floor.transform.scale = glm::vec3(20.0f);        
+        floor.transform.position = glm::vec3(0, -0.05f, 0.0f);      
     }
     
     {
@@ -90,5 +87,5 @@ int main() {
         renderer.draw();
     }
 
-    vkDeviceWaitIdle(engine.device);
+    VK_ASSERT(vkDeviceWaitIdle(engine.device));
 }
