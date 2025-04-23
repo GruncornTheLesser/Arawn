@@ -3,6 +3,7 @@
 #include "swapchain.h"
 #include "camera.h"
 #include "renderer.h"
+#include <iostream>
 
 Controller::Controller() {
     window.on(KeyUp{ Key::W })   += [&](auto& event) { window.on<Update>().detach(move_forward_event_handle); };
@@ -40,18 +41,28 @@ Controller::Controller() {
     // resolution controls
     window.on(KeyDown{ Key::PLUS }) += [&](auto& event) { // increase resolution
         auto resolutions = window.enum_resolutions(settings.aspect_ratio);
-        resolution_index = (++resolution_index + resolutions.size()) % resolutions.size();
+        resolution_index = (resolution_index + 1) % resolutions.size();
+        
+        std::cout << "{ " << glm::to_string(resolutions[0]);
+        for (uint32_t i = 1; i < resolutions.size(); ++i) std::cout << ", " << glm::to_string(resolutions[i]);
+        std::cout << "}[" << resolution_index << "]" << std::endl;
+        
         window.set_resolution(resolutions[resolution_index]);
     };
 
     window.on(KeyDown{ Key::MINUS }) += [&](auto& event) { // decrease resolution
         auto resolutions = window.enum_resolutions(settings.aspect_ratio);
-        resolution_index = (--resolution_index + resolutions.size()) % resolutions.size();
+        resolution_index = (resolutions.size() + resolution_index - 1) % resolutions.size();
+        
+        std::cout << "{ " << glm::to_string(resolutions[0]);
+        for (uint32_t i = 1; i < resolutions.size(); ++i) std::cout << ", " << glm::to_string(resolutions[i]);
+        std::cout << "}[" << resolution_index << "]" << std::endl;
+
         window.set_resolution(resolutions[resolution_index]);
     };
 
     window.on(KeyDown{ Key::R }) += [&](auto& event) { // recreate renderer
-        settings = Settings("configs/settings.json");
+        settings = Settings("cfg/settings.json");
         renderer.recreate();
     };
 }

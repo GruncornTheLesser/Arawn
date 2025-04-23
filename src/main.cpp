@@ -42,12 +42,12 @@ std::vector<Model> models;
 std::vector<Light> lights;
 
 int main() {
-    {
-        Model::Load("res/model/sponza/sponza.obj");
-        for (auto& model : models) {
-            model.transform.scale = glm::vec3(0.1f);
-        }
-    }
+    //{
+    //    Model::Load("res/model/sponza/sponza.obj");
+    //    for (auto& model : models) {
+    //        model.transform.scale = glm::vec3(0.1f);
+    //    }
+    //}
     {
         Model::Load("res/model/cube/cube.obj");
         Model& floor = models.back();
