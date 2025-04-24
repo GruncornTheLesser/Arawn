@@ -1,6 +1,6 @@
 #version 450
 #define TILE_SIZE 16
-#define MAX_LIGHTS_PER_TILE 127
+#define MAX_LIGHTS_PER_TILE 255
 
 const float PI      = 3.14;
 const float EPSILON = 0.01;
@@ -104,7 +104,7 @@ void main() {
     // ambient component
     out_colour = vec4(0.01 * albedo, 1.0);
 
-    uvec2 tilecoord = uvec2(gl_FragCoord.xy) * cluster_count.xy / screen_size.xy;
+    uvec2 tilecoord = uvec2(gl_FragCoord) / ((screen_size.xy - 1) / cluster_count.xy + 1);
     uint cluster_index = tilecoord.x + tilecoord.y * cluster_count.x;
     for (uint i = 0; i < clusters[cluster_index].light_count; ++i) {
         
@@ -125,7 +125,7 @@ void main() {
         vec3 diffuse = albedo / max(PI * (1.0 - metallic), EPSILON);
         vec3 specular = D * G * F / max(4.0 * NdotV * NdotL, EPSILON);
         out_colour.rgb += (diffuse + specular) * light.colour * A * NdotL;
-    }
+    }   
 }
 
 vec3 F_Schlick(float HdotV, vec3 F0) {

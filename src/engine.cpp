@@ -466,15 +466,15 @@ Engine::Engine() {
             frustum_binding.binding = 1;
             frustum_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             frustum_binding.descriptorCount = 1;
-            frustum_binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            frustum_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
             frustum_binding.pImmutableSamplers = nullptr;
 
-            VkDescriptorSetLayoutBinding& cell_binding = set_layout_binding[2];
-            cell_binding.binding = 2;
-            cell_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            cell_binding.descriptorCount = 1;
-            cell_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            cell_binding.pImmutableSamplers = nullptr;
+            VkDescriptorSetLayoutBinding& cluster_binding = set_layout_binding[2];
+            cluster_binding.binding = 2;
+            cluster_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            cluster_binding.descriptorCount = 1;
+            cluster_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+            cluster_binding.pImmutableSamplers = nullptr;
 
             VkDescriptorSetLayoutBinding& depth_binding = set_layout_binding[3];
             depth_binding.binding = 3;

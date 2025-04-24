@@ -1,5 +1,5 @@
 #version 450
-#define MAX_LIGHTS_PER_TILE 127
+#define MAX_LIGHTS_PER_TILE 255
 
 const float PI      = 3.14;
 const float EPSILON = 0.01;
@@ -68,7 +68,7 @@ void main() {
     out_colour = vec4(0.01 * albedo, 1.0);
 
     // for each light
-    uvec2 tilecoord = uvec2(gl_FragCoord.xy) * cluster_count.xy / screen_size.xy;
+    uvec2 tilecoord = uvec2(gl_FragCoord) / ((screen_size.xy - 1) / cluster_count.xy + 1);
     uint cluster_index = tilecoord.x + tilecoord.y * cluster_count.x;
     for (uint i = 0; i < clusters[cluster_index].light_count; ++i) {
         
