@@ -14,7 +14,7 @@ struct Camera {
         alignas(16) glm::vec3 eye;
     };
 
-    Camera();
+    Camera(float fov, float near, float far);
 
     void update(uint32_t frame_index);
 
@@ -26,7 +26,7 @@ struct Camera {
 
     float fov = 70.0f; // degrees
     float near = 1.0f;
-    float far = 1000.0f;
+    float far = 300.0f;
 };
 
 extern Camera camera;

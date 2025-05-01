@@ -4,7 +4,7 @@
 #include "uniform.h"
 #include "swapchain.h"
 
-Camera::Camera() { 
+Camera::Camera(float fov, float near, float far) : fov(fov), near(near), far(far) { 
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         buffer[i] = Buffer(nullptr, sizeof(Data),  
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, 

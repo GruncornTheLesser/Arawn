@@ -138,7 +138,7 @@ void Renderer::recreate() {
             cluster_count = glm::uvec3(glm::ceil(glm::vec2(swapchain.extent) / glm::vec2(16)), 1);
             break; 
         }
-        case CullingMode::NONE: {
+        case CullingMode::DISABLED: {
             cluster_count = glm::uvec3(1, 1, 1);
             break;
         }
@@ -188,7 +188,7 @@ void Renderer::recreate() {
             );
 
             normal_attachment[i] = Texture(
-                nullptr, swapchain.extent.x, swapchain.extent.y, 1, VK_FORMAT_R32G32B32A32_SFLOAT,
+                nullptr, swapchain.extent.x, swapchain.extent.y, 1, VK_FORMAT_R16G16B16A16_SFLOAT,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 
                 VK_IMAGE_ASPECT_COLOR_BIT, sample_count,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -197,7 +197,7 @@ void Renderer::recreate() {
 
             // TODO: downsize to 16bit & normalize position to camera
             position_attachment[i] = Texture(
-                nullptr, swapchain.extent.x, swapchain.extent.y, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 
+                nullptr, swapchain.extent.x, swapchain.extent.y, 1, VK_FORMAT_R16G16B16A16_SFLOAT, 
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 
                 VK_IMAGE_ASPECT_COLOR_BIT, sample_count,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -271,7 +271,7 @@ void Renderer::recreate() {
         // recreate light descriptor set
         for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             switch (settings.culling_mode()) {
-                case CullingMode::NONE: {
+                case CullingMode::DISABLED: {
                     light_attachment_set[i] = UniformSet(engine.light_layout, std::array<Uniform, 1>() = { 
                         StorageBuffer{ &light_buffer[i] }
                     });

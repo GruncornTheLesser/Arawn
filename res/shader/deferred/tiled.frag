@@ -1,5 +1,5 @@
 #version 450
-#define MAX_LIGHTS_PER_TILE 255
+#define MAX_LIGHTS_PER_TILE 127
 
 const float PI      = 3.14;
 const float EPSILON = 0.01;

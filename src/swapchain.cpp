@@ -15,8 +15,6 @@ Swapchain::Swapchain()
 }
 
 Swapchain::~Swapchain() {
-    vkDeviceWaitIdle(engine.device);
-
     uint32_t image_count;
     vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, nullptr);
 
@@ -132,7 +130,6 @@ void Swapchain::recreate() {
         info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         info.viewType = VK_IMAGE_VIEW_TYPE_2D;
         info.format = format;
-        // swizzling -> not needed
         info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
         info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
         info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;

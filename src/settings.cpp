@@ -78,7 +78,7 @@ Settings::Settings(std::filesystem::path fp) {
     } catch (Json::ParseException e) { }
 
     try { // parse z pre pass enabled
-        flags |= static_cast<uint32_t>((bool)settings["z prepass"] ? DepthMode::ENABLED : DepthMode::DISABLED);;
+        flags |= static_cast<uint32_t>((bool)settings["z prepass"] ? DepthMode::ENABLED : DepthMode::DISABLED);
     } catch (Json::ParseException) { }
 
     try { // parse render mode
@@ -90,11 +90,11 @@ Settings::Settings(std::filesystem::path fp) {
     } catch (Json::ParseException) { }
 
     try { // parse culling mode
-        std::string_view cluster_mode_str = settings["culling mode"];
+        std::string_view cull_mode = settings["culling mode"];
         
-        if      (cluster_mode_str == "none")      flags |= static_cast<uint32_t>(CullingMode::NONE);
-        else if (cluster_mode_str == "tiled")     flags |= static_cast<uint32_t>(CullingMode::TILED);
-        else if (cluster_mode_str == "clustered") flags |= static_cast<uint32_t>(CullingMode::CLUSTERED);
+        if      (cull_mode == "none")      flags |= static_cast<uint32_t>(CullingMode::DISABLED);
+        else if (cull_mode == "tiled")     flags |= static_cast<uint32_t>(CullingMode::TILED);
+        else if (cull_mode == "clustered") flags |= static_cast<uint32_t>(CullingMode::CLUSTERED);
         else throw Json::ParseException{};
     } catch (Json::ParseException e) { }
 
@@ -153,3 +153,27 @@ bool Configuration::deferred_pass_enabled() const {
     return flags & static_cast<uint32_t>(RenderMode::DEFERRED);
 }
 
+void Configuration::set_render_mode(RenderMode value) {
+    flags &= ~static_cast<uint32_t>(RenderMode::MASK);
+    flags |= static_cast<uint32_t>(value);
+}
+void Configuration::set_display_mode(DisplayMode value) {
+    flags &= ~static_cast<uint32_t>(DisplayMode::MASK);
+    flags |= static_cast<uint32_t>(value);
+}
+void Configuration::set_culling_mode(CullingMode value) {
+    flags &= ~static_cast<uint32_t>(CullingMode::MASK);
+    flags |= static_cast<uint32_t>(value);
+}
+void Configuration::set_anti_alias_mode(AntiAlias value) {
+    flags &= ~static_cast<uint32_t>(AntiAlias::MASK);
+    flags |= static_cast<uint32_t>(value);
+}
+void Configuration::set_depth_mode(DepthMode value) {
+    flags &= ~static_cast<uint32_t>(DepthMode::MASK);
+    flags |= static_cast<uint32_t>(value);
+}
+void Configuration::set_vsync_mode(VsyncMode value) {
+    flags &= ~static_cast<uint32_t>(VsyncMode::MASK);
+    flags |= static_cast<uint32_t>(value);
+}

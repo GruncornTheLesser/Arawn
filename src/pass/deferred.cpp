@@ -98,7 +98,7 @@ DeferredPass::DeferredPass(Renderer& renderer) {
 
             VkAttachmentDescription& normal_info = attachment_info[normal_ref.attachment];
             normal_info = {
-                0, VK_FORMAT_R32G32B32A32_SFLOAT, sample_count, 
+                0, VK_FORMAT_R16G16B16A16_SFLOAT, sample_count, 
                 VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -109,7 +109,7 @@ DeferredPass::DeferredPass(Renderer& renderer) {
 
             VkAttachmentDescription& position_info = attachment_info[position_ref.attachment];
             position_info = {
-                0, VK_FORMAT_R32G32B32A32_SFLOAT, sample_count, 
+                0, VK_FORMAT_R16G16B16A16_SFLOAT, sample_count, 
                 VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 
                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL

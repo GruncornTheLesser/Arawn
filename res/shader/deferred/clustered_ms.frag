@@ -1,5 +1,5 @@
 #version 450
-#define MAX_LIGHTS_PER_CLUSTER 127
+#define MAX_LIGHTS_PER_CLUSTER 63
 
 const float PI      = 3.14;
 const float EPSILON = 0.01;

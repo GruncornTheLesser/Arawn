@@ -149,7 +149,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
 
             VkAttachmentDescription& normal_info = attachment_info[normal_ref.attachment];
             normal_info = {
-                0, VK_FORMAT_R32G32B32A32_SFLOAT, sample_count, 
+                0, VK_FORMAT_R16G16B16A16_SFLOAT, sample_count, 
                 VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -160,7 +160,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
 
             VkAttachmentDescription& position_info = attachment_info[position_ref.attachment];
             position_info = {
-                0, VK_FORMAT_R32G32B32A32_SFLOAT, sample_count, 
+                0, VK_FORMAT_R16G16B16A16_SFLOAT, sample_count, 
                 VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE, 
                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -187,7 +187,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
                     else                         frag_module = engine.create_shader("res/import/shader/deferred/clustered.frag.spv");
                     break;
                 }
-                case CullingMode::NONE: {
+                case CullingMode::DISABLED: {
                     if (settings.msaa_enabled()) frag_module = engine.create_shader("res/import/shader/deferred/present_ms.frag.spv");
                     else                         frag_module = engine.create_shader("res/import/shader/deferred/present.frag.spv");
                     break;
@@ -204,7 +204,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
                     frag_module = engine.create_shader("res/import/shader/forward/clustered.frag.spv");
                     break;
                 }
-                case CullingMode::NONE: {
+                case CullingMode::DISABLED: {
                     frag_module = engine.create_shader("res/import/shader/forward/standard.frag.spv");
                     break;
                 }
