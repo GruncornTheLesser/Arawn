@@ -9,19 +9,7 @@
 #include "camera.h"
 #include <numeric>
 
-ForwardPass::ForwardPass(Renderer& renderer) {
-    { // create cmd buffers
-        VkCommandBufferAllocateInfo info{ 
-            VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, 
-            engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, settings.frame_count
-        };
-        VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, cmd_buffer.data()));
-
-        if (settings.frame_count != MAX_FRAMES_IN_FLIGHT) {
-            cmd_buffer[settings.frame_count] = nullptr;
-        }
-    }
-    
+ForwardPass::ForwardPass(Renderer& renderer) {   
     { // create pipeline layout
         if (settings.deferred_pass_enabled()) {
             std::array<VkDescriptorSetLayout, 3> sets{ engine.camera_layout, engine.attachment_layout, engine.light_layout };
@@ -301,6 +289,43 @@ ForwardPass::ForwardPass(Renderer& renderer) {
         vkDestroyShaderModule(engine.device, frag_module, nullptr);
     }
 
+    { // init swapchain view
+        uint32_t image_count;
+        VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, swapchain.swapchain, &image_count, nullptr));
+        std::vector<VkImage> images(image_count);
+        VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, swapchain.swapchain, &image_count, images.data()));
+        
+        data.resize(image_count);
+
+        VkImageViewCreateInfo info{
+            VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, nullptr, 0, 
+            nullptr, VK_IMAGE_VIEW_TYPE_2D, swapchain.format, { }, 
+            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+        };
+        
+        for (uint32_t i = 0; i < images.size(); ++i) {
+            info.image = images[i];
+            VK_ASSERT(vkCreateImageView(engine.device, &info, nullptr, &data[i].view));
+        }
+    }
+
+    { // create cmd buffers
+        VkCommandBufferAllocateInfo info{ 
+            VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, 
+            engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, settings.frame_count
+        };
+        for (auto& image_set : data) {
+            VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, image_set.cmd_buffer.data()));
+        }
+
+        if (settings.frame_count != MAX_FRAMES_IN_FLIGHT) {
+            for (auto& image_set : data) {
+                image_set.cmd_buffer[settings.frame_count] = nullptr;
+            }
+        }
+
+    }
+
     { // create framebuffers
         std::array<VkImageView, 6> attachments;
 
@@ -309,106 +334,146 @@ ForwardPass::ForwardPass(Renderer& renderer) {
             renderpass, 0, attachments.data(), 
             swapchain.extent.x, swapchain.extent.y, 1  
         };
-        framebuffer.resize(std::lcm(settings.frame_count, swapchain.image_count));
 
-        for (uint32_t i = 0; i < framebuffer.size(); ++i) {
-            uint32_t frame_i = i % settings.frame_count;
-            uint32_t image_i = i % swapchain.image_count;
-            
-            info.attachmentCount = 0;
+        for (uint32_t frame_i = 0; frame_i < settings.frame_count; ++frame_i) {
+            for (uint32_t image_i = 0; image_i < data.size(); ++image_i) {           
+                info.attachmentCount = 0;
 
-            // depth attachment
-            if (!settings.deferred_pass_enabled()) {
-                attachments[info.attachmentCount++] = renderer.depth_attachment[frame_i].view;
+                // depth attachment
+                if (!settings.deferred_pass_enabled()) {
+                    attachments[info.attachmentCount++] = renderer.depth_attachment[frame_i].view;
+                }
+
+                if (settings.msaa_enabled()) { // colour attachment
+                    attachments[info.attachmentCount++] = renderer.msaa_attachment[frame_i].view;
+                }
+
+                // colour/resolve attachment
+                attachments[info.attachmentCount++] = data[image_i].view;
+
+                // input attachments
+                if (settings.deferred_pass_enabled()) {
+                    attachments[info.attachmentCount++] = renderer.albedo_attachment[frame_i].view;
+                    attachments[info.attachmentCount++] = renderer.normal_attachment[frame_i].view;
+                    attachments[info.attachmentCount++] = renderer.position_attachment[frame_i].view;
+                }
+
+                VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &data[image_i].framebuffer[frame_i]));
             }
-
-            if (settings.msaa_enabled()) { // colour attachment
-                attachments[info.attachmentCount++] = renderer.msaa_attachment[frame_i].view;
-            }
-
-            // colour/resolve attachment
-            attachments[info.attachmentCount++] = swapchain.view[image_i];
-
-            // input attachments
-            if (settings.deferred_pass_enabled()) {
-                attachments[info.attachmentCount++] = renderer.albedo_attachment[frame_i].view;
-                attachments[info.attachmentCount++] = renderer.normal_attachment[frame_i].view;
-                attachments[info.attachmentCount++] = renderer.position_attachment[frame_i].view;
-            }
-
-            VK_ASSERT(vkCreateFramebuffer(engine.device, &info, nullptr, &framebuffer[i]));
         }
     }
 }
 
 ForwardPass::~ForwardPass() {
-    if (cmd_buffer[0] != nullptr) {
+    if (enabled()) {
         vkDestroyPipelineLayout(engine.device, layout, nullptr);
         vkDestroyRenderPass(engine.device, renderpass, nullptr);
         vkDestroyPipeline(engine.device, pipeline, nullptr);
 
-        uint32_t i;
-        for (i = 0 ; i < MAX_FRAMES_IN_FLIGHT && cmd_buffer[i] != nullptr; ++i) {
-            vkFreeCommandBuffers(engine.device, engine.graphics.pool, 1, &cmd_buffer[i]);
-        } 
-        for (i = 0; i < framebuffer.size(); ++i) {
-            vkDestroyFramebuffer(engine.device, framebuffer[i], nullptr);
-        }
+        for (auto& image_set : data) {
+            vkDestroyImageView(engine.device, image_set.view, nullptr);
 
-        cmd_buffer[0] = nullptr;
+            for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT && image_set.cmd_buffer[i] != nullptr; ++i) {
+                vkFreeCommandBuffers(engine.device, engine.graphics.pool, 1, &image_set.cmd_buffer[i]);
+                vkDestroyFramebuffer(engine.device, image_set.framebuffer[i], nullptr);
+            }
+            image_set.cmd_buffer[0] = nullptr;
+        }
     }
 }
 
 ForwardPass::ForwardPass(ForwardPass&& other) {
     if (this == &other) return;
 
-    cmd_buffer = other.cmd_buffer;
+    data = std::move(other.data);
     
     pipeline = other.pipeline;
     renderpass = other.renderpass;
     layout = other.layout;
-
-    framebuffer = other.framebuffer;
-
-    other.cmd_buffer[0] = nullptr;
 }
 
 ForwardPass& ForwardPass::operator=(ForwardPass&& other) {
     if (this == &other) return *this;
     
-    if (cmd_buffer[0] != nullptr) {
+    if (enabled()) {
         vkDestroyPipelineLayout(engine.device, layout, nullptr);
         vkDestroyRenderPass(engine.device, renderpass, nullptr);
         vkDestroyPipeline(engine.device, pipeline, nullptr);
         
-        uint32_t i;
-        for (i = 0 ; i < MAX_FRAMES_IN_FLIGHT && cmd_buffer[i] != nullptr; ++i) {
-            vkFreeCommandBuffers(engine.device, engine.graphics.pool, 1, &cmd_buffer[i]);
-        }
-        
-        for (i = 0; i < framebuffer.size(); ++i) {
-            vkDestroyFramebuffer(engine.device, framebuffer[i], nullptr);
+        for (auto& image_set : data) {
+            vkDestroyImageView(engine.device, image_set.view, nullptr);
+            
+            for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT && image_set.cmd_buffer[i] != nullptr; ++i) {
+                vkFreeCommandBuffers(engine.device, engine.graphics.pool, 1, &image_set.cmd_buffer[i]);
+                vkDestroyFramebuffer(engine.device, image_set.framebuffer[i], nullptr);
+            }
+            image_set.cmd_buffer[0] = nullptr;
         }
     }
 
+    data = std::move(other.data);
     layout = other.layout;
     renderpass = other.renderpass;
     pipeline = other.pipeline;
-    cmd_buffer = other.cmd_buffer;
-    framebuffer = other.framebuffer;
-
-    other.cmd_buffer[0] = nullptr;
 
     return *this;
 }      
 
-void ForwardPass::record(uint32_t frame_index) {
+void ForwardPass::submit(uint32_t image_index, uint32_t frame_index) {
+    /* waits on image ready, if culling enabled waits on light_ready, if defer enabled waits on deferred
+        * waits on depth if enabled and defer not enabled, signals frame ready
+    */
+
+    std::array<VkSemaphore, 3> waits;
+    std::array<VkPipelineStageFlags, 3> stages;
+    VkSubmitInfo info{ 
+        VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
+        0, waits.data(), stages.data(), 
+        1, &data[image_index].cmd_buffer[frame_index], 
+        1, &renderer.frame_ready[frame_index]
+    };
+    
+    {
+        waits[info.waitSemaphoreCount] = renderer.image_ready[frame_index];
+        stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        ++info.waitSemaphoreCount;
+    }
+
+    if (renderer.config.culling_enabled()) {
+        waits[info.waitSemaphoreCount] = renderer.light_ready[frame_index];
+        stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        ++info.waitSemaphoreCount;
+    }
+    
+    if (renderer.config.deferred_pass_enabled()) {
+        if (renderer.config.depth_prepass_enabled() || renderer.config.culling_mode() != CullingMode::TILED) {
+            waits[info.waitSemaphoreCount] = renderer.defer_ready[frame_index];
+            stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            ++info.waitSemaphoreCount;
+        }
+    } else {
+        if (renderer.config.depth_prepass_enabled() && renderer.config.culling_mode() != CullingMode::TILED) {
+            waits[info.waitSemaphoreCount] = renderer.depth_ready[frame_index * 2];
+            stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            ++info.waitSemaphoreCount;
+        }
+    }
+    
+    vkQueueSubmit(engine.graphics.queue, 1, &info, renderer.in_flight[frame_index]);
+}
+
+void ForwardPass::record(uint32_t image_index, uint32_t frame_index, uint32_t current_version) {
+    if (!enabled()) return;
+    if (data[image_index].version[frame_index] == current_version) return;
+    
+    VkCommandBuffer cmd_buffer = data[image_index].cmd_buffer[frame_index];
+    VkFramebuffer framebuffer = data[image_index].framebuffer[frame_index];
+
     { // reset & begin cmd buffer
-        VK_ASSERT(vkResetCommandBuffer(cmd_buffer[frame_index], 0));
+        VK_ASSERT(vkResetCommandBuffer(cmd_buffer, 0));
         
-        VkCommandBufferBeginInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        VK_ASSERT(vkBeginCommandBuffer(cmd_buffer[frame_index], &info));
+        VkCommandBufferBeginInfo info{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, nullptr, 0, nullptr };
+        VK_ASSERT(vkBeginCommandBuffer(cmd_buffer, &info));
     }
 
     { // begin renderpass
@@ -416,34 +481,24 @@ void ForwardPass::record(uint32_t frame_index) {
         clear[0].depthStencil = { 1.0f, 0 };
         clear[1].color = { 0.0, 0.0, 0.0 };
 
-        VkRenderPassBeginInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        info.renderPass = renderpass;
-        info.renderArea.offset = { 0, 0 };
-        info.renderArea.extent = { swapchain.extent.x, swapchain.extent.y };
-        info.framebuffer = framebuffer[frame_index];
-        info.pClearValues = clear.data();
-        info.clearValueCount = clear.size();
+        VkRenderPassBeginInfo info{ 
+            VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, nullptr, 
+            renderpass, framebuffer, 
+            { { 0, 0 }, { swapchain.extent.x, swapchain.extent.y } }, 
+            clear.size(), clear.data()
+        };
 
-        vkCmdBeginRenderPass(cmd_buffer[frame_index], &info, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBeginRenderPass(cmd_buffer, &info, VK_SUBPASS_CONTENTS_INLINE);
     }
 
     { // bind pipeline
-        vkCmdBindPipeline(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        vkCmdBindPipeline(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = (float) swapchain.extent.x;
-        viewport.height = (float) swapchain.extent.y;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-        vkCmdSetViewport(cmd_buffer[frame_index], 0, 1, &viewport);
+        VkViewport viewport{ 0.0f, 0.0f, (float)swapchain.extent.x, (float)swapchain.extent.y, 0.0f, 1.0f };
+        vkCmdSetViewport(cmd_buffer, 0, 1, &viewport);
 
-        VkRect2D scissor{};
-        scissor.offset = { 0, 0 };
-        scissor.extent = { swapchain.extent.x, swapchain.extent.y };
-        vkCmdSetScissor(cmd_buffer[frame_index], 0, 1, &scissor);
+        VkRect2D scissor{ { 0, 0 }, { swapchain.extent.x, swapchain.extent.y } };
+        vkCmdSetScissor(cmd_buffer, 0, 1, &scissor);
     }
 
     if (settings.deferred_pass_enabled()) {
@@ -452,36 +507,36 @@ void ForwardPass::record(uint32_t frame_index) {
             renderer.input_attachment_set[frame_index].descriptor_set, 
             renderer.light_attachment_set[frame_index].descriptor_set 
         };
-        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, sets.size(), sets.data(), 0, nullptr);
+        vkCmdBindDescriptorSets(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, sets.size(), sets.data(), 0, nullptr);
 
         // draw fullscreen quad(vertices embedded in fullscreen.vert)
-        vkCmdDraw(cmd_buffer[frame_index], 6, 1, 0, 0);
+        vkCmdDraw(cmd_buffer, 6, 1, 0, 0);
 
     } else { // forward pass
         // bind camera
-        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].descriptor_set, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &camera.uniform[frame_index].descriptor_set, 0, nullptr);
 
         // bind lights
-        vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 3, 1, &renderer.light_attachment_set[frame_index].descriptor_set, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 3, 1, &renderer.light_attachment_set[frame_index].descriptor_set, 0, nullptr);
 
         for (Model& model : models) {
             // bind vbo
             VkDeviceSize offsets[] = { 0 };
-            vkCmdBindVertexBuffers(cmd_buffer[frame_index], 0, 1, &model.vertex_buffer, offsets);
+            vkCmdBindVertexBuffers(cmd_buffer, 0, 1, &model.vertex_buffer, offsets);
             
             // bind ibo
-            vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index_buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdBindIndexBuffer(cmd_buffer, model.index_buffer, 0, VK_INDEX_TYPE_UINT32);
             
             // bind transform
-            vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.uniform[frame_index].descriptor_set, 0, nullptr);
+            vkCmdBindDescriptorSets(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.uniform[frame_index].descriptor_set, 0, nullptr);
 
             uint32_t index_offset = 0;
             for (auto& mesh : model.meshes) {
                 // bind material
-                vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &mesh.material.uniform.descriptor_set, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &mesh.material.uniform.descriptor_set, 0, nullptr);
 
                 // draw mesh
-                vkCmdDrawIndexed(cmd_buffer[frame_index], mesh.vertex_count, 1, index_offset, 0, 0);
+                vkCmdDrawIndexed(cmd_buffer, mesh.vertex_count, 1, index_offset, 0, 0);
                 
                 index_offset += mesh.vertex_count;
             }
@@ -489,8 +544,8 @@ void ForwardPass::record(uint32_t frame_index) {
     }
     
     { // end render pass & cmd buffer
-        vkCmdEndRenderPass(cmd_buffer[frame_index]);
+        vkCmdEndRenderPass(cmd_buffer);
 
-        VK_ASSERT(vkEndCommandBuffer(cmd_buffer[frame_index]));
+        VK_ASSERT(vkEndCommandBuffer(cmd_buffer));
     }
 }

@@ -8,7 +8,7 @@
 struct LightHeader { glm::uvec3 cluster_count; uint32_t light_count; };
 
 Renderer::Renderer() {
-    recreate();
+    //recreate();
 }
 
 Renderer::~Renderer() {
@@ -123,8 +123,10 @@ Renderer& Renderer::operator=(Renderer&& other) {
 }
 
 void Renderer::recreate() {
-    vkDeviceWaitIdle(engine.device);
-    
+    if (forward_pass.enabled()) {
+        VK_ASSERT(vkWaitForFences(engine.device, frame_count, in_flight.data(), VK_TRUE, UINT64_MAX));
+    }
+
     swapchain.recreate();
 
     VkSampleCountFlagBits sample_count = settings.sample_count();
@@ -195,7 +197,6 @@ void Renderer::recreate() {
                 { }
             );
 
-            // TODO: downsize to 16bit & normalize position to camera
             position_attachment[i] = Texture(
                 nullptr, swapchain.extent.x, swapchain.extent.y, 1, VK_FORMAT_R16G16B16A16_SFLOAT, 
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, 
@@ -406,11 +407,6 @@ void Renderer::recreate() {
                 vkDestroySemaphore(engine.device, light_ready[i], nullptr);
             }
         }
-
-        current_version = 1;
-        for (uint32_t i = 0; i < settings.frame_count; ++i) {
-            frame_version[i] = 0;
-        }
     }
 
     if (settings.culling_enabled()) { // write cluster count to light buffer for frustum creation
@@ -444,19 +440,6 @@ void Renderer::recreate() {
     frame_count = settings.frame_count;
 }
 
-void Renderer::record(uint32_t frame_index) {
-    if (config.depth_prepass_enabled()) depth_pass.record(frame_index);
-    if (config.deferred_pass_enabled()) deferred_pass.record(frame_index);
-    if (config.culling_enabled())       culling_pass.record(frame_index);
-    forward_pass.record(frame_index);
-
-    LightHeader light_header { cluster_count, static_cast<uint32_t>(lights.size()) };
-    light_buffer[frame_index].set_value(&light_header, sizeof(LightHeader));
-    if (lights.size() > 0) { // update light buffer
-        light_buffer[frame_index].set_value(lights.data(), sizeof(Light) * lights.size(), sizeof(LightHeader));
-    }
-}
-
 void Renderer::draw() {
     const uint64_t timeout = 1000000000;
     
@@ -471,120 +454,35 @@ void Renderer::draw() {
     } else if (res != VK_SUBOPTIMAL_KHR) {
         VK_ASSERT(res);
     }
-    
-    { // update
-        if (frame_version[frame_index] != current_version) {
-            frame_version[frame_index] = current_version;
-            record(frame_index);
-        }
-        
+
+    { // update scene       
         camera.update(frame_index);
         
         for (auto& model : models) {
             model.transform.update(frame_index);
         }
+
+        LightHeader light_header { cluster_count, static_cast<uint32_t>(lights.size()) };
+        light_buffer[frame_index].set_value(&light_header, sizeof(LightHeader));
+        if (lights.size() > 0) { // update light buffer
+            light_buffer[frame_index].set_value(lights.data(), sizeof(Light) * lights.size(), sizeof(LightHeader));
+        }
+    }
+    
+    { // record passes
+        depth_pass.record(frame_index, current_version);
+        deferred_pass.record(frame_index, current_version);
+        culling_pass.record(frame_index, current_version);
+        forward_pass.record(image_index, frame_index, current_version);
     }
 
     VK_ASSERT(vkResetFences(engine.device, 1, &in_flight[frame_index]));
     
-
-    std::array<VkPipelineStageFlags, 3> stages;
-    std::array<VkSemaphore, 3> waits;
-
-    if (config.depth_prepass_enabled()) {
-        /*
-        waits on nothing, signals depth_ready, signals depth_ready_2 if enabled
-        depth_ready_2 is only enabled when render_mode==deferred, culling_mode==tiled
-        */
-        VkSubmitInfo info{ 
-            VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
-            0, waits.data(), stages.data(),
-            1, &depth_pass.cmd_buffer[frame_index], 
-            1, &depth_ready[frame_index * 2]
-        };
-
-        if (config.deferred_pass_enabled() && config.culling_mode() == CullingMode::TILED) {
-            info.signalSemaphoreCount++;
-        }
-
-        VK_ASSERT(vkQueueSubmit(engine.graphics.queue, 1, &info, nullptr));
-    }
-    
-    if (config.deferred_pass_enabled()) {
-        VkSubmitInfo info{ 
-            VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
-            0, waits.data(), stages.data(),
-            1, &deferred_pass.cmd_buffer[frame_index], 
-            1, &defer_ready[frame_index]
-        };
-
-        if (config.depth_prepass_enabled()) {
-            // wait on depth ready
-            waits[info.waitSemaphoreCount] = depth_ready[frame_index * 2];
-            stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            ++info.waitSemaphoreCount;
-        }
-
-        VK_ASSERT(vkQueueSubmit(engine.graphics.queue, 1, &info, nullptr));
-    }
-
-    if (config.culling_enabled()) {
-        VkSubmitInfo info{ 
-            VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
-            0, waits.data(), stages.data(), 
-            1, &culling_pass.cmd_buffer[frame_index], 
-            1, &light_ready[frame_index]
-        };
-        
-        if (config.culling_mode() == CullingMode::TILED) {
-            if (config.depth_mode() == DepthMode::ENABLED) {
-                if (config.render_mode() == RenderMode::DEFERRED) waits[info.waitSemaphoreCount] = depth_ready[frame_index * 2 + 1];
-                else                                              waits[info.waitSemaphoreCount] = depth_ready[frame_index * 2];
-            } else {
-                waits[info.waitSemaphoreCount] = defer_ready[frame_index];
-            }
-            stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-            ++info.waitSemaphoreCount;
-        }
-        
-        VK_ASSERT(vkQueueSubmit(engine.compute.queue, 1, &info, nullptr));
-    }
-
-    { // forward pass
-        VkSubmitInfo info{ 
-            VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
-            0, waits.data(), stages.data(), 
-            1, &forward_pass.cmd_buffer[frame_index], 
-            1, &frame_ready[frame_index]
-        };
-        
-        {
-            waits[info.waitSemaphoreCount] = image_ready[frame_index];
-            stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            ++info.waitSemaphoreCount;
-        }
-
-        if (config.culling_enabled()) {
-            waits[info.waitSemaphoreCount] = light_ready[frame_index];
-            stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            ++info.waitSemaphoreCount;
-        }
-        
-        if (config.deferred_pass_enabled()) {
-            if (config.depth_prepass_enabled() || config.culling_mode() != CullingMode::TILED) {
-                waits[info.waitSemaphoreCount] = defer_ready[frame_index];
-                stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-                ++info.waitSemaphoreCount;
-            }
-        } else {
-            if (config.depth_prepass_enabled() && config.culling_mode() != CullingMode::TILED) {
-                waits[info.waitSemaphoreCount] = depth_ready[frame_index * 2];
-                stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-                ++info.waitSemaphoreCount;
-            }
-        }
-        
-        vkQueueSubmit(engine.graphics.queue, 1, &info, in_flight[frame_index]);
+    { // submit passesaaa
+        depth_pass.submit(frame_index);
+        deferred_pass.submit(frame_index);
+        culling_pass.submit(frame_index);
+        forward_pass.submit(image_index, frame_index);
     }
 
     { // present to screen
@@ -597,12 +495,11 @@ void Renderer::draw() {
         VkResult res = vkQueuePresentKHR(engine.present.queue, &info);
 
         if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR) {
-            recreate();
-            frame_index = (frame_index + 1) % settings.frame_count; // get next frame data set
+            return;
         } else {
             VK_ASSERT(res);
         }
     }
     
-    frame_index = (frame_index + 1) % settings.frame_count; // get next frame data set
+    frame_index = (frame_index + 1) % settings.frame_count; // increment frame
 }

@@ -1,12 +1,13 @@
 {
-    "device" : "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "device" : "NVIDIA GeForce RTX 3060 Laptop GPU", // "Intel(R) UHD Graphics (CML GT2)", // 
     "display mode" : "windowed",
     "aspect ratio" : "4:3", // "16:9",
     "resolution" : [ 800, 600 ],
     "frame count" : 2,
-    "vsync" : true,
+    "vsync" : false,
+    "low latency" : false,
     "z prepass" : true,
-    "anti alias" : "msaa8",         // none/msaa2/msaa4/msaa8
+    "anti alias" : "none",         // none/msaa2/msaa4/msaa8
     "render mode" : "deferred",      // forward/deferred
     "culling mode" : "tiled"        // none/clustered/tiled
 }

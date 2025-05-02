@@ -96,7 +96,7 @@ void main() {
     }
     
     vec3 N = normalize(normal);
-    vec3 V = normalize(frag_position - eye);
+    vec3 V = normalize(eye - frag_position);
 
     vec3 F0 = vec3(0.04);
     F0 = mix(F0, albedo, metallic);

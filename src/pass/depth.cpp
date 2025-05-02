@@ -199,13 +199,34 @@ DepthPass& DepthPass::operator=(DepthPass&& other) {
     return *this;
 }    
 
-void DepthPass::record(uint32_t frame_index) {
+void DepthPass::submit(uint32_t frame_index) {
+    if (!enabled()) return;
+
+    std::array<VkSemaphore, 1> waits;
+    std::array<VkPipelineStageFlags, 1> stages;
+    VkSubmitInfo info{ 
+        VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
+        0, waits.data(), stages.data(),
+        1, &renderer.depth_pass.cmd_buffer[frame_index], 
+        1, &renderer.depth_ready[frame_index * 2]
+    };
+
+    // both deferred and culling wait on depth_ready but on different queues, requires seperate semaphores
+    if (renderer.config.deferred_pass_enabled() && renderer.config.culling_mode() == CullingMode::TILED) {
+        info.signalSemaphoreCount++;
+    }
+
+    VK_ASSERT(vkQueueSubmit(engine.graphics.queue, 1, &info, nullptr));
+}
+
+void DepthPass::record(uint32_t frame_index, uint32_t current_version) {
+    if (!enabled()) return;
+    if (version[frame_index] == current_version) return;
 
     { // reset & begin cmd buffer
         VK_ASSERT(vkResetCommandBuffer(cmd_buffer[frame_index], 0));
         
-        VkCommandBufferBeginInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        VkCommandBufferBeginInfo info{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, nullptr, 0, nullptr };
         
         VK_ASSERT(vkBeginCommandBuffer(cmd_buffer[frame_index], &info));
     }
@@ -226,18 +247,10 @@ void DepthPass::record(uint32_t frame_index) {
     { // bind pipeline
         vkCmdBindPipeline(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = (float) swapchain.extent.x;
-        viewport.height = (float) swapchain.extent.y;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
+        VkViewport viewport{ 0.0f, 0.0f, (float) swapchain.extent.x, (float) swapchain.extent.y, 0.0f, 1.0f };
         vkCmdSetViewport(cmd_buffer[frame_index], 0, 1, &viewport);
 
-        VkRect2D scissor{};
-        scissor.offset = { 0, 0 };
-        scissor.extent = { swapchain.extent.x, swapchain.extent.y };
+        VkRect2D scissor{ { 0, 0 }, { swapchain.extent.x, swapchain.extent.y } };
         vkCmdSetScissor(cmd_buffer[frame_index], 0, 1, &scissor);
     }
 

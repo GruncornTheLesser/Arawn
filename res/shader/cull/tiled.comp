@@ -46,7 +46,7 @@ shared float subgroup_z_max[64]; // 16x16/4 = 64
 
 float linearize_depth(float depth);
 bool sphere_inside_plane(vec3 pos, float radius, vec4 plane);
-bool sphere_inside_frustum(Light light, Frustum frustum, float z_near, float z_far);
+bool sphere_intersect_frustum(Light light, Frustum frustum, float z_near, float z_far);
 
 void main() {
 	float depth = texelFetch(depth_sampler, ivec2(min(gl_GlobalInvocationID.xy, screen_size.xy)), 0).r;
@@ -79,7 +79,7 @@ void main() {
 		
 		uint count = 0;
 		for (uint light_index = 0; light_index < light_count; ++light_index) {
-			if (sphere_inside_frustum(lights[light_index], frustums[workgroup_index], z_min, z_max)) { 
+			if (sphere_intersect_frustum(lights[light_index], frustums[workgroup_index], z_min, z_max)) { 
 				clusters[workgroup_index].indices[count] = light_index;
 				if (++count == MAX_LIGHTS_PER_TILE) {
 					break;
@@ -99,7 +99,7 @@ bool sphere_inside_plane(vec3 pos, float rad, vec4 plane) {
 	return dot(plane.xyz, pos) - plane.w < -rad;
 }
 
-bool sphere_inside_frustum(Light light, Frustum frustum, float z_near, float z_far) {
+bool sphere_intersect_frustum(Light light, Frustum frustum, float z_near, float z_far) {
 	vec4 position = (view * vec4(light.position.xyz, 1));
 	float z = -position.z;
 	if (z + light.radius < z_near || z - light.radius > z_far) { 

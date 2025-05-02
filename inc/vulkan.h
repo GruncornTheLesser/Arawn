@@ -11,21 +11,24 @@
 #include <glm/gtx/string_cast.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-void log_error(std::string_view msg, std::source_location loc = std::source_location::current());
 
 #ifdef ARAWN_IMPLEMENTATION
-
-#include <vulkan/vulkan.h> // for now 
+#include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
+#endif
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
 
-#include <iostream>
-
+#ifdef ARAWN_IMPLEMENTATION
 #define VK_TYPE(TYPE) TYPE
 #define VK_ENUM(ENUM) ENUM
+#else
+#define VK_TYPE(TYPE) void*
+#define VK_ENUM(ENUM) uint32_t
+#endif
 
+#ifdef ARAWN_IMPLEMENTATION
+#include <iostream>
+void log_error(std::string_view msg, std::source_location loc = std::source_location::current());
 
 #define VK_ASSERT(x) {                          \
     VkResult RESULT_VAL = (x);                  \
@@ -43,10 +46,11 @@ void log_error(std::string_view msg, std::source_location loc = std::source_loca
         throw std::exception();                 \
     }                                           \
 } 
+#endif
 
-#else
-#define VK_TYPE(TYPE) void*
-#define VK_ENUM(ENUM) uint32_t
+#ifdef ARAWN_IMPLEMENTATION
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 #endif
 
 #ifndef MAX_FRAMES_IN_FLIGHT

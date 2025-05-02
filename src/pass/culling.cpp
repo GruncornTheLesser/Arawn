@@ -150,14 +150,45 @@ CullingPass& CullingPass::operator=(CullingPass&& other) {
     other.cmd_buffer[0] = nullptr;
     
     return *this;
-}    
+}
 
-void CullingPass::record(uint32_t frame_index) {
+void CullingPass::submit(uint32_t frame_index) {
+    if (!enabled()) return; 
+
+    std::array<VkSemaphore, 1> waits;
+    std::array<VkPipelineStageFlags, 1> stages;
+    VkSubmitInfo info{ 
+        VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
+        0, waits.data(), stages.data(), 
+        1, &cmd_buffer[frame_index], 
+        1, &renderer.light_ready[frame_index]
+    };
+    
+    if (renderer.config.culling_mode() == CullingMode::TILED) {
+        if (renderer.config.depth_mode() == DepthMode::ENABLED) {
+            if (renderer.config.render_mode() == RenderMode::DEFERRED) {
+                waits[info.waitSemaphoreCount] = renderer.depth_ready[frame_index * 2 + 1];
+            } else {
+                waits[info.waitSemaphoreCount] = renderer.depth_ready[frame_index * 2];
+            }
+        } else {
+            waits[info.waitSemaphoreCount] = renderer.defer_ready[frame_index];
+        }
+        stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        ++info.waitSemaphoreCount;
+    }
+    
+    VK_ASSERT(vkQueueSubmit(engine.compute.queue, 1, &info, nullptr));
+}
+
+void CullingPass::record(uint32_t frame_index, uint32_t current_version) {
+    if (!enabled()) return;
+    if (version[frame_index] == current_version) return;
+
     { // reset & begin cmd buffer
         VK_ASSERT(vkResetCommandBuffer(cmd_buffer[frame_index], 0));
         
-        VkCommandBufferBeginInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        VkCommandBufferBeginInfo info{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, nullptr, 0, nullptr };
         VK_ASSERT(vkBeginCommandBuffer(cmd_buffer[frame_index], &info));
     }
 

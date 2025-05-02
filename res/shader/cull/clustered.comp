@@ -1,6 +1,4 @@
 #version 460
-#extension GL_KHR_shader_subgroup_basic : enable
-#extension GL_KHR_shader_subgroup_arithmetic : enable
 
 #define MAX_LIGHTS_PER_CLUSTER 63
 
@@ -41,7 +39,7 @@ layout (local_size_x=1, local_size_y=1, local_size_z=1) in;
 
 float linearize_depth(float depth);
 bool sphere_inside_plane(vec3 pos, float radius, vec4 plane);
-bool sphere_inside_frustum(Light light, Frustum frustum, float z_near, float z_far);
+bool sphere_intersect_frustum(Light light, Frustum frustum, float z_near, float z_far);
 
 void main() {
 	uint frustum_index = gl_WorkGroupID.x + 
@@ -54,7 +52,7 @@ void main() {
 
 	uint count = 0;
 	for (uint light_index = 0; light_index < light_count; ++light_index) {
-		if (sphere_inside_frustum(lights[light_index], frustums[frustum_index], z_min, z_max)) { 
+		if (sphere_intersect_frustum(lights[light_index], frustums[frustum_index], z_min, z_max)) { 
 			clusters[cluster_index].indices[count] = light_index;
 			if (++count == MAX_LIGHTS_PER_CLUSTER) {
 				break;
@@ -73,13 +71,13 @@ bool sphere_inside_plane(vec3 pos, float radius, vec4 plane) {
 	return dot(plane.xyz, pos) - plane.w < -radius;
 }
 
-bool sphere_inside_frustum(Light light, Frustum frustum, float z_near, float z_far) {
+bool sphere_intersect_frustum(Light light, Frustum frustum, float z_near, float z_far) {
 	vec4 position = (view * vec4(light.position.xyz, 1));
 	float z = -position.z;
+	if (z + light.radius < z_near || z - light.radius > z_far) { 
+		return false;
+	}
 	
-	// if inside depth range
-	if (z + light.radius < z_near || z - light.radius > z_far) return false;
-
 	// if sphere insides Frustum planes
 	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[0])) return false;
 	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[1])) return false;

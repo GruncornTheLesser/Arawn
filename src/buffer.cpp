@@ -1,6 +1,8 @@
 #define ARAWN_IMPLEMENTATION
 #include "buffer.h"
 #include "engine.h"
+#include <ranges>
+#include <algorithm>
 
 Buffer::Buffer( 
         const void* data, uint32_t size, 
@@ -9,11 +11,13 @@ Buffer::Buffer(
         std::span<uint32_t> queue_families
 ) {
     { // create buffer
+        auto unique_queue_families = std::ranges::unique(queue_families);
+
         VkBufferCreateInfo info{
             VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0, 
             size, usage,  
-            queue_families.size() < 2 ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT,
-            static_cast<uint32_t>(queue_families.size()), queue_families.data()
+            unique_queue_families.size() < 2 ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT,
+            static_cast<uint32_t>(unique_queue_families.size()), unique_queue_families.data()
         };
 
         VK_ASSERT(vkCreateBuffer(engine.device, &info, nullptr, &buffer));

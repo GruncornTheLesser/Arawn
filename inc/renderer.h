@@ -57,8 +57,7 @@ private:
     std::array<UniformSet, MAX_FRAMES_IN_FLIGHT> light_attachment_set;
     std::array<UniformSet, MAX_FRAMES_IN_FLIGHT> input_attachment_set;
 
-    uint32_t current_version = 0;
-    std::array<uint32_t, MAX_FRAMES_IN_FLIGHT> frame_version;
+    uint32_t current_version = -1;
 
     DepthPass depth_pass;
     DeferredPass deferred_pass;

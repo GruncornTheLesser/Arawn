@@ -7,6 +7,9 @@
 #include <stb_image.h>
 #include <cstring>
 
+#include <ranges>
+#include <algorithm>
+
 Texture::Texture(
     void* data, uint32_t width, uint32_t height, uint32_t mip_levels,
     VkFormat format, 
@@ -21,13 +24,15 @@ Texture::Texture(
     }
 
     { // create image
+        auto unique_queue_families = std::ranges::unique(queue_families);
+
         VkImageCreateInfo info{
             VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, nullptr, 0,
             VK_IMAGE_TYPE_2D, format, 
             { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 }, 
             mip_levels, 1, sample_count, VK_IMAGE_TILING_OPTIMAL, usage,
-            queue_families.size() < 2 ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT, 
-            static_cast<uint32_t>(queue_families.size()), queue_families.data(), 
+            unique_queue_families.size() < 2 ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT, 
+            static_cast<uint32_t>(unique_queue_families.size()), unique_queue_families.data(), 
         };
         
         VK_ASSERT(vkCreateImage(engine.device, &info, nullptr, &image));
@@ -37,11 +42,10 @@ Texture::Texture(
         VkMemoryRequirements requirements;
         vkGetImageMemoryRequirements(engine.device, image, &requirements);
 
-        VkMemoryAllocateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        info.allocationSize = requirements.size;
-        info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
+        VkMemoryAllocateInfo info{ 
+            VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, 
+            requirements.size, engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+        };
         VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &memory));
 
         VK_ASSERT(vkBindImageMemory(engine.device, image, memory, 0));   

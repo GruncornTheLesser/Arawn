@@ -34,7 +34,6 @@ Engine::Engine() {
         vkEnumerateInstanceLayerProperties(&count, available.data());
         
         // remove layer if not available 
-        // TODO: warn about missing layer support
         inst_layers.erase(std::remove_if(inst_layers.begin(), inst_layers.end(), [&](const char* layer) {
             return std::find_if(available.begin(), available.end(), [&](const VkLayerProperties& p) { 
                 return strcmp(layer, p.layerName) == 0; 
@@ -49,21 +48,18 @@ Engine::Engine() {
     }
 
     { // init instance
-        VkApplicationInfo app_info {};
-        app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        app_info.apiVersion = VK_API_VERSION_1_2;
-        app_info.pApplicationName = "Arawn";
-        app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-        app_info.pEngineName = "Arawn-Engine";
-        app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+        VkApplicationInfo app_info {
+            VK_STRUCTURE_TYPE_APPLICATION_INFO, nullptr, 
+            "Arawn", VK_MAKE_VERSION(1, 0, 0), 
+            "Arawn-Engine", VK_MAKE_VERSION(1, 0, 0),
+            VK_API_VERSION_1_2
+        };
 
-        VkInstanceCreateInfo inst_info {};
-        inst_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        inst_info.pApplicationInfo = &app_info;
-        inst_info.enabledExtensionCount = static_cast<uint32_t>(inst_extensions.size());
-        inst_info.ppEnabledExtensionNames = inst_extensions.data();
-        inst_info.enabledLayerCount = static_cast<uint32_t>(inst_layers.size());
-        inst_info.ppEnabledLayerNames = inst_layers.data();
+        VkInstanceCreateInfo inst_info {
+            VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, nullptr, 0, &app_info, 
+            static_cast<uint32_t>(inst_layers.size()), inst_layers.data(),
+            static_cast<uint32_t>(inst_extensions.size()), inst_extensions.data()
+        };
         
         VK_ASSERT(vkCreateInstance(&inst_info, nullptr, &instance));
     }
@@ -125,14 +121,8 @@ Engine::Engine() {
     }
 
     { // check device feature support
-        VkPhysicalDeviceDescriptorIndexingFeatures indexing_features{};
-        indexing_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
-        indexing_features.pNext = nullptr;
-
-        VkPhysicalDeviceFeatures2 supported{};
-        supported.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        supported.pNext = &indexing_features;
-
+        VkPhysicalDeviceDescriptorIndexingFeatures indexing_features{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES, nullptr };
+        VkPhysicalDeviceFeatures2 supported{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &indexing_features };
         vkGetPhysicalDeviceFeatures2(gpu, &supported);
 
         if (!supported.features.samplerAnisotropy) 
@@ -239,35 +229,31 @@ Engine::Engine() {
         float priority = 1.0f; // priority
         std::vector<VkDeviceQueueCreateInfo> queues;
         {
-            VkDeviceQueueCreateInfo info {};
-            info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            info.pQueuePriorities = &priority;
-            
+            VkDeviceQueueCreateInfo info { 
+                VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, nullptr, 0, 
+                -1u, 1, &priority
+            };
+
             for (uint32_t i = 0; i < family_set_count; ++i) {
                 info.queueFamilyIndex = family_set_data[i];
-                info.queueCount = 1;
                 queues.push_back(info);
             }
         }
         
-        VkPhysicalDeviceDescriptorIndexingFeatures indexing_features{};
-        indexing_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+        VkPhysicalDeviceDescriptorIndexingFeatures indexing_features{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
         indexing_features.descriptorBindingPartiallyBound = VK_TRUE;
 
-        VkPhysicalDeviceFeatures core_features{};
+        VkPhysicalDeviceFeatures core_features{ };
         core_features.samplerAnisotropy = VK_TRUE;
         core_features.sampleRateShading = VK_TRUE;
 
-        VkDeviceCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        info.pNext = &indexing_features;
-        info.queueCreateInfoCount = static_cast<uint32_t>(queues.size());
-        info.pQueueCreateInfos = queues.data();
-        info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
-        info.ppEnabledExtensionNames = device_extensions.data();
-        info.enabledLayerCount = static_cast<uint32_t>(device_layers.size());
-        info.ppEnabledLayerNames = device_layers.data();
-        info.pEnabledFeatures = &core_features;
+        VkDeviceCreateInfo info{ 
+            VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, &indexing_features, 0, 
+            static_cast<uint32_t>(queues.size()), queues.data(),
+            static_cast<uint32_t>(device_layers.size()), device_layers.data(), 
+            static_cast<uint32_t>(device_extensions.size()), device_extensions.data(),
+            &core_features
+        };
 
         VK_ASSERT(vkCreateDevice(gpu, &info, nullptr, &device));
     }
@@ -279,14 +265,11 @@ Engine::Engine() {
     }
 
     { // init command pools
-        VkCommandPool cmd_pools[3];
-        VkCommandPoolCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        info.pNext = nullptr;
-        info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        std::array<VkCommandPool, 3> cmd_pools;
+        VkCommandPoolCreateInfo info{ VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT };
         for (uint32_t i = 0; i < family_set_count; ++i) {
             info.queueFamilyIndex = family_set_data[i];
-            VK_ASSERT(vkCreateCommandPool(device, &info, nullptr, cmd_pools + i));
+            VK_ASSERT(vkCreateCommandPool(device, &info, nullptr, &cmd_pools[i]));
         }
 
         // get command pool from queue family 
@@ -308,10 +291,7 @@ Engine::Engine() {
             VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 65535 } // for textures
         };
 
-        VkDescriptorPoolCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        info.pNext = nullptr;
-        info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        VkDescriptorPoolCreateInfo info{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT };
         info.poolSizeCount = pool_sizes.size();
         info.pPoolSizes = pool_sizes.data();
         info.maxSets = 65535;
@@ -323,24 +303,18 @@ Engine::Engine() {
         VkPhysicalDeviceProperties properties;
         vkGetPhysicalDeviceProperties(engine.gpu, &properties);
 
-        VkSamplerCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        info.magFilter = VK_FILTER_LINEAR;
-        info.minFilter = VK_FILTER_LINEAR;
-        info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        info.anisotropyEnable = VK_TRUE;
-        info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
-        info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-        info.unnormalizedCoordinates = VK_FALSE;
-        info.compareEnable = VK_FALSE;
-        info.compareOp = VK_COMPARE_OP_ALWAYS;
-        info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        info.minLod = 0.0f;
-        info.maxLod = MAX_MIPMAP_LEVEL;
-        info.mipLodBias = 0.0f;
-
+        VkSamplerCreateInfo info{
+            VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, nullptr, 0, 
+            VK_FILTER_LINEAR, VK_FILTER_LINEAR, 
+            VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            VK_SAMPLER_ADDRESS_MODE_REPEAT, 
+            VK_SAMPLER_ADDRESS_MODE_REPEAT, 
+            VK_SAMPLER_ADDRESS_MODE_REPEAT, 0.0f, 
+            VK_FALSE, 0.0f, 
+            VK_FALSE, VK_COMPARE_OP_NEVER, 0.0f, MAX_MIPMAP_LEVEL, 
+            VK_BORDER_COLOR_INT_OPAQUE_BLACK, VK_FALSE
+        };
+ 
         VK_ASSERT(vkCreateSampler(engine.device, &info, nullptr, &sampler));
     }
 
@@ -355,12 +329,11 @@ Engine::Engine() {
             camera_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
             camera_binding.pImmutableSamplers = nullptr;
 
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.bindingCount = set_layout_binding.size();
-            info.pBindings = set_layout_binding.data();
-
+            VkDescriptorSetLayoutCreateInfo info{ 
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, 
+                set_layout_binding.size(), set_layout_binding.data() 
+            };
+            
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &camera_layout));
         }
 
@@ -374,11 +347,10 @@ Engine::Engine() {
             transform_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
             transform_binding.pImmutableSamplers = nullptr;
 
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.bindingCount = set_layout_binding.size();
-            info.pBindings = set_layout_binding.data();
+            VkDescriptorSetLayoutCreateInfo info{
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0,
+                set_layout_binding.size(), set_layout_binding.data()
+            };
             
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &transform_layout));
         }
@@ -437,17 +409,15 @@ Engine::Engine() {
             VkDescriptorBindingFlags& normal_binding_flags = binding_flags[4];
             normal_binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
 
-            VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info{};
-            binding_flags_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-            binding_flags_info.pNext = nullptr;
-            binding_flags_info.pBindingFlags = binding_flags.data();
-            binding_flags_info.bindingCount = binding_flags.size();
+            VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info{
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, nullptr, 
+                binding_flags.size(), binding_flags.data()
+            };
 
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = &binding_flags_info;
-            info.bindingCount = set_layout_binding.size();
-            info.pBindings = set_layout_binding.data();
+            VkDescriptorSetLayoutCreateInfo info{
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, &binding_flags_info, 0,
+                set_layout_binding.size(), set_layout_binding.data()
+            };
             
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &material_layout));
         }
@@ -483,12 +453,11 @@ Engine::Engine() {
             depth_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
             depth_binding.pImmutableSamplers = nullptr;
 
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.bindingCount = set_layout_binding.size();
-            info.pBindings = set_layout_binding.data();
-
+            VkDescriptorSetLayoutCreateInfo info{
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, 
+                set_layout_binding.size(), set_layout_binding.data() 
+            };
+            
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &light_layout));
             
         }
@@ -517,11 +486,10 @@ Engine::Engine() {
             position_attachment_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             position_attachment_binding.pImmutableSamplers = nullptr;
 
-            VkDescriptorSetLayoutCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            info.pNext = nullptr;
-            info.bindingCount = set_layout_binding.size();
-            info.pBindings = set_layout_binding.data();
+            VkDescriptorSetLayoutCreateInfo info{
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0,
+                set_layout_binding.size(), set_layout_binding.data()
+            };
 
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &attachment_layout));
         }
@@ -579,10 +547,10 @@ VkShaderModule Engine::create_shader(std::filesystem::path fp) const {
     file.read(buffer.data(), buffer.size());
     file.close();
 
-    VkShaderModuleCreateInfo info {};
-    info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    info.pCode = reinterpret_cast<uint32_t*>(buffer.data());
-    info.codeSize = buffer.size();
+    VkShaderModuleCreateInfo info {
+        VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, nullptr, 0, 
+        buffer.size(), reinterpret_cast<uint32_t*>(buffer.data())
+    };
 
     VkShaderModule shader;
     VK_ASSERT(vkCreateShaderModule(engine.device, &info, NULL, &shader));

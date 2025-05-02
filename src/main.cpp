@@ -74,20 +74,24 @@ int main() {
         };
         
         glm::ivec3 count{ 20, 10, 20 }; // 4000
+        //glm::ivec3 count{ 1, 1, 1 }; // 4000
         for (int x = 0; x < count.x; ++x) for (int y = 0; y < count.y; ++y) for (int z = 0; z < count.z; ++z) {
             lights.emplace_back(
-                glm::vec3(x - (count.x - 1) / 2.0f, y, z - (count.z - 1) / 2.0f) / glm::vec3(count) * 200.0f, 1.5f * 200.0f / glm::compMax(count), 
-                colours[rand() % colours.size()] * 5.0f, 2.0f
+                glm::vec3(x - (count.x - 1) / 2.0f, y + 0.1, z - (count.z - 1) / 2.0f) / glm::vec3(count) * 200.0f, 
+                1.5f * 200.0f / glm::compMax(count), 
+                colours[rand() % colours.size()] * 10.0f, 1.0f
             );
         }
     }
 
-    //while (!window.closed()) {
-    //    window.update();
-    //    renderer.draw();
-    //}
-    //VK_ASSERT(vkDeviceWaitIdle(engine.device));
-    //return 0;
+    renderer.recreate();
+
+    while (!window.closed()) {
+        window.update();
+        renderer.draw();
+    }
+    VK_ASSERT(vkDeviceWaitIdle(engine.device));
+    return 0;
 
     std::vector<std::chrono::nanoseconds> samples(5000);
     std::string row_name = "";
@@ -102,17 +106,18 @@ int main() {
             for (DepthMode depth_mode : std::array<DepthMode, 2>{ DepthMode::DISABLED, DepthMode::ENABLED }) {
                 settings.set_depth_mode(depth_mode);
 
-                for (AntiAlias antialias : std::array<AntiAlias, 4>{ AntiAlias::NONE, AntiAlias::MSAA_2, AntiAlias::MSAA_4, AntiAlias::MSAA_8 }) {
+                for (AntiAlias antialias : std::array<AntiAlias, 4>{ AntiAlias::DISABLED, AntiAlias::MSAA_2, AntiAlias::MSAA_4, AntiAlias::MSAA_8 }) {
                     settings.set_anti_alias_mode(antialias);
                     
                     switch (render_mode) {
                         case RenderMode::FORWARD: row_name = "forward"; break;
                         case RenderMode::DEFERRED: row_name = "deferred"; break;
+                        default: break;
                     }
                     switch (culling_mode) {
                         case CullingMode::CLUSTERED: row_name = "clustered " + row_name + " plus"; break;
                         case CullingMode::TILED: row_name = "tiled " + row_name + " plus"; break;
-                        case CullingMode::DISABLED: break;
+                        default: break;
                     }
 
                     if (render_mode == RenderMode::FORWARD && culling_mode == CullingMode::TILED && depth_mode == DepthMode::DISABLED) {
@@ -120,14 +125,14 @@ int main() {
                     } else {
                         switch (depth_mode) {
                             case DepthMode::ENABLED:  row_name = row_name + " w/z pass"; break;
-                            case DepthMode::DISABLED: break;
+                            default: break;
                         }                
                     }
                     switch (antialias) {
                         case AntiAlias::MSAA_2: row_name = row_name + " w/msaa2"; break;
                         case AntiAlias::MSAA_4: row_name = row_name + " w/msaa4"; break;
                         case AntiAlias::MSAA_8: row_name = row_name + " w/msaa8"; break;
-                        case AntiAlias::NONE: break;
+                        default: break;
                     }
 
                     renderer.recreate();

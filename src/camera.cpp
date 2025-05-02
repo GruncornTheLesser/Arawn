@@ -2,7 +2,7 @@
 #include "camera.h"
 #include "engine.h"
 #include "uniform.h"
-#include "swapchain.h"
+#include "window.h"
 
 Camera::Camera(float fov, float near, float far) : fov(fov), near(near), far(far) { 
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
@@ -20,11 +20,11 @@ Camera::Camera(float fov, float near, float far) : fov(fov), near(near), far(far
 
 void Camera::update(uint32_t frame_index) {
     Data data;
-    data.proj = glm::perspective(glm::radians(fov), (float)swapchain.extent.x / swapchain.extent.y, near, far);
+    data.proj = glm::perspective(glm::radians(fov), (float)window.get_resolution().x / window.get_resolution().y, near, far);
     data.view = glm::mat4_cast(rotation);
     data.view = glm::translate(data.view, position);
     data.inv_proj = glm::inverse(data.proj);
-    data.screen_size = swapchain.extent;
+    data.screen_size = window.get_resolution();
     data.near = near;
     data.far = far;
     data.eye = glm::inverse(data.view) * glm::vec4(0, 0, 0, 1);

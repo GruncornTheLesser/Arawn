@@ -43,7 +43,7 @@ layout (local_size_x=16, local_size_y=16) in;
 
 float linearize_depth(float depth);
 bool sphere_inside_plane(vec3 pos, float rad, vec4 plane);
-bool sphere_inside_frustum(Light light, Frustum frustum, float z_near, float z_far);
+bool sphere_intersect_frustum(Light light, Frustum frustum, float z_near, float z_far);
 
 
 shared uint subgroup_count;
@@ -81,7 +81,7 @@ void main() {
 		
 		uint count = 0;
 		for (uint light_index = 0; light_index < light_count; ++light_index) {
-			if (sphere_inside_frustum(lights[light_index], frustums[workgroup_index], z_min, z_max)) { 
+			if (sphere_intersect_frustum(lights[light_index], frustums[workgroup_index], z_min, z_max)) { 
 				clusters[workgroup_index].indices[count] = light_index;
 				if (++count == MAX_LIGHTS_PER_TILE) {
 					break;
@@ -102,7 +102,7 @@ bool sphere_inside_plane(vec3 pos, float rad, vec4 plane) {
 	return dot(plane.xyz, pos) - plane.w < -rad;
 }
 
-bool sphere_inside_frustum(Light light, Frustum frustum, float z_near, float z_far) {
+bool sphere_intersect_frustum(Light light, Frustum frustum, float z_near, float z_far) {
 	vec4 position = (view * vec4(light.position.xyz, 1));
 	float z = -position.z;
 	if (z + light.radius < z_near || z - light.radius > z_far) { 

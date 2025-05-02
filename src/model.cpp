@@ -199,35 +199,24 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
     */
 
     { // allocate temporary cmd buffer
-        VkCommandBufferAllocateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        info.commandPool = engine.graphics.pool;
-        info.commandBufferCount = 1;
-
+        VkCommandBufferAllocateInfo info{
+            VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, 
+            engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1
+        };
         VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, &cmd_buffer));
     }
 
     { // create temporary fence
-        VkFenceCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        info.pNext = nullptr;
-        info.flags = 0;
-
+        VkFenceCreateInfo info{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, 0 };
         VK_ASSERT(vkCreateFence(engine.device, &info, nullptr, &cmd_finished));
     }
 
     { // create temporary vertex staging buffer
-        VkBufferCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        info.flags = 0;
-        info.pNext = nullptr;
-        info.pQueueFamilyIndices = &engine.graphics.family;
-        info.queueFamilyIndexCount = 1;
-        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        info.size = vertex_buffer_size;
-        info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-
+        VkBufferCreateInfo info{
+            VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0, 
+            vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
+            VK_SHARING_MODE_EXCLUSIVE, 1, &engine.graphics.family, 
+        };
         VK_ASSERT(vkCreateBuffer(engine.device, &info, nullptr, &vertex_staging_buffer));
     }
 
@@ -235,10 +224,11 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
         VkMemoryRequirements requirements;
         vkGetBufferMemoryRequirements(engine.device, vertex_staging_buffer, &requirements);
 
-        VkMemoryAllocateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        info.allocationSize = requirements.size;
-        info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        VkMemoryAllocateInfo info{
+            VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, 
+            requirements.size, 
+            engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+        };
 
         VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &vertex_staging_memory));
         
@@ -253,15 +243,12 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
     }
 
     { // create vertex buffer
-        VkBufferCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        info.flags = 0;
-        info.pNext = nullptr;
-        info.pQueueFamilyIndices = &engine.graphics.family;
-        info.queueFamilyIndexCount = 1;
-        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        info.size = vertex_buffer_size;
-        info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        VkBufferCreateInfo info{
+            VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0, 
+            vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 
+            VK_SHARING_MODE_EXCLUSIVE, 1, &engine.graphics.family
+
+        };
 
         VK_ASSERT(vkCreateBuffer(engine.device, &info, nullptr, &vertex_buffer));
     }
@@ -270,10 +257,10 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
         VkMemoryRequirements requirements;
         vkGetBufferMemoryRequirements(engine.device, vertex_buffer, &requirements);
 
-        VkMemoryAllocateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        info.allocationSize = requirements.size;
-        info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        VkMemoryAllocateInfo info{
+            VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, requirements.size, 
+            engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+        };
 
         VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &vertex_memory));
 
@@ -281,15 +268,11 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
     }
 
     { // create temporary index staging buffer
-        VkBufferCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        info.flags = 0;
-        info.pNext = nullptr;
-        info.pQueueFamilyIndices = &engine.graphics.family;
-        info.queueFamilyIndexCount = 1;
-        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        info.size = index_buffer_size;
-        info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        VkBufferCreateInfo info{
+            VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0, 
+            index_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
+            VK_SHARING_MODE_EXCLUSIVE, 1, &engine.graphics.family
+        };
 
         VK_ASSERT(vkCreateBuffer(engine.device, &info, nullptr, &index_staging_buffer));
     }
@@ -298,10 +281,10 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
         VkMemoryRequirements requirements;
         vkGetBufferMemoryRequirements(engine.device, index_staging_buffer, &requirements);
 
-        VkMemoryAllocateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        info.allocationSize = requirements.size;
-        info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        VkMemoryAllocateInfo info{
+            VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, requirements.size, 
+            engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+        };
 
         VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &index_staging_memory));   
         
@@ -316,15 +299,11 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
     }
 
     { // create index buffer
-        VkBufferCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        info.flags = 0;
-        info.pNext = nullptr;
-        info.pQueueFamilyIndices = &engine.graphics.family;
-        info.queueFamilyIndexCount = 1;
-        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        info.size = index_buffer_size;
-        info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        VkBufferCreateInfo info{ 
+            VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0,
+            index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            VK_SHARING_MODE_EXCLUSIVE, 1, &engine.graphics.family
+        };
 
         VK_ASSERT(vkCreateBuffer(engine.device, &info, nullptr, &index_buffer));
     }
@@ -333,44 +312,40 @@ Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& ve
         VkMemoryRequirements requirements;
         vkGetBufferMemoryRequirements(engine.device, index_buffer, &requirements);
 
-        VkMemoryAllocateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        info.allocationSize = requirements.size;
-        info.memoryTypeIndex = engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
+        VkMemoryAllocateInfo info{ 
+            VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, 
+            requirements.size, engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) 
+        };
+        
         VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &index_memory));   
     
         VK_ASSERT(vkBindBufferMemory(engine.device, index_buffer, index_memory, 0));
     }
 
     { // begin cmd buffer
-        VkCommandBufferBeginInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
+        VkCommandBufferBeginInfo info{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, nullptr, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT };
         VK_ASSERT(vkBeginCommandBuffer(cmd_buffer, &info));
     }
     
     { // copy staging to vertex buffer
-        VkBufferCopy region{};
-        region.size = vertex_buffer_size;
+        VkBufferCopy region{ 0, 0, vertex_buffer_size };
         vkCmdCopyBuffer(cmd_buffer, vertex_staging_buffer, vertex_buffer, 1, &region);
     }
 
     { // copy staging to index buffer
-        VkBufferCopy region{};
-        region.size = index_buffer_size;
+        VkBufferCopy region{ 0, 0, index_buffer_size };
         vkCmdCopyBuffer(cmd_buffer, index_staging_buffer, index_buffer, 1, &region);
     }
 
     { // end cmd buffer
         VK_ASSERT(vkEndCommandBuffer(cmd_buffer));
 
-        VkSubmitInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        info.commandBufferCount = 1;
-        info.pCommandBuffers = &cmd_buffer;
-
+        VkSubmitInfo info{ 
+            VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
+            0, nullptr, nullptr, 
+            1, &cmd_buffer, 
+            0, nullptr 
+        };
         VK_ASSERT(vkQueueSubmit(engine.graphics.queue, 1, &info, cmd_finished));
     }
     
