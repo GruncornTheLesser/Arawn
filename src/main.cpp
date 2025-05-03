@@ -73,14 +73,24 @@ int main() {
             glm::vec3(1, 1, 1)
         };
         
-        glm::ivec3 count{ 20, 10, 20 }; // 4000
+        glm::ivec3 count{ 10, 10, 10 }; // 1000
         //glm::ivec3 count{ 1, 1, 1 }; // 4000
         for (int x = 0; x < count.x; ++x) for (int y = 0; y < count.y; ++y) for (int z = 0; z < count.z; ++z) {
             lights.emplace_back(
                 glm::vec3(x - (count.x - 1) / 2.0f, y + 0.1, z - (count.z - 1) / 2.0f) / glm::vec3(count) * 200.0f, 
                 1.5f * 200.0f / glm::compMax(count), 
-                colours[rand() % colours.size()] * 10.0f, 1.0f
+                colours[rand() % colours.size()] * 20.0f, 0.01f
             );
+            /*
+            auto& light = lights.emplace_back();
+            light.position.x = x - (count.x - 1) / 2.0f;
+            light.position.z = z - (count.z - 1) / 2.0f;
+            light.position.y = y + 0.1;
+            light.position /= glm::vec3(count) * 200.0f; // normalize by light grid size
+            light.radius = 1.5f * 200.0f / glm::compMax(count);
+            light.colour = colours[rand() % colours.size()] * 5.0f;
+            light.intensity_curve = 0.1f;
+            */
         }
     }
 
@@ -106,6 +116,10 @@ int main() {
             for (DepthMode depth_mode : std::array<DepthMode, 2>{ DepthMode::DISABLED, DepthMode::ENABLED }) {
                 settings.set_depth_mode(depth_mode);
 
+                if (render_mode == RenderMode::FORWARD && culling_mode == CullingMode::TILED && depth_mode == DepthMode::DISABLED) {
+                    continue;
+                }
+
                 for (AntiAlias antialias : std::array<AntiAlias, 4>{ AntiAlias::DISABLED, AntiAlias::MSAA_2, AntiAlias::MSAA_4, AntiAlias::MSAA_8 }) {
                     settings.set_anti_alias_mode(antialias);
                     
@@ -119,15 +133,10 @@ int main() {
                         case CullingMode::TILED: row_name = "tiled " + row_name + " plus"; break;
                         default: break;
                     }
-
-                    if (render_mode == RenderMode::FORWARD && culling_mode == CullingMode::TILED && depth_mode == DepthMode::DISABLED) {
-                        continue;
-                    } else {
-                        switch (depth_mode) {
-                            case DepthMode::ENABLED:  row_name = row_name + " w/z pass"; break;
-                            default: break;
-                        }                
-                    }
+                    switch (depth_mode) {
+                        case DepthMode::ENABLED:  row_name = row_name + " w/z pass"; break;
+                        default: break;
+                    }                
                     switch (antialias) {
                         case AntiAlias::MSAA_2: row_name = row_name + " w/msaa2"; break;
                         case AntiAlias::MSAA_4: row_name = row_name + " w/msaa4"; break;

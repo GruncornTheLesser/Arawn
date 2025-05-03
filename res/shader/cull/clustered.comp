@@ -9,7 +9,7 @@ struct Light {
 	vec3 position; // position + radius
 	float radius;
 	vec3 colour;
-	float intensity; 
+	float curve; 
 };
 
 struct Frustum {

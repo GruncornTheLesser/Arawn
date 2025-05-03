@@ -8,7 +8,7 @@ struct Light {
     vec3 position;
     float radius;
     vec3 colour;
-    float intensity;
+    float curve;
 };
 
 struct Frustum {
@@ -44,8 +44,7 @@ vec3 F_Schlick(float HdotV, vec3 F0);
 float D_GGX(float NdotH, float r);
 float G_SchlickGGX(float NdotV, float roughness);
 float G_Smith(float NdotV, float NdotL, float roughness);
-float attenuate(vec3 light_position, vec3 frag_position, float radius, float intensity);
-float linearize_depth(float depth);
+float attenuate(vec3 light_position, vec3 frag_position, float radius, float curve);
 float linearize_depth_normalized(float depth);
 
 
@@ -90,7 +89,7 @@ void main() {
         float NdotL = max(dot(N, L), EPSILON);
         float HdotV = max(dot(H, V), EPSILON);
         
-        float A = attenuate(light.position, frag_position, light.radius, light.intensity); // attenuation
+        float A = attenuate(light.position, frag_position, light.radius, light.curve); // attenuation
         float D = D_GGX(NdotH, roughness);
         float G = G_Smith(NdotV, NdotL, roughness);
         vec3  F = F_Schlick(HdotV, F0);
@@ -122,16 +121,11 @@ float G_Smith(float NdotV, float NdotL, float roughness) {
     return G_SchlickGGX(NdotL, roughness) * G_SchlickGGX(NdotV, roughness);
 }
 
-float attenuate(vec3 light_position, vec3 frag_position, float radius, float intensity) {
-    const float offset = 0.1;
-    vec3 d = frag_position - light_position;                // difference
-    float x2 = dot(d, d) / max(radius * radius, EPSILON);   // normalized dist squared 
-    float f = offset * (x2 - 1);                            // offset
-    return clamp(f / (f - x2), 0, 1);
-}
-
-float linearize_depth(float depth) {
-    return near * far / (far - depth * (far - near));
+float attenuate(vec3 light_position, vec3 frag_position, float radius, float curve) {
+    vec3 d = light_position - frag_position;    // difference
+    float d2 = dot(d, d);
+    float r2 = radius * radius;
+    return clamp(1 / ((d2 / (r2 - d2) / curve)), 0, 1);
 }
 
 float linearize_depth_normalized(float depth) {

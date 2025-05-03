@@ -4,11 +4,11 @@
     "aspect ratio" : "4:3", // "16:9",
     "resolution" : [ 800, 600 ],
     "frame count" : 2,
-    "vsync" : false,
-    "low latency" : false,
-    "z prepass" : true,
-    "anti alias" : "none",         // none/msaa2/msaa4/msaa8
-    "render mode" : "deferred",      // forward/deferred
+    "vsync" : true,
+    "low latency" : true,
+    "z prepass" : false,
+    "anti alias" : "msaa8",         // none/msaa2/msaa4/msaa8
+    "render mode" : "forward",      // forward/deferred
     "culling mode" : "tiled"        // none/clustered/tiled
 }
 
