@@ -68,7 +68,7 @@ void main() {
 						       gl_WorkGroupID.y * gl_NumWorkGroups.x;
 
 		z_min = subgroup_z_min[0];
-		z_max = subgroup_z_min[0];
+		z_max = subgroup_z_max[0];
 
 		for (uint i = 1; i < gl_NumSubgroups; ++i) {
 			z_min = min(z_min, subgroup_z_min[i]);
