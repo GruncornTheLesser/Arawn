@@ -25,98 +25,70 @@ UniformSet::UniformSet(VkDescriptorSetLayout layout, std::span<Uniform> bindings
 
                 if (uniform_buffer.buffer != nullptr) {
                     auto& buffer_info = buffer_infos[buffer_count++];
-                    buffer_info.buffer = uniform_buffer.buffer;
-                    buffer_info.offset = 0;
-                    buffer_info.range = VK_WHOLE_SIZE;
+                    buffer_info = { uniform_buffer.buffer, 0, VK_WHOLE_SIZE };
 
                     auto& write_info = write_infos[write_count++];
-                    write_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    write_info.pNext = nullptr;
-                    write_info.dstSet = descriptor_set;
-                    write_info.dstBinding = i;
-                    write_info.dstArrayElement = 0;
-                    write_info.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                    write_info.descriptorCount = 1;
-                    write_info.pBufferInfo = &buffer_info;
+                    write_info = {
+                        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, 
+                        descriptor_set, i, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 
+                        nullptr, &buffer_info, nullptr
+                    };
                 }
             } else if (std::holds_alternative<StorageBuffer>(bindings[i])) {
                 Buffer& storage_buffer = *std::get<StorageBuffer>(bindings[i]).ptr;
 
                 if (storage_buffer.buffer != nullptr) {
                     auto& buffer_info = buffer_infos[buffer_count++];
-                    buffer_info.buffer = storage_buffer.buffer;
-                    buffer_info.offset = 0;
-                    buffer_info.range = VK_WHOLE_SIZE;
+                    buffer_info = { storage_buffer.buffer, 0, VK_WHOLE_SIZE };
 
                     auto& write_info = write_infos[write_count++];
-                    write_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    write_info.pNext = nullptr;
-                    write_info.dstSet = descriptor_set;
-                    write_info.dstBinding = i;
-                    write_info.dstArrayElement = 0;
-                    write_info.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                    write_info.descriptorCount = 1;
-                    write_info.pBufferInfo = &buffer_info;
+                    write_info = {
+                        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, 
+                        descriptor_set, i, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
+                        nullptr, &buffer_info, nullptr
+                    };
                 }
             } else if (std::holds_alternative<UniformTexture>(bindings[i])) {
                 Texture& uniform_texture = *std::get<UniformTexture>(bindings[i]).ptr;
 
                 if (uniform_texture.image != nullptr) {
                     auto& image_info = image_infos[image_count++];
-                    image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    image_info.sampler = engine.sampler;
-                    image_info.imageView = uniform_texture.view;
+                    image_info = { engine.sampler, uniform_texture.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
                     auto& write_info = write_infos[write_count++];
-                    write_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    write_info.pNext = nullptr;
-                    write_info.dstSet = descriptor_set;
-                    write_info.dstBinding = i;
-                    write_info.dstArrayElement = 0;
-                    write_info.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                    write_info.descriptorCount = 1;
-                    write_info.pImageInfo = &image_info;
-                    write_info.pBufferInfo = nullptr;
+                    write_info = {
+                        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, 
+                        descriptor_set, i, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 
+                        &image_info, nullptr, nullptr
+                    };
                 }
             } else if (std::holds_alternative<InputAttachment>(bindings[i])) {
                 Texture& input_attachment = *std::get<InputAttachment>(bindings[i]).ptr;
 
                 if (input_attachment.image != nullptr) {
                     auto& image_info = image_infos[image_count++];
-                    image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    image_info.sampler = engine.sampler;
-                    image_info.imageView = input_attachment.view;
+                    image_info = { engine.sampler, input_attachment.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
                     auto& write_info = write_infos[write_count++];
-                    write_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    write_info.pNext = nullptr;
-                    write_info.dstSet = descriptor_set;
-                    write_info.dstBinding = i;
-                    write_info.dstArrayElement = 0;
-                    write_info.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-                    write_info.descriptorCount = 1;
-                    write_info.pImageInfo = &image_info;
-                    write_info.pBufferInfo = nullptr;
+                    write_info = { 
+                        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, 
+                        descriptor_set, i, 0, 1, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 
+                        &image_info, nullptr, nullptr
+                    };
                 }
             } else if (std::holds_alternative<DepthAttachment>(bindings[i])) {
-                Texture& input_attachment = *std::get<DepthAttachment>(bindings[i]).ptr;
+                Texture& depth_attachment = *std::get<DepthAttachment>(bindings[i]).ptr;
 
-                if (input_attachment.image != nullptr) {
+                if (depth_attachment.image != nullptr) {
                     auto& image_info = image_infos[image_count++];
-                    image_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-                    image_info.sampler = engine.sampler;
-                    image_info.imageView = input_attachment.view;
+                    image_info = { engine.sampler, depth_attachment.view, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL };
 
                     auto& write_info = write_infos[write_count++];
-                    write_info.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    write_info.pNext = nullptr;
-                    write_info.dstSet = descriptor_set;
-                    write_info.dstBinding = i;
-                    write_info.dstArrayElement = 0;
-                    write_info.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                    write_info.descriptorCount = 1;
-                    write_info.pImageInfo = &image_info;
-                    write_info.pBufferInfo = nullptr;
+                    write_info = { 
+                        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, 
+                        descriptor_set, i, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 
+                        &image_info, nullptr, nullptr
+                    };
                 }
             }
         }

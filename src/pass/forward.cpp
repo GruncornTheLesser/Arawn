@@ -7,7 +7,6 @@
 #include "vertex.h"
 #include "model.h"
 #include "camera.h"
-#include <numeric>
 
 ForwardPass::ForwardPass(Renderer& renderer) {   
     { // create pipeline layout
@@ -175,7 +174,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
                     else                         frag_module = engine.create_shader("res/import/shader/deferred/clustered.frag.spv");
                     break;
                 }
-                case CullingMode::DISABLED: {
+                default: { // case CullingMode::DISABLED
                     if (settings.msaa_enabled()) frag_module = engine.create_shader("res/import/shader/deferred/present_ms.frag.spv");
                     else                         frag_module = engine.create_shader("res/import/shader/deferred/present.frag.spv");
                     break;
@@ -192,7 +191,7 @@ ForwardPass::ForwardPass(Renderer& renderer) {
                     frag_module = engine.create_shader("res/import/shader/forward/clustered.frag.spv");
                     break;
                 }
-                case CullingMode::DISABLED: {
+                default: { // case CullingMode::DISABLED
                     frag_module = engine.create_shader("res/import/shader/forward/standard.frag.spv");
                     break;
                 }
@@ -433,25 +432,25 @@ void ForwardPass::submit(uint32_t image_index, uint32_t frame_index) {
         1, &renderer.frame_ready[frame_index]
     };
     
-    {
+    { // wait on swapchain image
         waits[info.waitSemaphoreCount] = renderer.image_ready[frame_index];
         stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         ++info.waitSemaphoreCount;
     }
 
-    if (renderer.config.culling_enabled()) {
+    if (renderer.config.culling_enabled()) { // wait for light buffer
         waits[info.waitSemaphoreCount] = renderer.light_ready[frame_index];
         stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         ++info.waitSemaphoreCount;
     }
     
-    if (renderer.config.deferred_pass_enabled()) {
+    if (renderer.config.deferred_pass_enabled()) { // wait for g buffer attachments
         if (renderer.config.depth_prepass_enabled() || renderer.config.culling_mode() != CullingMode::TILED) {
             waits[info.waitSemaphoreCount] = renderer.defer_ready[frame_index];
             stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             ++info.waitSemaphoreCount;
         }
-    } else {
+    } else { // wait depth attachment
         if (renderer.config.depth_prepass_enabled() && renderer.config.culling_mode() != CullingMode::TILED) {
             waits[info.waitSemaphoreCount] = renderer.depth_ready[frame_index * 2];
             stages[info.waitSemaphoreCount] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
@@ -522,10 +521,10 @@ void ForwardPass::record(uint32_t image_index, uint32_t frame_index, uint32_t cu
         for (Model& model : models) {
             // bind vbo
             VkDeviceSize offsets[] = { 0 };
-            vkCmdBindVertexBuffers(cmd_buffer, 0, 1, &model.vertex_buffer, offsets);
+            vkCmdBindVertexBuffers(cmd_buffer, 0, 1, &model.vertex.buffer, offsets);
             
             // bind ibo
-            vkCmdBindIndexBuffer(cmd_buffer, model.index_buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdBindIndexBuffer(cmd_buffer, model.index.buffer, 0, VK_INDEX_TYPE_UINT32);
             
             // bind transform
             vkCmdBindDescriptorSets(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.uniform[frame_index].descriptor_set, 0, nullptr);

@@ -25,13 +25,7 @@ public:
     };
 
     static void Load(std::filesystem::path fp);
-    Model() : vertex_buffer(nullptr) { }
     Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& vertices, std::vector<Mesh>&& meshes);
-    ~Model();
-    Model(Model&& other);
-    Model& operator=(Model&& other);
-    Model(const Model& other) = delete;
-    Model& operator=(const Model& other) = delete;
     
     struct Transform {
         Transform();
@@ -45,14 +39,11 @@ public:
         std::array<UniformSet, MAX_FRAMES_IN_FLIGHT> uniform;
         std::array<Buffer, MAX_FRAMES_IN_FLIGHT> buffer;
     } transform;
+
 private:
     uint32_t vertex_count = 0;
-    VK_TYPE(VkBuffer) vertex_buffer = nullptr;
-    VK_TYPE(VkDeviceMemory) vertex_memory;
-
-    VK_TYPE(VkBuffer) index_buffer;
-    VK_TYPE(VkDeviceMemory) index_memory;
-
+    Buffer vertex;
+    Buffer index;
     std::vector<Mesh> meshes;
 };
 

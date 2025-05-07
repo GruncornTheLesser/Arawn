@@ -103,7 +103,7 @@ void main() {
     
     // ambient component
     out_colour = vec4(0.01 * albedo, 1.0);
-
+    
     uvec2 tilecoord = uvec2(gl_FragCoord) / ((screen_size.xy - 1) / cluster_count.xy + 1);
     uint cluster_index = tilecoord.x + tilecoord.y * cluster_count.x;
     for (uint i = 0; i < clusters[cluster_index].light_count; ++i) {
@@ -132,8 +132,8 @@ vec3 F_Schlick(float HdotV, vec3 F0) {
     return F0 + (1.0 - F0) * pow(1.0 - HdotV, 5.0);
 }
 
-float D_GGX(float NdotH, float r) {
-    float a = r * r;
+float D_GGX(float NdotH, float roughness) {
+    float a = roughness * roughness;
     float a2 = a * a;
     float d = (NdotH * (a2 - 1.0) + 1.0);
     return a2 / max(PI * d * d, EPSILON);
@@ -153,5 +153,5 @@ float attenuate(vec3 light_position, vec3 frag_position, float radius, float cur
     vec3 d = light_position - frag_position;    // difference
     float d2 = dot(d, d);
     float r2 = radius * radius;
-    return clamp(1 / ((d2 / (r2 - d2) / curve)), 0, 1);
+    return clamp(curve * max(r2 - d2, 0) / d2, 0, 1);
 }

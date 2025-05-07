@@ -32,7 +32,7 @@ Engine::Engine() {
         
         std::vector<VkLayerProperties> available(count);
         vkEnumerateInstanceLayerProperties(&count, available.data());
-        
+
         // remove layer if not available 
         inst_layers.erase(std::remove_if(inst_layers.begin(), inst_layers.end(), [&](const char* layer) {
             return std::find_if(available.begin(), available.end(), [&](const VkLayerProperties& p) { 
@@ -139,8 +139,8 @@ Engine::Engine() {
         uint32_t family_count;
         vkGetPhysicalDeviceQueueFamilyProperties(gpu, &family_count, nullptr);
         
-        std::vector<VkQueueFamilyProperties> prop(family_count);
-        vkGetPhysicalDeviceQueueFamilyProperties(gpu, &family_count, prop.data());
+        std::vector<VkQueueFamilyProperties> properties(family_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(gpu, &family_count, properties.data());
     
         graphics.family = family_count;
         compute.family = family_count;
@@ -148,9 +148,9 @@ Engine::Engine() {
 
         { // find graphics queue
             for (uint32_t i = 0; i < family_count; ++i) {
-                if (prop[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                if (properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                     graphics.family = i;
-                    --prop[i].queueCount;
+                    --properties[i].queueCount;
                     break;
                 }
             }
@@ -159,14 +159,14 @@ Engine::Engine() {
         }
 
         { // find compute queue
-            if (prop[graphics.family].queueFlags & VK_QUEUE_COMPUTE_BIT) // queue sharing
+            if (properties[graphics.family].queueFlags & VK_QUEUE_COMPUTE_BIT) // queue sharing
                 compute.family = graphics.family;
 
             for (uint32_t i = 0; i < family_count; ++i) {
                 if (i == graphics.family) continue;
-                if (prop[i].queueCount > 0 && prop[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+                if (properties[i].queueCount > 0 && properties[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
                     compute.family = i;
-                    --prop[i].queueCount;
+                    --properties[i].queueCount;
                     break;
                 }
             }
@@ -193,9 +193,9 @@ Engine::Engine() {
                 present.family = compute.family;
             
             for (uint32_t i = 0; i < family_count; ++i) {
-                if (prop[i].queueCount > 0 && vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &support) == VK_SUCCESS && support == VK_TRUE) {
+                if (properties[i].queueCount > 0 && vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &support) == VK_SUCCESS && support == VK_TRUE) {
                     present.family = i;
-                    --prop[i].queueCount;
+                    --properties[i].queueCount;
                     break;
                 }
             }
@@ -209,35 +209,18 @@ Engine::Engine() {
         }
     }
 
-    uint32_t family_set_data[3];
-    uint32_t family_set_count;
+    std::array<uint32_t, 3> queue_families = { graphics.family, compute.family, present.family };
+    std::ranges::sort(queue_families);
+    auto unique_queue_families = std::ranges::subrange(queue_families.begin(), std::ranges::unique(queue_families).begin());
 
-    { // get queue family set
-        uint32_t i = 0;
-        family_set_data[i] = graphics.family;
-
-        if (graphics.family != compute.family)
-            family_set_data[++i] = compute.family;
-        
-        if (graphics.family != present.family && compute.family != present.family) 
-            family_set_data[++i] = present.family;
-        
-        family_set_count = ++i;
-    }
-    
     { // init device
         float priority = 1.0f; // priority
         std::vector<VkDeviceQueueCreateInfo> queues;
-        {
-            VkDeviceQueueCreateInfo info { 
+        for (uint32_t family : unique_queue_families) {
+            queues.emplace_back(
                 VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, nullptr, 0, 
-                -1u, 1, &priority
-            };
-
-            for (uint32_t i = 0; i < family_set_count; ++i) {
-                info.queueFamilyIndex = family_set_data[i];
-                queues.push_back(info);
-            }
+                family, 1, &priority
+            );
         }
         
         VkPhysicalDeviceDescriptorIndexingFeatures indexing_features{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
@@ -267,21 +250,14 @@ Engine::Engine() {
     { // init command pools
         std::array<VkCommandPool, 3> cmd_pools;
         VkCommandPoolCreateInfo info{ VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT };
-        for (uint32_t i = 0; i < family_set_count; ++i) {
-            info.queueFamilyIndex = family_set_data[i];
+        for (uint32_t i = 0; i < unique_queue_families.size(); ++i) {
+            info.queueFamilyIndex = unique_queue_families[i];
             VK_ASSERT(vkCreateCommandPool(device, &info, nullptr, &cmd_pools[i]));
         }
 
-        // get command pool from queue family 
-        uint32_t i = 0;
-        graphics.pool = cmd_pools[i];
-
-        if (compute.family != graphics.family) ++i;
-        compute.pool = cmd_pools[i];
-
-        //if (present.family != graphics.family && 
-        //    present.family != compute.family) ++i;
-        //present.pool = cmd_pools[i];
+        // get command pool from queue family
+        graphics.pool = cmd_pools[std::ranges::find(unique_queue_families, graphics.family) - unique_queue_families.begin()];
+        compute.pool = cmd_pools[std::ranges::find(unique_queue_families, compute.family) - unique_queue_families.begin()];
     }
 
     { // init descriptor pools
@@ -508,7 +484,6 @@ Engine::~Engine() {
     vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
 
     vkDestroyCommandPool(device, graphics.pool, nullptr);
-
     if (compute.family != graphics.family)
         vkDestroyCommandPool(device, compute.pool, nullptr);
 

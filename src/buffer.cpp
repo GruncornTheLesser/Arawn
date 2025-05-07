@@ -11,7 +11,8 @@ Buffer::Buffer(
         std::span<uint32_t> queue_families
 ) {
     { // create buffer
-        auto unique_queue_families = std::ranges::unique(queue_families);
+        
+        auto unique_queue_families = std::ranges::subrange(queue_families.begin(), std::ranges::unique(queue_families).begin());
 
         VkBufferCreateInfo info{
             VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0, 
@@ -38,7 +39,66 @@ Buffer::Buffer(
         VK_ASSERT(vkBindBufferMemory(engine.device, buffer, memory, 0));
     }
 
-    if (data != nullptr) set_value(data, size);
+    if (data == nullptr) return;
+
+    if (memory_properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+        set_value(data, size);
+        return;
+    }
+    
+    if (usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) {
+        Buffer staging(
+            data, size, 
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
+            std::array<uint32_t, 1>() = { engine.graphics.family }
+        );
+        
+        VkFence fence;
+        VkCommandBuffer cmd_buffer;
+        { // allocate command buffer
+            VkCommandBufferAllocateInfo info{
+                VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr,
+                engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1
+            };
+            VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, &cmd_buffer));
+        }
+
+        { // allocate fence
+            VkFenceCreateInfo info{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, 0 };
+            VK_ASSERT(vkCreateFence(engine.device, &info, nullptr, &fence));
+        }
+
+        { // record command buffer
+            VkCommandBufferBeginInfo begin_info{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, nullptr, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr };
+            VK_ASSERT(vkBeginCommandBuffer(cmd_buffer, &begin_info));
+
+            VkBufferCopy copy_region{0, 0, size};
+            vkCmdCopyBuffer(cmd_buffer, staging.buffer, buffer, 1, &copy_region);
+            
+            VK_ASSERT(vkEndCommandBuffer(cmd_buffer));
+        }
+
+        { // submit command buffer
+            VkSubmitInfo submit_info{ VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 0 };
+            submit_info.commandBufferCount = 1;
+            submit_info.pCommandBuffers = &cmd_buffer;
+
+            VK_ASSERT(vkQueueSubmit(engine.graphics.queue, 1, &submit_info, fence));
+            VK_ASSERT(vkQueueWaitIdle(engine.graphics.queue));
+        }
+
+        { // clean up
+            VK_ASSERT(vkWaitForFences(engine.device, 1, &fence, VK_TRUE, UINT64_MAX));
+
+            vkFreeCommandBuffers(engine.device, engine.graphics.pool, 1, &cmd_buffer);
+            vkDestroyFence(engine.device, fence, nullptr);
+        }
+
+        return;
+    }
+
+    throw std::runtime_error("cannot initialize buffer data");
 };
 
 Buffer::~Buffer() {

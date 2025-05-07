@@ -28,7 +28,6 @@ public:
     );
     Texture(std::filesystem::path fp);
     
-
     ~Texture();
     Texture(Texture&& other);
     Texture& operator=(Texture&& other);

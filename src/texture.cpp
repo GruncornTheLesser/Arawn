@@ -24,7 +24,7 @@ Texture::Texture(
     }
 
     { // create image
-        auto unique_queue_families = std::ranges::unique(queue_families);
+        auto unique_queue_families = std::ranges::subrange(queue_families.begin(), std::ranges::unique(queue_families).begin());
 
         VkImageCreateInfo info{
             VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, nullptr, 0,
@@ -67,6 +67,7 @@ Texture::Texture(
     }
 
     if (data == nullptr) return;
+
     assert(format == VK_FORMAT_R8G8B8A8_UNORM);
     
     uint32_t buffer_size = 4 * width * height;
@@ -76,8 +77,6 @@ Texture::Texture(
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
         std::array<uint32_t, 1>() = { engine.graphics.family }
     );
-
-    stbi_image_free(data);
     
     VkCommandBuffer cmd_buffer;
     VkFence cmd_finished;
@@ -220,7 +219,7 @@ Texture::Texture(std::filesystem::path fp,
 
     void* data = stbi_load(fp.string().c_str(), &width, &height,  &channels, 4);
 
-    if (width == 0 || height == 0) {
+    if (width <= 0 || height <= 0) {
         throw std::runtime_error("failed to load texture image");
     }
 
@@ -230,6 +229,8 @@ Texture::Texture(std::filesystem::path fp,
         usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, 
         aspect, sample_count, memory_property, queue_families
     );
+
+    stbi_image_free(data);
 }
 
 Texture::Texture(std::filesystem::path fp) : Texture(

@@ -1,7 +1,5 @@
 #pragma once
 #include <stdint.h>
-#include <string_view>
-#include <source_location>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -28,6 +26,8 @@
 
 #ifdef ARAWN_IMPLEMENTATION
 #include <iostream>
+#include <string_view>
+#include <source_location>
 void log_error(std::string_view msg, std::source_location loc = std::source_location::current());
 
 #define VK_ASSERT(x) {                          \

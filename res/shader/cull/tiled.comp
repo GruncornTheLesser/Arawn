@@ -61,34 +61,34 @@ void main() {
 
 	barrier();
 
-	if (gl_LocalInvocationID.xy == uvec2(0)) {
-		uint workgroup_index = gl_WorkGroupID.x + 
-						       gl_WorkGroupID.y * gl_NumWorkGroups.x;
+	if (gl_LocalInvocationID.xy != uvec2(0)) return;
 
-		z_min = subgroup_z_min[0];
-		z_max = subgroup_z_max[0];
+	uint workgroup_index = gl_WorkGroupID.x + 
+						   gl_WorkGroupID.y * gl_NumWorkGroups.x;
 
-		for (uint i = 1; i < gl_NumSubgroups; ++i) {
-			z_min = min(z_min, subgroup_z_min[i]);
-			z_max = max(z_max, subgroup_z_max[i]);
-		}
+	z_min = subgroup_z_min[0];
+	z_max = subgroup_z_max[0];
+
+	for (uint i = 1; i < gl_NumSubgroups; ++i) {
+		z_min = min(z_min, subgroup_z_min[i]);
+		z_max = max(z_max, subgroup_z_max[i]);
+	}
 
 
-		z_min = linearize_depth(z_min);
-		z_max = linearize_depth(z_max);
-		
-		uint count = 0;
-		for (uint light_index = 0; light_index < light_count; ++light_index) {
-			if (sphere_intersect_frustum(lights[light_index], frustums[workgroup_index], z_min, z_max)) { 
-				clusters[workgroup_index].indices[count] = light_index;
-				if (++count == MAX_LIGHTS_PER_TILE) {
-					break;
-				}
+	z_min = linearize_depth(z_min);
+	z_max = linearize_depth(z_max);
+	
+	uint count = 0;
+	for (uint light_index = 0; light_index < light_count; ++light_index) {
+		if (sphere_intersect_frustum(lights[light_index], frustums[workgroup_index], z_min, z_max)) { 
+			clusters[workgroup_index].indices[count] = light_index;
+			if (++count == MAX_LIGHTS_PER_TILE) {
+				break;
 			}
 		}
-
-		clusters[workgroup_index].light_count = count;	
 	}
+
+	clusters[workgroup_index].light_count = count;	
 }
 
 float linearize_depth(float depth) {
@@ -105,11 +105,10 @@ bool sphere_intersect_frustum(Light light, Frustum frustum, float z_near, float 
 	if (z + light.radius < z_near || z - light.radius > z_far) { 
 		return false;
 	}
-	// if sphere insides Frustum plane
-	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[0])) return false;
-	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[1])) return false;
-	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[2])) return false;
-	if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[3])) return false;
-	
+	for (uint i = 0; i < 4; ++i) { // if sphere insides all frustum planes
+		if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[i])) {
+			return false;
+		}
+	}
 	return true;
 }

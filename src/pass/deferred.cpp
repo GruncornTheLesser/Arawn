@@ -354,10 +354,10 @@ void DeferredPass::record(uint32_t frame_index, uint32_t current_version) {
         for (Model& model : models) {
             // bind vbo
             VkDeviceSize offsets[] = { 0 };
-            vkCmdBindVertexBuffers(cmd_buffer[frame_index], 0, 1, &model.vertex_buffer, offsets);
+            vkCmdBindVertexBuffers(cmd_buffer[frame_index], 0, 1, &model.vertex.buffer, offsets);
             
             // bind ibo
-            vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index_buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdBindIndexBuffer(cmd_buffer[frame_index], model.index.buffer, 0, VK_INDEX_TYPE_UINT32);
             
             // bind transform
             vkCmdBindDescriptorSets(cmd_buffer[frame_index], VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &model.transform.uniform[frame_index].descriptor_set, 0, nullptr);

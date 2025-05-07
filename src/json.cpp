@@ -19,7 +19,7 @@ The raw string stored in the Json value is then converted into the value request
 Json::Json(std::string_view val) : view(val) {
     if (view.empty()) throw ParseException();
     
-    size_t start = ignore_whitespace(0);
+    size_t start = end_of_whitespace(0);
 
     switch (view.at(start)) {
     case 't': view = view.substr(start, 4); break;
@@ -72,24 +72,24 @@ Json::operator Json::Object() const {
     if (view[pos] != '{') throw ParseException();
     
     do {
-        pos = ignore_whitespace(++pos);
+        pos = end_of_whitespace(++pos);
         
         if (view[pos] == '}') break;
 
         Json field_name(view.substr(pos)); // parse string
         
-        pos = ignore_whitespace(pos + field_name.view.size());
+        pos = end_of_whitespace(pos + field_name.view.size());
 
         if (view[pos] != ':') throw ParseException();
         
-        pos = ignore_whitespace(pos + 1);
+        pos = end_of_whitespace(pos + 1);
 
         Json field_value(view.substr(pos));
         object[field_name] = field_value;
         
         std::cout << field_name.view << " : " << field_value.view << std::endl;
 
-        pos = ignore_whitespace(pos + field_value.view.size());
+        pos = end_of_whitespace(pos + field_value.view.size());
         
     } while (view[pos] == ',');
 
@@ -105,14 +105,14 @@ Json::operator Json::Buffer<T>() const {
     if (view[pos] != '[') throw ParseException();
     
     do {
-        pos = ignore_whitespace(++pos);
+        pos = end_of_whitespace(++pos);
         
         if (view[pos] == ']') break;
 
         Json element(view.substr(pos)); // parse string
         array.push_back(element);
         
-        pos = ignore_whitespace(pos + element.view.size());
+        pos = end_of_whitespace(pos + element.view.size());
         
     } while (view[pos] == ',');
 
@@ -133,7 +133,7 @@ Json Json::operator[](int index) const {
     return static_cast<Json::Array>(*this)[index];
 }
 
-size_t Json::ignore_whitespace(size_t pos) const {
+size_t Json::end_of_whitespace(size_t pos) const {
     pos = view.find_first_not_of(" \n\r\t", pos);
 
     while (view.substr(pos, 2) == "//") {

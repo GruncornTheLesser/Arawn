@@ -7,32 +7,43 @@
 
 struct LightHeader { glm::uvec3 cluster_count; uint32_t light_count; };
 
-Renderer::Renderer() {
-    //recreate();
-}
+Renderer::Renderer() { }
 
 Renderer::~Renderer() {
-    if (!forward_pass.enabled()) return;
+    if (!forward_pass.enabled()) return; // if not initialized return
     
+    // wait for engine to finish rendering all frames
     vkWaitForFences(engine.device, frame_count, in_flight.data(), VK_TRUE, UINT64_MAX);
 
-    for (uint32_t i = 0; i < frame_count; ++i) {  // destroy sync objects   
+    // destroy sync objects...
+    for (uint32_t i = 0; i < frame_count; ++i) { 
         vkDestroyFence(engine.device, in_flight[i], nullptr);
         vkDestroySemaphore(engine.device, image_ready[i], nullptr);
         vkDestroySemaphore(engine.device, frame_ready[i], nullptr);
-        if (config.culling_enabled()) {
+    }
+
+    if (config.culling_enabled()) {
+        for (uint32_t i = 0; i < frame_count; ++i) { 
             vkDestroySemaphore(engine.device, light_ready[i], nullptr);
         }
-        if (config.deferred_pass_enabled()) {
+    }
+
+    if (config.deferred_pass_enabled()) {
+        for (uint32_t i = 0; i < frame_count; ++i) { 
             vkDestroySemaphore(engine.device, defer_ready[i], nullptr);
         }
-        if (config.depth_prepass_enabled()) {
+    }
+
+    if (config.depth_prepass_enabled()) {
+        for (uint32_t i = 0; i < frame_count; ++i) { 
             vkDestroySemaphore(engine.device, depth_ready[i * 2], nullptr);   
         }
-        if (config.culling_mode() == CullingMode::TILED && config.deferred_pass_enabled() && config.depth_prepass_enabled()) {
+    }
+    
+    if (config.is_enabled(DepthMode::ENABLED, CullingMode::TILED, RenderMode::DEFERRED)) {
+        for (uint32_t i = 0; i < frame_count; ++i) { 
             vkDestroySemaphore(engine.device, depth_ready[i * 2 + 1], nullptr);
         }
-        
     }
 }
 
@@ -72,27 +83,39 @@ Renderer& Renderer::operator=(Renderer&& other) {
     if (forward_pass.enabled()) {
         vkWaitForFences(engine.device, frame_count, in_flight.data(), VK_TRUE, UINT64_MAX);
 
-        for (uint32_t i = 0; i < frame_count; ++i) {  // destroy sync objects
-            
+        // destroy sync objects...
+        for (uint32_t i = 0; i < frame_count; ++i) { 
             vkDestroyFence(engine.device, in_flight[i], nullptr);
             vkDestroySemaphore(engine.device, image_ready[i], nullptr);
             vkDestroySemaphore(engine.device, frame_ready[i], nullptr);
-            if (config.culling_enabled()) {
+        }
+
+        if (config.culling_enabled()) {
+            for (uint32_t i = 0; i < frame_count; ++i) { 
                 vkDestroySemaphore(engine.device, light_ready[i], nullptr);
             }
-            if (config.deferred_pass_enabled()) {
+        }
+
+        if (config.deferred_pass_enabled()) {
+            for (uint32_t i = 0; i < frame_count; ++i) { 
                 vkDestroySemaphore(engine.device, defer_ready[i], nullptr);
             }
-            if (config.depth_prepass_enabled()) {
+        }
+
+        if (config.depth_prepass_enabled()) {
+            for (uint32_t i = 0; i < frame_count; ++i) { 
                 vkDestroySemaphore(engine.device, depth_ready[i * 2], nullptr);   
             }
-            if (config.culling_mode() == CullingMode::TILED && config.deferred_pass_enabled() && config.depth_prepass_enabled()) {
+        }
+        
+        if (config.is_enabled(DepthMode::ENABLED, CullingMode::TILED, RenderMode::DEFERRED)) {
+            for (uint32_t i = 0; i < frame_count; ++i) { 
                 vkDestroySemaphore(engine.device, depth_ready[i * 2 + 1], nullptr);
             }
-            
         }
     }
 
+    // move attachments & buffers
     msaa_attachment = std::move(other.msaa_attachment);
     depth_attachment = std::move(other.depth_attachment);
     albedo_attachment = std::move(other.albedo_attachment);
@@ -101,12 +124,15 @@ Renderer& Renderer::operator=(Renderer&& other) {
     frustum_buffer = std::move(other.frustum_buffer);
     light_buffer = std::move(other.light_buffer);
 
+    // copy frame_index & count
     uint32_t frame_index = other.frame_index;
     uint32_t frame_count = other.frame_count;
 
+    // move uniform attachments sets
     input_attachment_set = std::move(other.input_attachment_set);
     light_attachment_set = std::move(other.light_attachment_set);
 
+    // move arrays
     in_flight = std::move(other.in_flight);
     image_ready = std::move(other.image_ready);
     frame_ready = std::move(other.frame_ready);
@@ -114,6 +140,7 @@ Renderer& Renderer::operator=(Renderer&& other) {
     defer_ready = std::move(other.defer_ready);
     light_ready = std::move(other.light_ready);
 
+    // move passes
     depth_pass = std::move(other.depth_pass);
     culling_pass = std::move(other.culling_pass);
     deferred_pass = std::move(other.deferred_pass);
@@ -123,12 +150,12 @@ Renderer& Renderer::operator=(Renderer&& other) {
 }
 
 void Renderer::recreate() {
+    // if already initialized, wait for frames to finish rendering
     if (forward_pass.enabled()) {
         VK_ASSERT(vkWaitForFences(engine.device, frame_count, in_flight.data(), VK_TRUE, UINT64_MAX));
     }
-
+    // recreate swapchain values
     swapchain.recreate();
-
     VkSampleCountFlagBits sample_count = settings.sample_count();
 
     switch (settings.culling_mode()) {
@@ -140,7 +167,7 @@ void Renderer::recreate() {
             cluster_count = glm::uvec3(glm::ceil(glm::vec2(swapchain.extent) / glm::vec2(16)), 1);
             break; 
         }
-        case CullingMode::DISABLED: {
+        default: { // CullingMode::DISABLED
             cluster_count = glm::uvec3(1, 1, 1);
             break;
         }
@@ -244,7 +271,13 @@ void Renderer::recreate() {
 
         // recreate frustum and cluster buffer
         if (settings.culling_enabled()) {
-            uint32_t cell_size = 1 + (settings.culling_mode() == CullingMode::TILED ? MAX_LIGHTS_PER_TILE : MAX_LIGHTS_PER_CLUSTER);
+            
+            uint32_t cell_size;
+            if (settings.culling_mode() == CullingMode::TILED) {
+                cell_size = 1 + MAX_LIGHTS_PER_TILE;
+            } else {
+                cell_size = 1 + MAX_LIGHTS_PER_CLUSTER;
+            }
             
             frustum_buffer = Buffer( 
                 nullptr, sizeof(Frustum) * cluster_count.x * cluster_count.y, 
@@ -272,12 +305,6 @@ void Renderer::recreate() {
         // recreate light descriptor set
         for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             switch (settings.culling_mode()) {
-                case CullingMode::DISABLED: {
-                    light_attachment_set[i] = UniformSet(engine.light_layout, std::array<Uniform, 1>() = { 
-                        StorageBuffer{ &light_buffer[i] }
-                    });
-                    break;
-                }
                 case CullingMode::CLUSTERED: {
                     light_attachment_set[i] = UniformSet(engine.light_layout, std::array<Uniform, 4>() = { 
                         StorageBuffer{ &light_buffer[i] }, 
@@ -293,6 +320,12 @@ void Renderer::recreate() {
                         StorageBuffer{ &frustum_buffer }, 
                         StorageBuffer{ &cluster_buffer[i] }, 
                         DepthAttachment{ &depth_attachment[i] }
+                    });
+                    break;
+                }
+                default: { // case CullingMode::DISABLED
+                    light_attachment_set[i] = UniformSet(engine.light_layout, std::array<Uniform, 1>() = { 
+                        StorageBuffer{ &light_buffer[i] }
                     });
                     break;
                 }
@@ -478,7 +511,7 @@ void Renderer::draw() {
 
     VK_ASSERT(vkResetFences(engine.device, 1, &in_flight[frame_index]));
     
-    { // submit passesaaa
+    { // submit passes
         depth_pass.submit(frame_index);
         deferred_pass.submit(frame_index);
         culling_pass.submit(frame_index);
@@ -488,7 +521,7 @@ void Renderer::draw() {
     { // present to screen
         VkPresentInfoKHR info{ 
             VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, nullptr, 
-            1, &frame_ready[frame_index], 
+            1, &frame_ready[frame_index], // wait on frame ready
             1, &swapchain.swapchain, &image_index, 
             nullptr
         };

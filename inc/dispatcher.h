@@ -19,7 +19,7 @@ private:
         bool once;
     };
 public:
-    struct FilterView { // filter view to make syntax sugar yummies
+    struct FilterView { // filter view to make syntax sugar
     public:
         FilterView(Dispatcher<event_T>& dispatcher, Filter filter) : dispatcher(dispatcher), filter(filter) { }
 
@@ -50,7 +50,6 @@ public:
         listener->once = once;
         return listener->handle;
     }
-
     void detach(uint32_t handle) {
         auto end = data.begin() + active;
         auto it = std::stable_partition(data.begin(), end, [&](const auto& listener) {
@@ -105,7 +104,7 @@ public:
         return *this;
     }
     template<typename event_T>
-    Dispatcher<typename event_T::event_type>::FilterView on(event_T filter) { 
-        return { *this, filter }; 
+    Dispatcher<typename event_T::event_type>::FilterView on(event_T event) { 
+        return { *this, event };
     }
 };

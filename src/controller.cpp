@@ -88,9 +88,8 @@ void Controller::rotate(const Update& event) {
     glm::vec3 up = glm::vec3(0, 1, 0);
     glm::quat yaw = glm::angleAxis(delta.x / swapchain.extent.x, up);
     camera.rotation *= yaw;
-    
+
     glm::vec3 right = glm::inverse(camera.rotation) * glm::vec3(1, 0, 0);
     glm::quat pitch = glm::angleAxis(delta.y / swapchain.extent.y, right);
-    
     camera.rotation *= pitch;
 }

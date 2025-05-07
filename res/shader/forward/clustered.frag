@@ -160,5 +160,5 @@ float attenuate(vec3 light_position, vec3 frag_position, float radius, float cur
     vec3 d = light_position - frag_position;    // difference
     float d2 = dot(d, d);
     float r2 = radius * radius;
-    return clamp(1 / ((d2 / (r2 - d2) / curve)), 0, 1);
+    return clamp(curve * max(r2 - d2, 0) / d2, 0, 1);
 }

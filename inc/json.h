@@ -29,15 +29,13 @@ struct Json {
     operator Object() const;
     
     template<typename T>
-    operator Buffer<T>() const;
-
+    operator Buffer<T>() const; // only supports Int, Float, Boolean and String
     
     Json operator[](const char* key) const; // cast as object and index
-    Json operator[](int index) const; // cast as array and index
+    Json operator[](int index) const;       // cast as array and index
 private:
-    size_t ignore_whitespace(size_t pos) const;
+    size_t end_of_whitespace(size_t pos) const;
     size_t end_of_string(size_t pos) const;
-    size_t end_of_comment(size_t pos) const;
     size_t end_of_object(size_t pos, char delim) const;
     
     std::string_view view;

@@ -24,12 +24,13 @@ Swapchain::~Swapchain() {
 }
 
 void Swapchain::recreate() {
-    while (window.minimized()) { glfwWaitEvents(); }
+    // while minimized dont recreated the swapchain, wait for it to be unminimized
+    while (window.minimized()) { glfwWaitEvents(); } 
     
-    VkSwapchainKHR old_swapchain = swapchain;
-
+    // get surface capabilities
     VkSurfaceCapabilitiesKHR capabilities;
     VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(engine.gpu, surface, &capabilities));
+
     { // get swapchain extent
         if (capabilities.currentExtent.width == 0xffffffff) {
             extent = window.get_resolution();
@@ -86,6 +87,8 @@ void Swapchain::recreate() {
 
         for (VkSurfaceFormatKHR& surface_format : supported) {
             switch (surface_format.format) {
+                case(VK_FORMAT_R8G8B8A8_SRGB): break;
+                case(VK_FORMAT_B8G8R8A8_SRGB): break;
                 case(VK_FORMAT_R8G8B8A8_UNORM): break;
                 case(VK_FORMAT_B8G8R8A8_UNORM): break;
                 default: continue;
@@ -95,9 +98,13 @@ void Swapchain::recreate() {
         }
     }
 
+    // when recreating with old_swapchain it allows the driver to reuse resources where applicable
+    VkSwapchainKHR old_swapchain = swapchain;
+
     { // init swapchain
+        // swapchain images are used by the queue and graphics operations
         std::array<uint32_t, 2> queue_families = { engine.present.family, engine.graphics.family };
-        auto unique_queue_families = std::ranges::unique(queue_families);
+        auto unique_queue_families = std::ranges::subrange(queue_families.begin(), std::ranges::unique(queue_families).begin());
 
         VkSwapchainCreateInfoKHR info{
             VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, nullptr, 0, 
@@ -115,12 +122,7 @@ void Swapchain::recreate() {
         VK_ASSERT(vkCreateSwapchainKHR(engine.device, &info, nullptr, &swapchain));
     }
 
-    if (old_swapchain != nullptr) { // destroy old swapchain
-        VK_ASSERT(vkDeviceWaitIdle(engine.device));
-           
-        uint32_t old_image_count;
-        VK_ASSERT(vkGetSwapchainImagesKHR(engine.device, old_swapchain, &old_image_count, nullptr));
-        
+    if (old_swapchain != nullptr) { // destroy old swapchain       
         vkDestroySwapchainKHR(engine.device, old_swapchain, nullptr);
     }
     

@@ -9,8 +9,8 @@
 
 namespace tinyobj {
     bool operator==(const tinyobj::index_t& lhs, const tinyobj::index_t& rhs) { 
-        return lhs.vertex_index ==   rhs.vertex_index && 
-            lhs.normal_index ==   rhs.normal_index && 
+        return lhs.vertex_index == rhs.vertex_index && 
+            lhs.normal_index == rhs.normal_index && 
             lhs.texcoord_index == rhs.texcoord_index;
     }
 }
@@ -175,239 +175,17 @@ void Model::Load(std::filesystem::path fp) {
 }
 
 Model::Model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& vertices, std::vector<Mesh>&& meshes) 
- : meshes(std::move(meshes)), vertex_count(indices.size()) {
-    VkDeviceSize vertex_buffer_size = sizeof(Vertex) * vertices.size();
-    VkDeviceSize index_buffer_size = sizeof(uint32_t) * indices.size();
-
-    // temporaries to copy data to buffers
-    VkCommandBuffer cmd_buffer;
-    VkFence cmd_finished;
-    VkBuffer vertex_staging_buffer;
-    VkDeviceMemory vertex_staging_memory;
-    VkBuffer index_staging_buffer;
-    VkDeviceMemory index_staging_memory;
-
-    /*
-    create 4 buffers, 2 staging + vertex + index
-    create temporary cmd buffer + fence
-    begin command
-    copy staging buffer to vertex buffer
-    copy staging buffer to index buffer
-    end command
-    wait for fence
-    destroy temporary 2 staging buffers + command buffers + fence
-    */
-
-    { // allocate temporary cmd buffer
-        VkCommandBufferAllocateInfo info{
-            VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, 
-            engine.graphics.pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1
-        };
-        VK_ASSERT(vkAllocateCommandBuffers(engine.device, &info, &cmd_buffer));
-    }
-
-    { // create temporary fence
-        VkFenceCreateInfo info{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, 0 };
-        VK_ASSERT(vkCreateFence(engine.device, &info, nullptr, &cmd_finished));
-    }
-
-    { // create temporary vertex staging buffer
-        VkBufferCreateInfo info{
-            VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0, 
-            vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
-            VK_SHARING_MODE_EXCLUSIVE, 1, &engine.graphics.family, 
-        };
-        VK_ASSERT(vkCreateBuffer(engine.device, &info, nullptr, &vertex_staging_buffer));
-    }
-
-    { // allocate temporary vertex staging memory
-        VkMemoryRequirements requirements;
-        vkGetBufferMemoryRequirements(engine.device, vertex_staging_buffer, &requirements);
-
-        VkMemoryAllocateInfo info{
-            VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, 
-            requirements.size, 
-            engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
-        };
-
-        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &vertex_staging_memory));
-        
-        VK_ASSERT(vkBindBufferMemory(engine.device, vertex_staging_buffer, vertex_staging_memory, 0));
-    }
-
-    { // write to temporary vertex buffer
-        void* buffer_data;
-        VK_ASSERT(vkMapMemory(engine.device, vertex_staging_memory, 0, vertex_buffer_size, 0 , &buffer_data));
-        memcpy(buffer_data, vertices.data(), vertex_buffer_size);
-        vkUnmapMemory(engine.device, vertex_staging_memory);
-    }
-
-    { // create vertex buffer
-        VkBufferCreateInfo info{
-            VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0, 
-            vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 
-            VK_SHARING_MODE_EXCLUSIVE, 1, &engine.graphics.family
-
-        };
-
-        VK_ASSERT(vkCreateBuffer(engine.device, &info, nullptr, &vertex_buffer));
-    }
-
-    { // allocate vertex memory
-        VkMemoryRequirements requirements;
-        vkGetBufferMemoryRequirements(engine.device, vertex_buffer, &requirements);
-
-        VkMemoryAllocateInfo info{
-            VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, requirements.size, 
-            engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
-        };
-
-        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &vertex_memory));
-
-        VK_ASSERT(vkBindBufferMemory(engine.device, vertex_buffer, vertex_memory, 0));
-    }
-
-    { // create temporary index staging buffer
-        VkBufferCreateInfo info{
-            VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0, 
-            index_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
-            VK_SHARING_MODE_EXCLUSIVE, 1, &engine.graphics.family
-        };
-
-        VK_ASSERT(vkCreateBuffer(engine.device, &info, nullptr, &index_staging_buffer));
-    }
-
-    { // allocate temporary index staging memory
-        VkMemoryRequirements requirements;
-        vkGetBufferMemoryRequirements(engine.device, index_staging_buffer, &requirements);
-
-        VkMemoryAllocateInfo info{
-            VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, requirements.size, 
-            engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
-        };
-
-        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &index_staging_memory));   
-        
-        VK_ASSERT(vkBindBufferMemory(engine.device, index_staging_buffer, index_staging_memory, 0));
-    }
-
-    { // write to index buffer
-        void* buffer_data;
-        VK_ASSERT(vkMapMemory(engine.device, index_staging_memory, 0, index_buffer_size, 0 , &buffer_data));
-        memcpy(buffer_data, indices.data(), index_buffer_size);
-        vkUnmapMemory(engine.device, index_staging_memory);
-    }
-
-    { // create index buffer
-        VkBufferCreateInfo info{ 
-            VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0,
-            index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-            VK_SHARING_MODE_EXCLUSIVE, 1, &engine.graphics.family
-        };
-
-        VK_ASSERT(vkCreateBuffer(engine.device, &info, nullptr, &index_buffer));
-    }
-
-    { // allocate index memory
-        VkMemoryRequirements requirements;
-        vkGetBufferMemoryRequirements(engine.device, index_buffer, &requirements);
-
-        VkMemoryAllocateInfo info{ 
-            VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, 
-            requirements.size, engine.memory_type_index(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) 
-        };
-        
-        VK_ASSERT(vkAllocateMemory(engine.device, &info, nullptr, &index_memory));   
-    
-        VK_ASSERT(vkBindBufferMemory(engine.device, index_buffer, index_memory, 0));
-    }
-
-    { // begin cmd buffer
-        VkCommandBufferBeginInfo info{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, nullptr, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT };
-        VK_ASSERT(vkBeginCommandBuffer(cmd_buffer, &info));
-    }
-    
-    { // copy staging to vertex buffer
-        VkBufferCopy region{ 0, 0, vertex_buffer_size };
-        vkCmdCopyBuffer(cmd_buffer, vertex_staging_buffer, vertex_buffer, 1, &region);
-    }
-
-    { // copy staging to index buffer
-        VkBufferCopy region{ 0, 0, index_buffer_size };
-        vkCmdCopyBuffer(cmd_buffer, index_staging_buffer, index_buffer, 1, &region);
-    }
-
-    { // end cmd buffer
-        VK_ASSERT(vkEndCommandBuffer(cmd_buffer));
-
-        VkSubmitInfo info{ 
-            VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 
-            0, nullptr, nullptr, 
-            1, &cmd_buffer, 
-            0, nullptr 
-        };
-        VK_ASSERT(vkQueueSubmit(engine.graphics.queue, 1, &info, cmd_finished));
-    }
-    
-    VK_ASSERT(vkWaitForFences(engine.device, 1, &cmd_finished, VK_TRUE, UINT64_MAX));
-
-    vkDestroyBuffer(engine.device, vertex_staging_buffer, nullptr);
-    vkFreeMemory(engine.device, vertex_staging_memory, nullptr);
-    vkDestroyBuffer(engine.device, index_staging_buffer, nullptr);
-    vkFreeMemory(engine.device, index_staging_memory, nullptr);
-    vkFreeCommandBuffers(engine.device, engine.graphics.pool, 1, &cmd_buffer);
-    vkDestroyFence(engine.device, cmd_finished, nullptr);
-}
-
-Model::~Model() {
-    if (vertex_buffer == nullptr) return;
-
-    vkDestroyBuffer(engine.device, vertex_buffer, nullptr);
-    vkFreeMemory(engine.device, vertex_memory, nullptr);
-    vkDestroyBuffer(engine.device, index_buffer, nullptr);
-    vkFreeMemory(engine.device, index_memory, nullptr);
-
-    vertex_buffer = nullptr;
-}
-
-Model::Model(Model&& other) {
-    if (this == &other) return;
-
-    transform = std::move(other.transform);
-    meshes = std::move(other.meshes);
-    
-    vertex_buffer = other.vertex_buffer;
-    vertex_memory = other.vertex_memory;
-    index_buffer = other.index_buffer;
-    index_memory = other.index_memory;
-    vertex_count = other.vertex_count;
-
-    other.vertex_buffer = nullptr;
-}
-
-Model& Model::operator=(Model&& other) {
-    if (this == &other) return *this;
-    
-    if (vertex_buffer != nullptr) {
-        vkDestroyBuffer(engine.device, vertex_buffer, nullptr);
-        vkFreeMemory(engine.device, vertex_memory, nullptr);
-        vkDestroyBuffer(engine.device, index_buffer, nullptr);
-        vkFreeMemory(engine.device, index_memory, nullptr);
-    }
-
-    transform = std::move(other.transform);
-    meshes = std::move(other.meshes);
-
-    vertex_buffer = other.vertex_buffer;
-    vertex_memory = other.vertex_memory;
-    index_buffer = other.index_buffer;
-    index_memory = other.index_memory;
-    vertex_count = other.vertex_count;
-
-    other.vertex_buffer = nullptr;
-
-    return *this;
-}
+ : vertex(vertices.data(), sizeof(Vertex) * vertices.size(), 
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, std::array<uint32_t, 1>() = { engine.graphics.family }
+    ),
+    index(indices.data(), sizeof(uint32_t) * indices.size(), 
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, std::array<uint32_t, 1>() = { engine.graphics.family }
+    ),
+    meshes(std::move(meshes)), 
+    vertex_count(indices.size())
+{ }
 
 Model::Transform::Transform() {
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
