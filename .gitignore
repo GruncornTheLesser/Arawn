@@ -3,3 +3,4 @@ build
 .cache
 bin/*
 res/import
+res/logs
