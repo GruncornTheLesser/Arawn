@@ -4,3 +4,4 @@ build
 bin/*
 res/import
 res/logs
+res/models
