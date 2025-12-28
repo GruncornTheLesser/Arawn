@@ -1,16 +1,18 @@
 {
-    "device" : "NVIDIA GeForce RTX 3060 Laptop GPU", // "Intel(R) UHD Graphics (CML GT2)", // 
-    "display mode" : "windowed",
-    "aspect ratio" : "4:3", // "16:9",
-    "resolution" : [ 800, 600 ],
-    "frame count" : 2,
-    "vsync" : true,
-    "low latency" : true,
-    "z prepass" : false,
-    "anti alias" : "msaa8",         // none/msaa2/msaa4/msaa8
-    "render mode" : "forward",      // forward/deferred
+    // display settings
+    "resolution"   : [ 800, 600 ],
+    "display mode" : "windowed",    // windowed/fullscreen/exclusive
+    "frame buffering" : "double",    // double/triple
+    "vsync" : true,                 // true/false
+    "low latency" : false,          // true/false
+    "anti alias" : "msaa4",         // none/msaa2/msaa4/msaa8  TODO: /smaa/taa
+    "upscaling" : "",               // none TODO: /AMD FSR, DLSS
+
+    // render settings
+    "device name" : "NVIDIA GeForce RTX 3060 Laptop GPU", // "Intel(R) UHD Graphics (CML GT2)", // 
+    "deferred" : false,             // forward/deferred
+    "z pass" : false,               // true/false
+    "max mipmap" : 4,               // 0-8
+    "texture filter" : "bilinear",  // nearest/linear/bilinear/trilinear/anisotropic 16x
     "culling mode" : "tiled"        // none/clustered/tiled
 }
-
-
-

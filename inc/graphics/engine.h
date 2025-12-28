@@ -1,42 +1,31 @@
 #pragma once
-#include "vulkan.h"
-#include <filesystem>
-class Engine {    
-public:
-    Engine();
-    ~Engine();
-    Engine(Engine&&) = delete;
-    Engine& operator=(Engine&&) = delete;
-    Engine(const Engine&) = delete;
-    Engine& operator=(const Engine&) = delete;
+#include <graphics/vulkan.h>
 
-    uint32_t memory_type_index(VK_TYPE(VkMemoryRequirements&) requirements, VK_ENUM(VkMemoryPropertyFlags) memory_property_flags);
+// device resources
+namespace Arawn {
+    enum QueueType : uint32_t { PRESENT, GRAPHICS, COMPUTE, ASYNC, TRANSFER };
 
-    VK_TYPE(VkShaderModule) create_shader(std::filesystem::path fp) const;
+    class Engine {
+        friend class Window;
+		friend class Swapchain;
+    public:
+        Engine();
+        ~Engine();
+        Engine(Engine&&) = delete;
+        Engine(const Engine&) = delete;
+        Engine& operator=(Engine&&) = delete;
+        Engine& operator=(const Engine&) = delete;
+        
+    private:
+        VK_TYPE(VkInstance) instance;   // vulkan instance
+        VK_TYPE(VkPhysicalDevice) gpu;  // selected gpu
+        VK_TYPE(VkDevice) device;       // logical device
+        
+        uint32_t family[5];
+        VK_TYPE(VkQueue) queue[5];
 
-    VK_TYPE(VkInstance) instance;   // vulkan instance
-    VK_TYPE(VkPhysicalDevice) gpu;  // gpu selected
-    VK_TYPE(VkDevice) device;
+        VK_TYPE(VmaAllocator) allocator;
+    };
 
-    struct { // queue data
-        uint32_t family;
-        VK_TYPE(VkQueue) queue;
-    } present;
-
-    struct { // queue data
-        uint32_t family;
-        VK_TYPE(VkQueue) queue;
-        VK_TYPE(VkCommandPool) pool;
-    } graphics, compute;
-
-    VK_TYPE(VkDescriptorPool) descriptor_pool;
-    VK_TYPE(VkDescriptorSetLayout) camera_layout;
-    VK_TYPE(VkDescriptorSetLayout) transform_layout;
-    VK_TYPE(VkDescriptorSetLayout) material_layout;
-    VK_TYPE(VkDescriptorSetLayout) light_layout;
-    VK_TYPE(VkDescriptorSetLayout) attachment_layout;
-
-    VK_TYPE(VkSampler) sampler;
-};
-
-extern Engine engine;
+	extern Engine engine;
+}

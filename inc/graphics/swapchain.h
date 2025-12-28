@@ -1,27 +1,25 @@
 #pragma once
-#include "vulkan.h"
-#include "settings.h"
-#include <vector>
+#include <graphics/vulkan.h>
 
-class Swapchain {
-public:
-    Swapchain();
-    ~Swapchain();
-    Swapchain(Swapchain&&);
-    Swapchain& operator=(Swapchain&&);
-    Swapchain(const Swapchain&) = delete;
-    Swapchain& operator=(const Swapchain&) = delete;
+namespace Arawn {
+    class Swapchain {
+    public:
+        Swapchain(VK_TYPE(VkSurfaceKHR) surface);
 
-    void recreate();
-
-    glm::uvec2 extent;
+        ~Swapchain();
+        Swapchain(Swapchain&&);
+        Swapchain& operator=(Swapchain&&);
+        Swapchain(const Swapchain&) = delete;
+        Swapchain& operator=(const Swapchain&) = delete;
     
-    VK_ENUM(VkFormat) format;
-    VK_ENUM(VkColorSpaceKHR) colour_space;
-    VK_ENUM(VkPresentModeKHR) present_mode;
-
-    VK_TYPE(VkSurfaceKHR) surface;
-    VK_TYPE(VkSwapchainKHR) swapchain;
-};
-
-extern Swapchain swapchain;
+        void recreate(uint32_t width, uint32_t height);
+        
+    private:        
+        VK_ENUM(VkFormat) format;
+        VK_ENUM(VkColorSpaceKHR) colour;
+        VK_ENUM(VkPresentModeKHR) present;
+    
+        VK_TYPE(VkSurfaceKHR) surface;
+        VK_TYPE(VkSwapchainKHR) swapchain;
+    };
+}

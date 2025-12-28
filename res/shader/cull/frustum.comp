@@ -8,15 +8,15 @@ struct Light {
 };
 
 struct Frustum {
-	vec4 planes[4];
+    vec4 planes[4];
 };
 layout(std140, set=0, binding=0) uniform Camera {
     mat4 proj;
     mat4 view;
     mat4 inv_proj;
     uvec2 screen_size;
-	float near;
-	float far;
+    float near;
+    float far;
     vec3 eye;
 };
 
@@ -24,9 +24,9 @@ layout(std430, set=1, binding = 0) readonly buffer LightArray { uvec3 cluster_co
 layout(std430, set=1, binding=1) buffer FrustumBuffer { Frustum frustums[]; };
 
 vec4 ray(uvec2 offset, uint tile_size) {
-	vec2 screen = tile_size * (gl_WorkGroupID.xy + offset) / vec2(screen_size);
-	vec4 view_position = inv_proj * vec4(screen * 2.0 - 1.0, 1, 1.0);
-	return view_position / view_position.w;
+    vec2 screen = tile_size * (gl_WorkGroupID.xy + offset) / vec2(screen_size);
+    vec4 view_position = inv_proj * vec4(screen * 2.0 - 1.0, 1, 1.0);
+    return view_position / view_position.w;
 }
 
 vec4 plane(vec3 p1, vec3 p2) {
@@ -38,19 +38,19 @@ void main() {
     uint index = gl_WorkGroupID.x +
                  gl_WorkGroupID.y * gl_NumWorkGroups.x;
     
-	uint tile_size = (screen_size.x - 1) / cluster_count.x + 1;
+    uint tile_size = (screen_size.x - 1) / cluster_count.x + 1;
 
-	vec3 view_position[4];
-	view_position[0] = ray(uvec2(0, 0), tile_size).xyz; // top left
-	view_position[1] = ray(uvec2(1, 0), tile_size).xyz; // top right
-	view_position[2] = ray(uvec2(0, 1), tile_size).xyz; // bottom left
-	view_position[3] = ray(uvec2(1, 1), tile_size).xyz; // bottom right
+    vec3 view_position[4];
+    view_position[0] = ray(uvec2(0, 0), tile_size).xyz; // top left
+    view_position[1] = ray(uvec2(1, 0), tile_size).xyz; // top right
+    view_position[2] = ray(uvec2(0, 1), tile_size).xyz; // bottom left
+    view_position[3] = ray(uvec2(1, 1), tile_size).xyz; // bottom right
 
-	vec4 planes[4];
-	planes[0] = plane(view_position[0], view_position[2]);
-	planes[2] = plane(view_position[1], view_position[0]);
-	planes[1] = plane(view_position[3], view_position[1]);
-	planes[3] = plane(view_position[2], view_position[3]);
+    vec4 planes[4];
+    planes[0] = plane(view_position[0], view_position[2]);
+    planes[2] = plane(view_position[1], view_position[0]);
+    planes[1] = plane(view_position[3], view_position[1]);
+    planes[3] = plane(view_position[2], view_position[3]);
 
     frustums[index].planes = planes;
 }

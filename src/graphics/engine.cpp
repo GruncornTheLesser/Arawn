@@ -1,64 +1,113 @@
 #define ARAWN_IMPLEMENTATION
-#include "engine.h"
-#include "settings.h"
+#define VMA_IMPLEMENTATION
+
+#include <graphics/engine.h>
+#include <core/settings.h>
+
 #include <vector>
 #include <algorithm>
 #include <cstring>
-#include <fstream>
-/*
-1. init glfw
-2. init vulkan instance
-3. select GPU
-4. init vulkan device
-5. get queues
-6. init command pools
-7. init descriptor pools
-*/
 
-Engine::Engine() {
-    std::vector<const char*> inst_layers =     { "VK_LAYER_KHRONOS_validation" };
-    std::vector<const char*> device_layers =   { "VK_LAYER_KHRONOS_validation" };
-    std::vector<const char*> inst_extensions = { VK_KHR_SURFACE_EXTENSION_NAME };
-    std::vector<const char*> device_extensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME };
+
+using namespace Arawn;
+
+#define VULKAN_VERSION VK_API_VERSION_1_2
+
+Engine::Engine()
+{
+    #ifdef ARAWN_DEBUG
+    std::vector<const char*> instanceLayers = { "VK_LAYER_KHRONOS_validation" };
+    std::vector<const char*> deviceLayers = { "VK_LAYER_KHRONOS_validation" };
+    #endif
+
+    std::vector<const char*> instanceExtensions = { VK_KHR_SURFACE_EXTENSION_NAME };
+    std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
     { // init glfw
         GLFW_ASSERT(glfwInit() == GLFW_TRUE);
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     }
 
-    { // check instance layer support
+    { // print vulkan version
+        uint32_t version;
+        VK_ASSERT(vkEnumerateInstanceVersion(&version));
+        uint32_t major = VK_VERSION_MAJOR(version);
+        uint32_t minor = VK_VERSION_MINOR(version);
+        uint32_t patch = VK_VERSION_PATCH(version);
+        LOG("vulkan version: " << major << "." << minor << "." << patch);
+    }
+    
+    #ifdef ARAWN_DEBUG
+    { // remove unsupported layers support
         uint32_t count;
-        vkEnumerateInstanceLayerProperties(&count, nullptr);
+        VK_ASSERT(vkEnumerateInstanceLayerProperties(&count, nullptr));
         
         std::vector<VkLayerProperties> available(count);
-        vkEnumerateInstanceLayerProperties(&count, available.data());
+        VK_ASSERT(vkEnumerateInstanceLayerProperties(&count, available.data()));
 
-        // remove layer if not available 
-        inst_layers.erase(std::remove_if(inst_layers.begin(), inst_layers.end(), [&](const char* layer) {
-            return std::find_if(available.begin(), available.end(), [&](const VkLayerProperties& p) { 
-                return strcmp(layer, p.layerName) == 0; 
+        // remove layer if not supported 
+        instanceLayers.erase(std::remove_if(instanceLayers.begin(), instanceLayers.end(), [&](const char* layer)
+        {
+            return std::find_if(available.begin(), available.end(), [&](const VkLayerProperties& properties)
+            { 
+                return strcmp(layer, properties.layerName) == 0; 
             }) == available.end();
-        }), inst_layers.end());
+        }), instanceLayers.end());
     }
+    #endif
 
-    { // get instance extensions support 
+    { // get glfw vulkan extensions 
         uint32_t count;
         const char** exts = glfwGetRequiredInstanceExtensions(&count);
-        std::copy(exts, exts + count, std::back_insert_iterator(inst_extensions));
+        std::copy(exts, exts + count, std::back_insert_iterator(instanceExtensions));
+        
+        // remove duplicate extensions
+        instanceExtensions.erase(std::unique(instanceExtensions.begin(), instanceExtensions.end()), instanceExtensions.end());
+    }
+
+    { // check instance extension support
+        uint32_t count;
+        VK_ASSERT(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr));
+
+        std::vector<VkExtensionProperties> available(count);
+        VK_ASSERT(vkEnumerateInstanceExtensionProperties(nullptr, &count, available.data()));
+        
+        for (const char* extension : instanceExtensions)
+        {
+            auto it = std::find_if(available.begin(), available.end(), 
+                [&](const VkExtensionProperties& p)
+                { return strcmp(extension, p.extensionName) == 0; });
+            
+            if (it == available.end())
+                throw std::runtime_error("instance " + std::string(extension) + " extension not supported");
+        }
     }
 
     { // init instance
         VkApplicationInfo app_info {
-            VK_STRUCTURE_TYPE_APPLICATION_INFO, nullptr, 
-            "Arawn", VK_MAKE_VERSION(1, 0, 0), 
-            "Arawn-Engine", VK_MAKE_VERSION(1, 0, 0),
-            VK_API_VERSION_1_2
+            .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, 
+            .pNext = nullptr, 
+            .pApplicationName = "Arawn", 
+            .applicationVersion = VK_MAKE_VERSION(1, 0, 0), 
+            .pEngineName = "Arawn-Engine", 
+            .engineVersion = VK_MAKE_VERSION(1, 0, 0),
+            .apiVersion = VULKAN_VERSION
         };
 
         VkInstanceCreateInfo inst_info {
-            VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, nullptr, 0, &app_info, 
-            static_cast<uint32_t>(inst_layers.size()), inst_layers.data(),
-            static_cast<uint32_t>(inst_extensions.size()), inst_extensions.data()
+            .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, 
+            .pNext = nullptr,
+            .flags = 0, 
+            .pApplicationInfo = &app_info,
+        #ifdef ARAWN_DEBUG
+            .enabledLayerCount = static_cast<uint32_t>(instanceLayers.size()),
+            .ppEnabledLayerNames = instanceLayers.data(),
+        #else
+            .enabledLayerCount = nullptr,
+            .ppEnabledLayerNames = 0,
+        #endif
+            .enabledExtensionCount = static_cast<uint32_t>(instanceExtensions.size()), 
+            .ppEnabledExtensionNames = instanceExtensions.data()
         };
         
         VK_ASSERT(vkCreateInstance(&inst_info, nullptr, &instance));
@@ -74,21 +123,35 @@ Engine::Engine() {
         std::vector<VkPhysicalDevice> devices(count);
         vkEnumeratePhysicalDevices(instance, &count, devices.data());
         
-        uint32_t index = 0;
-        if (settings.device != "") {
-            for (uint32_t i = 0; i < count; ++i) {
+        uint32_t index = 0; // defaults to first
+        std::string deviceName = settings.get<DeviceName>();
+        if (deviceName != "")
+        {
+            for (uint32_t i = 0; i < count; ++i)
+            {
                 VkPhysicalDeviceProperties properties;
                 vkGetPhysicalDeviceProperties(devices[i], &properties);
                 
-                if (strcmp(settings.device.c_str(), properties.deviceName) == 0) {
+                if (strcmp(deviceName.c_str(), properties.deviceName) == 0)
+                {
                     index = i;
                     break;
                 }
             }
         }
-        gpu = devices[index]; // 0=intel, 1=nvidia
+        gpu = devices[index];
+
+        #ifdef ARAWN_DEBUG
+        { // log gpu selection
+            VkPhysicalDeviceProperties properties;
+            vkGetPhysicalDeviceProperties(gpu, &properties);
+    
+            LOG("gpu: " << properties.deviceName)
+        }
+        #endif
     }
 
+    #ifdef ARAWN_DEBUG
     { // check device layer support
         uint32_t count;
         VK_ASSERT(vkEnumerateDeviceLayerProperties(gpu, &count, nullptr));
@@ -97,12 +160,15 @@ Engine::Engine() {
         VK_ASSERT(vkEnumerateDeviceLayerProperties(gpu, &count, available.data()));
 
         // remove layer if not available
-        device_layers.erase(std::remove_if(device_layers.begin(), device_layers.end(), [&](const char* layer) {
-            return std::find_if(available.begin(), available.end(), [&](const VkLayerProperties& p) { 
+        deviceLayers.erase(std::remove_if(deviceLayers.begin(), deviceLayers.end(), [&](const char* layer)
+        {
+            return std::find_if(available.begin(), available.end(), [&](const VkLayerProperties& p)
+            { 
                 return strcmp(layer, p.layerName) == 0; 
             }) == available.end();
-        }), device_layers.end());
+        }), deviceLayers.end());
     }
+    #endif
 
     { // check device extension support
         uint32_t count;
@@ -111,18 +177,27 @@ Engine::Engine() {
         std::vector<VkExtensionProperties> available(count);
         vkEnumerateDeviceExtensionProperties(gpu, nullptr, &count, available.data());
         
-        for (const char* layer : device_extensions) {
+        for (const char* extension : deviceExtensions)
+        {
             auto it = std::find_if(available.begin(), available.end(), 
-                [&](const VkExtensionProperties& p) { return strcmp(layer, p.extensionName) == 0; });
+                [&](const VkExtensionProperties& p)
+                { return strcmp(extension, p.extensionName) == 0; });
             
             if (it == available.end())
-                throw std::runtime_error("device extension not available");
+                throw std::runtime_error("device extension not supported");
         }
     }
 
     { // check device feature support
-        VkPhysicalDeviceDescriptorIndexingFeatures indexing_features{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES, nullptr };
-        VkPhysicalDeviceFeatures2 supported{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &indexing_features };
+        VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures{ 
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES, 
+            .pNext = nullptr
+        };
+        VkPhysicalDeviceFeatures2 supported{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, 
+            .pNext = &indexingFeatures
+        };
+
         vkGetPhysicalDeviceFeatures2(gpu, &supported);
 
         if (!supported.features.samplerAnisotropy) 
@@ -131,135 +206,305 @@ Engine::Engine() {
         if (!supported.features.sampleRateShading)
             throw std::runtime_error("gpu does not support sample rate shading");
 
-        if (!indexing_features.descriptorBindingPartiallyBound)
-            throw std::runtime_error("gpu does not support descriptor partial binding");
+        if (!indexingFeatures.descriptorBindingPartiallyBound || !indexingFeatures.runtimeDescriptorArray)
+            throw std::runtime_error("gpu does not support bindless rendering");
     }
-
-    { // select queues
-        uint32_t family_count;
-        vkGetPhysicalDeviceQueueFamilyProperties(gpu, &family_count, nullptr);
-        
-        std::vector<VkQueueFamilyProperties> properties(family_count);
-        vkGetPhysicalDeviceQueueFamilyProperties(gpu, &family_count, properties.data());
-    
-        graphics.family = family_count;
-        compute.family = family_count;
-        present.family = family_count;
-
-        { // find graphics queue
-            for (uint32_t i = 0; i < family_count; ++i) {
-                if (properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                    graphics.family = i;
-                    --properties[i].queueCount;
-                    break;
-                }
-            }
-            
-            if (graphics.family == family_count) throw std::exception(); // no graphics, should be impossible
-        }
-
-        { // find compute queue
-            if (properties[graphics.family].queueFlags & VK_QUEUE_COMPUTE_BIT) // queue sharing
-                compute.family = graphics.family;
-
-            for (uint32_t i = 0; i < family_count; ++i) {
-                if (i == graphics.family) continue;
-                if (properties[i].queueCount > 0 && properties[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
-                    compute.family = i;
-                    --properties[i].queueCount;
-                    break;
-                }
-            }
-
-            if (compute.family == family_count) throw std::exception();
-        }
-        
-        VkSurfaceKHR surface;
-        GLFWwindow* window;
-        { // create dummy window and surface
-            glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE); // hide window
-            window = glfwCreateWindow(640, 480, "", nullptr, nullptr);
-            GLFW_ASSERT(window != nullptr);
-            
-            VK_ASSERT(glfwCreateWindowSurface(instance, window, nullptr, &surface));
-        }
-
-        { // find present queue
-            VkBool32 support = VK_FALSE;
-            if (vkGetPhysicalDeviceSurfaceSupportKHR(gpu, graphics.family, surface, &support) == VK_SUCCESS && support == VK_TRUE)
-                present.family = graphics.family;
-            
-            else if (vkGetPhysicalDeviceSurfaceSupportKHR(gpu, compute.family, surface, &support) == VK_SUCCESS && support == VK_TRUE)
-                present.family = compute.family;
-            
-            for (uint32_t i = 0; i < family_count; ++i) {
-                if (properties[i].queueCount > 0 && vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &support) == VK_SUCCESS && support == VK_TRUE) {
-                    present.family = i;
-                    --properties[i].queueCount;
-                    break;
-                }
-            }
-
-            if (present.family == family_count) throw std::exception();
-        }
-
-        { // destroy dummy window and surface
-            vkDestroySurfaceKHR(instance, surface, nullptr);
-            glfwDestroyWindow(window);
-        }
-    }
-
-    std::array<uint32_t, 3> queue_families = { graphics.family, compute.family, present.family };
-    std::ranges::sort(queue_families);
-    auto unique_queue_families = std::ranges::subrange(queue_families.begin(), std::ranges::unique(queue_families).begin());
 
     { // init device
-        float priority = 1.0f; // priority
-        std::vector<VkDeviceQueueCreateInfo> queues;
-        for (uint32_t family : unique_queue_families) {
-            queues.emplace_back(
-                VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, nullptr, 0, 
-                family, 1, &priority
-            );
+        uint32_t familyCount;
+        vkGetPhysicalDeviceQueueFamilyProperties(gpu, &familyCount, nullptr);
+        
+        std::vector<VkDeviceQueueCreateInfo> queues(familyCount, VkDeviceQueueCreateInfo{ 
+            .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .queueFamilyIndex = 0,
+            .queueCount = 0,
+            .pQueuePriorities = nullptr
+        });
+
+        for (uint32_t i = 0; i < queues.size(); ++i)
+        {
+            queues[i].queueFamilyIndex = i;
+        }
+
+        uint32_t graphicsIndex = UINT32_MAX;
+        uint32_t computeIndex = UINT32_MAX;
+        uint32_t transferIndex = UINT32_MAX;
+        uint32_t asyncIndex = UINT32_MAX;
+        uint32_t presentIndex = UINT32_MAX;
+
+        { // select queues
+            std::vector<VkQueueFamilyProperties> queueFamilies(familyCount);
+            vkGetPhysicalDeviceQueueFamilyProperties(gpu, &familyCount, queueFamilies.data());
+
+            family[GRAPHICS] = UINT32_MAX;
+            family[COMPUTE] = UINT32_MAX;
+            family[TRANSFER] = UINT32_MAX;
+            family[ASYNC] = UINT32_MAX;
+            family[PRESENT] = UINT32_MAX;
+            
+            auto findFamilyIndex = [&](uint32_t include, uint32_t exclude) {
+                for (uint32_t i = 0; i < familyCount; ++i)
+                {
+                    if (queues[i].queueCount < queueFamilies[i].queueCount && (queueFamilies[i].queueFlags & include) == include && !(queueFamilies[i].queueFlags & exclude))
+                    {
+                        return i;
+                    }
+                }
+                return UINT32_MAX;
+            };
+    
+            // find graphics queue
+            // graphics queue is used as a fallback for any work, must implement graphics, prefer implememt compute and transfer 
+            {
+                if (family[GRAPHICS] = findFamilyIndex(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT, 0); family[GRAPHICS] != UINT32_MAX) 
+                {
+                    graphicsIndex = queues[family[GRAPHICS]].queueCount++;
+                }
+                else if (family[GRAPHICS] = findFamilyIndex(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0); family[GRAPHICS] != UINT32_MAX) 
+                {
+                    graphicsIndex = queues[family[GRAPHICS]].queueCount++;
+                }
+                else if (family[GRAPHICS] = findFamilyIndex(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT, 0); family[GRAPHICS] != UINT32_MAX) 
+                {
+                    graphicsIndex = queues[family[GRAPHICS]].queueCount++;
+                }
+                else if (family[GRAPHICS] = findFamilyIndex(VK_QUEUE_GRAPHICS_BIT, 0), family[GRAPHICS] != UINT32_MAX) 
+                {
+                    graphicsIndex = queues[family[GRAPHICS]].queueCount++;
+                } else
+                {
+                    throw std::runtime_error("failed to find family for graphics queue");
+                }
+            }
+    
+            // find compute queue
+            // prefer shared compute/graphics shared family to reduce inter-family synchronizations
+            {
+                if (queueFamilies[family[GRAPHICS]].queueCount > queues[family[GRAPHICS]].queueCount && queueFamilies[family[GRAPHICS]].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+                    family[COMPUTE] = family[GRAPHICS];
+                    computeIndex = queues[family[COMPUTE]].queueCount++;
+                } 
+                else if (family[COMPUTE] = findFamilyIndex(VK_QUEUE_COMPUTE_BIT, 0); family[COMPUTE] != UINT32_MAX)
+                {
+                    computeIndex = queues[family[COMPUTE]].queueCount++;
+                }
+                else if (queueFamilies[family[GRAPHICS]].queueFlags & VK_QUEUE_COMPUTE_BIT)
+                {
+                    family[COMPUTE] = family[GRAPHICS];
+                    computeIndex = 0;
+                }
+                else
+                {
+                    throw std::runtime_error("failed to find family for compute queue");
+                }
+            }
+    
+            // find async family
+            // prefer exclusive queue in different family to graphics to avoid contention
+            {
+                if (family[ASYNC] = findFamilyIndex(VK_QUEUE_COMPUTE_BIT, VK_QUEUE_GRAPHICS_BIT); family[ASYNC] != UINT32_MAX) {
+                    asyncIndex = queues[family[ASYNC]].queueCount++;
+                } 
+                else if (family[ASYNC] = findFamilyIndex(VK_QUEUE_COMPUTE_BIT, 0); family[ASYNC] != UINT32_MAX) 
+                {
+                    asyncIndex = queues[family[ASYNC]].queueCount++;
+                }
+                else
+                {
+                    family[ASYNC] = family[COMPUTE];
+                    asyncIndex = computeIndex;
+                }
+            }
+            
+            // find transfer family
+            {
+                if (family[TRANSFER] = findFamilyIndex(VK_QUEUE_TRANSFER_BIT, VK_QUEUE_COMPUTE_BIT | VK_QUEUE_GRAPHICS_BIT); family[TRANSFER] != UINT32_MAX)
+                {
+                    transferIndex = queues[family[TRANSFER]].queueCount++;
+                } 
+                else if (family[TRANSFER] = findFamilyIndex(VK_QUEUE_TRANSFER_BIT, VK_QUEUE_GRAPHICS_BIT); family[TRANSFER] != UINT32_MAX)
+                {
+                    transferIndex = queues[family[TRANSFER]].queueCount++;
+                }
+                else if (family[TRANSFER] = findFamilyIndex(VK_QUEUE_TRANSFER_BIT, 0); family[TRANSFER] != UINT32_MAX)
+                {
+                    transferIndex = queues[family[TRANSFER]].queueCount++;
+                }
+                else if (queueFamilies[family[ASYNC]].queueFlags & VK_QUEUE_TRANSFER_BIT)
+                {
+                    family[TRANSFER] = family[ASYNC];
+                    transferIndex = asyncIndex;
+                }
+                else if (queueFamilies[family[COMPUTE]].queueFlags & VK_QUEUE_TRANSFER_BIT)
+                {
+                    family[TRANSFER] = family[COMPUTE];
+                    transferIndex = computeIndex;
+                } 
+                else if (queueFamilies[family[GRAPHICS]].queueFlags & VK_QUEUE_TRANSFER_BIT)
+                {
+                    family[TRANSFER] = family[GRAPHICS];
+                    transferIndex = graphicsIndex;
+                } 
+                else
+                {
+                    throw std::runtime_error("failed to find family for transfer queue");
+                }
+            }
+    
+            { // find present queue
+                VkSurfaceKHR surface;
+                GLFWwindow* window;
+                { // create dummy window and surface
+                    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE); // hide window
+                    window = glfwCreateWindow(640, 480, "", nullptr, nullptr);
+                    GLFW_ASSERT(window != nullptr);
+                    
+                    VK_ASSERT(glfwCreateWindowSurface(instance, window, nullptr, &surface));
+                }
+                
+                { // search queues for properties
+                    VkBool32 support = VK_FALSE;
+                    
+                    // check if graphics family supports present
+                    if (queues[family[GRAPHICS]].queueCount < queueFamilies[family[GRAPHICS]].queueCount && vkGetPhysicalDeviceSurfaceSupportKHR(gpu, family[GRAPHICS], surface, &support) == VK_SUCCESS && support == VK_TRUE)
+                    {
+                        family[PRESENT] = family[GRAPHICS];
+                        presentIndex = queues[family[PRESENT]].queueCount++;
+    
+                    }
+                    else // else prefer any separate queue
+                    {
+                        for (uint32_t i = 0; i < familyCount; ++i)
+                        {
+                            if (queues[i].queueCount < queueFamilies[i].queueCount && vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &support) == VK_SUCCESS && support == VK_TRUE)
+                            {
+                                family[PRESENT] = i;
+                                presentIndex = queues[family[PRESENT]].queueCount++;
+                                break;
+                            }
+                        }
+                    }
+    
+                    // fallback to shared present queue
+                    if (family[PRESENT] == UINT32_MAX) {
+                        if (vkGetPhysicalDeviceSurfaceSupportKHR(gpu, family[GRAPHICS], surface, &support) == VK_SUCCESS && support == VK_TRUE) 
+                        {
+                            family[PRESENT] = family[GRAPHICS];
+                            presentIndex = graphicsIndex;
+                        } 
+                        else if (vkGetPhysicalDeviceSurfaceSupportKHR(gpu, family[COMPUTE], surface, &support) == VK_SUCCESS && support == VK_TRUE)
+                        {
+                            family[PRESENT] = family[COMPUTE];
+                            presentIndex = computeIndex;
+                        }
+                        else if (vkGetPhysicalDeviceSurfaceSupportKHR(gpu, family[TRANSFER], surface, &support) == VK_SUCCESS && support == VK_TRUE)
+                        {
+                            family[PRESENT] = family[TRANSFER];
+                            presentIndex = transferIndex;
+                        } 
+                        else if (vkGetPhysicalDeviceSurfaceSupportKHR(gpu, family[ASYNC], surface, &support) == VK_SUCCESS && support == VK_TRUE)
+                        {
+                            family[PRESENT] = family[ASYNC];
+                            presentIndex = asyncIndex;
+                        }
+                        else
+                        {
+                            throw std::runtime_error("failed to find family for present queue");
+                        }
+                    }
+                }
+        
+                { // destroy dummy window and surface
+                    vkDestroySurfaceKHR(instance, surface, nullptr);
+                    glfwDestroyWindow(window);
+                }
+            }
+
+            // remove unrequested queues
+            queues.erase(std::remove_if(queues.begin(), queues.end(), [](auto& info) { return info.queueCount == 0; }), queues.end());
         }
         
-        VkPhysicalDeviceDescriptorIndexingFeatures indexing_features{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
-        indexing_features.descriptorBindingPartiallyBound = VK_TRUE;
+        uint32_t queueCount = 0;
+        { // get queue count
+            for (uint32_t i = 0; i < queues.size(); ++i)
+            {
+                queueCount += queues[i].queueCount;
+            }
+        }
 
-        VkPhysicalDeviceFeatures core_features{ };
-        core_features.samplerAnisotropy = VK_TRUE;
-        core_features.sampleRateShading = VK_TRUE;
+        std::vector<float> priorities(queueCount, 0.0f);
+        { // assign queue priorities
+            for (uint32_t i = 0, j = 0; i < queues.size(); ++i, j += queues[i].queueCount)
+            { 
+                queues[i].pQueuePriorities = &priorities[j];
+            }
+        
+            { // queue priorities
+                std::min(1.0f, queues[family[PRESENT]].pQueuePriorities[presentIndex]);
+                std::min(0.8f, queues[family[GRAPHICS]].pQueuePriorities[graphicsIndex]);
+                std::min(0.6f, queues[family[COMPUTE]].pQueuePriorities[computeIndex]);
+                std::min(0.4f, queues[family[ASYNC]].pQueuePriorities[asyncIndex]);
+                std::min(0.2f, queues[family[TRANSFER]].pQueuePriorities[transferIndex]);
+            }
+        }
+
+        VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES, 
+            .pNext = nullptr,
+            .descriptorBindingPartiallyBound = VK_TRUE,
+            .runtimeDescriptorArray = VK_TRUE
+        };
+
+        VkPhysicalDeviceFeatures coreFeatures{
+            .sampleRateShading = VK_TRUE,
+            .samplerAnisotropy = VK_TRUE,
+        };
 
         VkDeviceCreateInfo info{ 
-            VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, &indexing_features, 0, 
-            static_cast<uint32_t>(queues.size()), queues.data(),
-            static_cast<uint32_t>(device_layers.size()), device_layers.data(), 
-            static_cast<uint32_t>(device_extensions.size()), device_extensions.data(),
-            &core_features
+            .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, 
+            .pNext = &indexingFeatures, 
+            .flags = 0, 
+            .queueCreateInfoCount = static_cast<uint32_t>(queues.size()),
+            .pQueueCreateInfos = queues.data(),
+        #ifdef ARAWN_DEBUG
+            .enabledLayerCount = static_cast<uint32_t>(deviceLayers.size()),
+            .ppEnabledLayerNames = deviceLayers.data(),
+        #else
+            .enabledLayerCount = nullptr,
+            .ppEnabledLayerNames = 0,
+        #endif
+            .enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
+            .ppEnabledExtensionNames = deviceExtensions.data(),
+            .pEnabledFeatures = &coreFeatures
         };
 
         VK_ASSERT(vkCreateDevice(gpu, &info, nullptr, &device));
-    }
-
-    { // get queues
-        vkGetDeviceQueue(device, graphics.family, 0, &graphics.queue);
-        vkGetDeviceQueue(device, compute.family, 0, &compute.queue);
-        vkGetDeviceQueue(device, present.family, 0, &present.queue);
-    }
-
-    { // init command pools
-        std::array<VkCommandPool, 3> cmd_pools;
-        VkCommandPoolCreateInfo info{ VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT };
-        for (uint32_t i = 0; i < unique_queue_families.size(); ++i) {
-            info.queueFamilyIndex = unique_queue_families[i];
-            VK_ASSERT(vkCreateCommandPool(device, &info, nullptr, &cmd_pools[i]));
+        
+        { // get queues
+            vkGetDeviceQueue(device, family[PRESENT], presentIndex, &queue[PRESENT]);
+            vkGetDeviceQueue(device, family[GRAPHICS], graphicsIndex, &queue[GRAPHICS]);
+            vkGetDeviceQueue(device, family[COMPUTE], computeIndex, &queue[COMPUTE]);
+            vkGetDeviceQueue(device, family[ASYNC], asyncIndex, &queue[ASYNC]);
+            vkGetDeviceQueue(device, family[TRANSFER], transferIndex, &queue[TRANSFER]);
         }
-
-        // get command pool from queue family
-        graphics.pool = cmd_pools[std::ranges::find(unique_queue_families, graphics.family) - unique_queue_families.begin()];
-        compute.pool = cmd_pools[std::ranges::find(unique_queue_families, compute.family) - unique_queue_families.begin()];
     }
 
+    { // init memory allocators
+        VmaAllocatorCreateInfo allocatorInfo {
+            .physicalDevice = gpu,
+            .device = device,
+            .instance = instance,
+            .vulkanApiVersion = VULKAN_VERSION,
+        };
+        vmaCreateAllocator(&allocatorInfo, &allocator);
+    }
+    
+    
+
+
+    /*
     { // init descriptor pools
         std::array<VkDescriptorPoolSize, 3> pool_sizes = { 
             VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 255 },
@@ -470,9 +715,12 @@ Engine::Engine() {
             VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &attachment_layout));
         }
     }
+    */
 }
 
-Engine::~Engine() {
+Engine::~Engine()
+{
+    /*
     vkDestroySampler(engine.device, sampler, nullptr);
 
     vkDestroyDescriptorSetLayout(engine.device, camera_layout, nullptr);
@@ -482,14 +730,13 @@ Engine::~Engine() {
     vkDestroyDescriptorSetLayout(engine.device, attachment_layout, nullptr);
     
     vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
+    */
 
-    vkDestroyCommandPool(device, graphics.pool, nullptr);
-    if (compute.family != graphics.family)
-        vkDestroyCommandPool(device, compute.pool, nullptr);
-
-    //if (present.family != graphics.family && present.family != compute.family) 
-    //    vkDestroyCommandPool(device, present.pool, nullptr);
-
+    // vkDestroyCommandPool(device, graphics.pool, nullptr);
+    // vkDestroyCommandPool(device, compute.pool, nullptr);
+    // vkDestroyCommandPool(device, transfer.pool, nullptr);
+    // vkDestroyCommandPool(device, async.pool, nullptr);
+    
     vkDestroyDevice(device, nullptr);
 
     vkDestroyInstance(instance, nullptr);
@@ -497,7 +744,9 @@ Engine::~Engine() {
     glfwTerminate();
 }
 
-uint32_t Engine::memory_type_index(VkMemoryRequirements& requirements, VkMemoryPropertyFlags memory_property_flags) {
+/*
+uint32_t Engine::memory_type_index(VkMemoryRequirements& requirements, VkMemoryPropertyFlags memory_property_flags)
+{
     VkPhysicalDeviceMemoryProperties properties;
     vkGetPhysicalDeviceMemoryProperties(engine.gpu, &properties);
 
@@ -512,7 +761,9 @@ uint32_t Engine::memory_type_index(VkMemoryRequirements& requirements, VkMemoryP
 
     throw std::runtime_error("no supported memory index found");
 }
+*/
 
+/*
 VkShaderModule Engine::create_shader(std::filesystem::path fp) const {
     std::ifstream file(fp, std::ios::ate | std::ios::binary);
     if (!file.is_open()) throw std::runtime_error("could not open file: " + fp.string());
@@ -531,9 +782,4 @@ VkShaderModule Engine::create_shader(std::filesystem::path fp) const {
     VK_ASSERT(vkCreateShaderModule(engine.device, &info, NULL, &shader));
     return shader;
 }
-
-
-void log_error(std::string_view msg, std::source_location loc) {
-    // I dont know if I've ever seen this function work...
-    std::cout << loc.file_name() << ":" << loc.line() << " - " << msg.data();
-}
+*/

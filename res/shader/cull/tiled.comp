@@ -8,19 +8,19 @@ const float PI      = 3.14;
 const float EPSILON = 0.01;
 
 struct Light { 
-	vec3 position; // position + radius
-	float radius;
-	vec3 colour;
-	float curve; 
+    vec3 position; // position + radius
+    float radius;
+    vec3 colour;
+    float curve; 
 };
 
 struct Frustum {
-	vec4 planes[4];
+    vec4 planes[4];
 };
 
 struct Cluster {
-	uint light_count;
-	uint indices[MAX_LIGHTS_PER_TILE];
+    uint light_count;
+    uint indices[MAX_LIGHTS_PER_TILE];
 };
 
 layout(std140, set=0, binding=0) uniform Camera {
@@ -28,8 +28,8 @@ layout(std140, set=0, binding=0) uniform Camera {
     mat4 view;
     mat4 inv_proj;
     uvec2 screen_size;
-	float near;
-	float far;
+    float near;
+    float far;
     vec3 eye;
 };
 
@@ -49,46 +49,46 @@ bool sphere_inside_plane(vec3 pos, float radius, vec4 plane);
 bool sphere_intersect_frustum(Light light, Frustum frustum, float z_near, float z_far);
 
 void main() {
-	float depth = texelFetch(depth_sampler, ivec2(min(gl_GlobalInvocationID.xy, screen_size.xy)), 0).r;
-	
-	float z_min = subgroupMin(depth);
-	float z_max = subgroupMax(depth);
-	
-	if (subgroupElect()) {
-		subgroup_z_min[gl_SubgroupID] = z_min;
-		subgroup_z_max[gl_SubgroupID] = z_max;
-	}
+    float depth = texelFetch(depth_sampler, ivec2(min(gl_GlobalInvocationID.xy, screen_size.xy)), 0).r;
+    
+    float z_min = subgroupMin(depth);
+    float z_max = subgroupMax(depth);
+    
+    if (subgroupElect()) {
+        subgroup_z_min[gl_SubgroupID] = z_min;
+        subgroup_z_max[gl_SubgroupID] = z_max;
+    }
 
-	barrier();
+    barrier();
 
-	if (gl_LocalInvocationID.xy != uvec2(0)) return;
+    if (gl_LocalInvocationID.xy != uvec2(0)) return;
 
-	uint workgroup_index = gl_WorkGroupID.x + 
-						   gl_WorkGroupID.y * gl_NumWorkGroups.x;
+    uint workgroup_index = gl_WorkGroupID.x + 
+                           gl_WorkGroupID.y * gl_NumWorkGroups.x;
 
-	z_min = subgroup_z_min[0];
-	z_max = subgroup_z_max[0];
+    z_min = subgroup_z_min[0];
+    z_max = subgroup_z_max[0];
 
-	for (uint i = 1; i < gl_NumSubgroups; ++i) {
-		z_min = min(z_min, subgroup_z_min[i]);
-		z_max = max(z_max, subgroup_z_max[i]);
-	}
+    for (uint i = 1; i < gl_NumSubgroups; ++i) {
+        z_min = min(z_min, subgroup_z_min[i]);
+        z_max = max(z_max, subgroup_z_max[i]);
+    }
 
 
-	z_min = linearize_depth(z_min);
-	z_max = linearize_depth(z_max);
-	
-	uint count = 0;
-	for (uint light_index = 0; light_index < light_count; ++light_index) {
-		if (sphere_intersect_frustum(lights[light_index], frustums[workgroup_index], z_min, z_max)) { 
-			clusters[workgroup_index].indices[count] = light_index;
-			if (++count == MAX_LIGHTS_PER_TILE) {
-				break;
-			}
-		}
-	}
+    z_min = linearize_depth(z_min);
+    z_max = linearize_depth(z_max);
+    
+    uint count = 0;
+    for (uint light_index = 0; light_index < light_count; ++light_index) {
+        if (sphere_intersect_frustum(lights[light_index], frustums[workgroup_index], z_min, z_max)) { 
+            clusters[workgroup_index].indices[count] = light_index;
+            if (++count == MAX_LIGHTS_PER_TILE) {
+                break;
+            }
+        }
+    }
 
-	clusters[workgroup_index].light_count = count;	
+    clusters[workgroup_index].light_count = count;    
 }
 
 float linearize_depth(float depth) {
@@ -96,19 +96,19 @@ float linearize_depth(float depth) {
 }
 
 bool sphere_inside_plane(vec3 pos, float rad, vec4 plane) {
-	return dot(plane.xyz, pos) - plane.w < -rad;
+    return dot(plane.xyz, pos) - plane.w < -rad;
 }
 
 bool sphere_intersect_frustum(Light light, Frustum frustum, float z_near, float z_far) {
-	vec4 position = (view * vec4(light.position.xyz, 1));
-	float z = -position.z;
-	if (z + light.radius < z_near || z - light.radius > z_far) { 
-		return false;
-	}
-	for (uint i = 0; i < 4; ++i) { // if sphere insides all frustum planes
-		if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[i])) {
-			return false;
-		}
-	}
-	return true;
+    vec4 position = (view * vec4(light.position.xyz, 1));
+    float z = -position.z;
+    if (z + light.radius < z_near || z - light.radius > z_far) { 
+        return false;
+    }
+    for (uint i = 0; i < 4; ++i) { // if sphere insides all frustum planes
+        if (sphere_inside_plane(position.xyz, light.radius, frustum.planes[i])) {
+            return false;
+        }
+    }
+    return true;
 }

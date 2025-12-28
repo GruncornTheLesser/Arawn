@@ -1,55 +1,92 @@
 #define ARAWN_IMPLEMENTATION
-#include "swapchain.h"
-#include "engine.h"
-#include <algorithm>
-#include "window.h"
-#include <ranges>
+#include <graphics/swapchain.h>
+#include <graphics/engine.h>
+#include <core/settings.h>
 #include <algorithm>
 
+using namespace Arawn;
 
-Swapchain::Swapchain()
+Swapchain::Swapchain(VkSurfaceKHR surface) : surface(surface), swapchain(VK_NULL_HANDLE) { }
+
+Swapchain::~Swapchain()
 {
-    // create surface
-    VK_ASSERT(glfwCreateWindowSurface(engine.instance, window.window, nullptr, &surface));
-    swapchain = nullptr;
+    if (swapchain != VK_NULL_HANDLE)
+    {
+        vkDestroySwapchainKHR(engine.device, swapchain, nullptr);
+    }
+
+    if (surface != VK_NULL_HANDLE) 
+    {
+        vkDestroySurfaceKHR(engine.instance, surface, nullptr);
+    }
 }
 
-Swapchain::~Swapchain() {
-    uint32_t image_count;
-    vkGetSwapchainImagesKHR(engine.device, swapchain, &image_count, nullptr);
-    
-    vkDestroySwapchainKHR(engine.device, swapchain, nullptr);
- 
-    vkDestroySurfaceKHR(engine.instance, surface, nullptr);
+
+Arawn::Swapchain::Swapchain(Swapchain&& other)
+{
+    format = other.format;
+    colour = other.colour;
+    present = other.present;
+
+    surface = other.surface;
+    swapchain = other.swapchain;
+
+    other.swapchain = VK_NULL_HANDLE;
+    other.surface = VK_NULL_HANDLE;
 }
 
-void Swapchain::recreate() {
-    // while minimized dont recreated the swapchain, wait for it to be unminimized
-    while (window.minimized()) { glfwWaitEvents(); } 
+Arawn::Swapchain& Arawn::Swapchain::operator=(Swapchain&& other)
+{
+    if (this == &other) 
+    {
+        return *this;
+    }
     
+    if (swapchain != VK_NULL_HANDLE)
+    {
+        vkDestroySwapchainKHR(engine.device, swapchain, nullptr);
+    }
+
+    if (surface != VK_NULL_HANDLE) 
+    {
+        vkDestroySurfaceKHR(engine.instance, surface, nullptr);
+    }
+
+    format = other.format;
+    colour = other.colour;
+    present = other.present;
+
+    surface = other.surface;
+    swapchain = other.swapchain;
+
+    other.swapchain = VK_NULL_HANDLE;
+    other.surface = VK_NULL_HANDLE;
+
+    return *this;
+}
+
+void Swapchain::recreate(uint32_t width, uint32_t height)
+{
     // get surface capabilities
     VkSurfaceCapabilitiesKHR capabilities;
     VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(engine.gpu, surface, &capabilities));
-
+    
     { // get swapchain extent
-        if (capabilities.currentExtent.width == 0xffffffff) {
-            extent = window.get_resolution();
-        } 
-        else {
-            extent = glm::clamp(
-                glm::uvec2(capabilities.currentExtent.width, capabilities.currentExtent.height), 
-                glm::uvec2(capabilities.minImageExtent.width, capabilities.minImageExtent.height), 
-                glm::uvec2(capabilities.maxImageExtent.width, capabilities.maxImageExtent.height));
+        if (capabilities.currentExtent.width != UINT32_MAX)
+        {
+            width  = std::clamp(capabilities.currentExtent.width,  capabilities.minImageExtent.width,  capabilities.maxImageExtent.width);
+            height = std::clamp(capabilities.currentExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
         }
     }
 
-    uint32_t image_count;
+    uint32_t imageCount;
     { // get image count
-        image_count = settings.frame_count;
-        image_count = std::max<uint32_t>(image_count, capabilities.minImageCount);
+        imageCount = settings.get<FrameCount>() == FrameCount::TRIPLE_BUFFERED ? 3 : 2;
+        imageCount = std::max<uint32_t>(imageCount, capabilities.minImageCount);
         
-        if (capabilities.maxImageCount != 0) {
-            image_count = std::min<uint32_t>(image_count, capabilities.maxImageCount);
+        if (capabilities.maxImageCount != 0)
+        {
+            imageCount = std::min<uint32_t>(imageCount, capabilities.maxImageCount);
         }
 
     }
@@ -60,22 +97,32 @@ void Swapchain::recreate() {
         std::vector<VkPresentModeKHR> supported(count);
         VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(engine.gpu, surface, &count, supported.data()));
 
-        if (settings.low_latency_enabled()) {
-            bool frame_skip_support;
-            if (settings.vsync_enabled()) {
-                frame_skip_support = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_MAILBOX_KHR) != supported.end();
-            } else {
-                frame_skip_support = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_FIFO_RELAXED_KHR) != supported.end();
+        if (settings.get<LowLatency>())
+        {
+            bool frameSkipSupport;
+            if (settings.get<VsyncMode>())
+            {
+                frameSkipSupport = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_MAILBOX_KHR) != supported.end();
+            }
+            else
+            {
+                frameSkipSupport = std::find(supported.begin(), supported.end(), VK_PRESENT_MODE_FIFO_RELAXED_KHR) != supported.end();
             } 
-            if (!frame_skip_support) {
-                settings.set_low_latency(LowLatency::DISABLED);
+            
+             // disable low latency if 
+            if (!frameSkipSupport)
+            {
+                settings.set<LowLatency>(LowLatency::DISABLED);
             }
         }
 
-        if (settings.vsync_enabled()) {
-            present_mode = settings.low_latency_enabled() ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
-        } else {
-            present_mode = settings.low_latency_enabled() ? VK_PRESENT_MODE_FIFO_RELAXED_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
+        if (settings.get<VsyncMode>())
+        {
+            present = settings.get<LowLatency>() ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
+        } 
+        else
+        {
+            present = settings.get<LowLatency>() ? VK_PRESENT_MODE_FIFO_RELAXED_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
         }
     }
 
@@ -85,8 +132,10 @@ void Swapchain::recreate() {
         std::vector<VkSurfaceFormatKHR> supported(count);
         VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(engine.gpu, surface, &count, supported.data()));
 
-        for (VkSurfaceFormatKHR& surface_format : supported) {
-            switch (surface_format.format) {
+        for (VkSurfaceFormatKHR& surface_format : supported)
+        {
+            switch (surface_format.format)
+            {
                 case(VK_FORMAT_R8G8B8A8_SRGB): break;
                 case(VK_FORMAT_B8G8R8A8_SRGB): break;
                 case(VK_FORMAT_R8G8B8A8_UNORM): break;
@@ -94,38 +143,44 @@ void Swapchain::recreate() {
                 default: continue;
             }
             format = surface_format.format;
-            colour_space = surface_format.colorSpace;
+            colour = surface_format.colorSpace;
         }
     }
 
-    // when recreating with old_swapchain it allows the driver to reuse resources where applicable
-    VkSwapchainKHR old_swapchain = swapchain;
-
+    // when recreating with oldSwapchain it allows the driver to reuse resources where applicable
+    VkSwapchainKHR oldSwapchain = swapchain;
+    
     { // init swapchain
-        // swapchain images are used by the queue and graphics operations
-        std::array<uint32_t, 2> queue_families = { engine.present.family, engine.graphics.family };
-        auto unique_queue_families = std::ranges::subrange(queue_families.begin(), std::ranges::unique(queue_families).begin());
+        // swapchain images are used by the graphics and present queues
+        uint32_t queueFamilies[2]{ engine.family[PRESENT], engine.family[GRAPHICS] };
+        bool sharedPresentGraphicsQueueFamily = engine.family[PRESENT] == engine.family[GRAPHICS];
 
         VkSwapchainCreateInfoKHR info{
-            VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, nullptr, 0, 
-            surface, image_count, format, colour_space, { extent.x, extent.y }, 1,
-            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, 
-            unique_queue_families.size() > 1 ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE, 
-            static_cast<uint32_t>(unique_queue_families.size()), unique_queue_families.data(), 
-            VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,  // can rotate screen etc, normally for mobile
-            VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,      // blend with other windows or not
-            present_mode, 
-            VK_TRUE,                                // skip draw to obscured pixels
-            old_swapchain
+            .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, 
+            .pNext = nullptr,
+            .surface = surface,
+            .minImageCount = imageCount, 
+            .imageFormat = format,
+            .imageColorSpace = colour, 
+            .imageExtent = { width, height }, 
+            .imageArrayLayers = 1,
+            .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, 
+            .imageSharingMode = sharedPresentGraphicsQueueFamily ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT, 
+            .queueFamilyIndexCount = static_cast<uint32_t>(sharedPresentGraphicsQueueFamily ? 1 : 2), 
+            .pQueueFamilyIndices = queueFamilies, 
+            .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,  // can rotate screen etc, normally for mobile
+            .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,      // blend with other windows or not
+            .presentMode = present,
+            .clipped = VK_TRUE, // skip draw to obscured pixels
+            .oldSwapchain = oldSwapchain
         };
 
         VK_ASSERT(vkCreateSwapchainKHR(engine.device, &info, nullptr, &swapchain));
     }
 
-    if (old_swapchain != nullptr) { // destroy old swapchain       
-        vkDestroySwapchainKHR(engine.device, old_swapchain, nullptr);
+    // destroy old swapchain
+    if (oldSwapchain != nullptr)
+    { 
+        vkDestroySwapchainKHR(engine.device, oldSwapchain, nullptr);
     }
-    
-    vkDeviceWaitIdle(engine.device);
 }
-

@@ -1,47 +1,48 @@
 #pragma once
-#include "vulkan.h"
-#include "settings.h"
-#include "dispatcher.h"
-#include "events.h"
-
-#include <vector>
+#include <graphics/swapchain.h>
+#include <core/settings.h>
 #include <chrono>
 
-class Window : public Dispatcher<Key::Event, Mouse::Event, Update> 
-{
-    using time_point = std::chrono::time_point<std::chrono::high_resolution_clock, std::chrono::nanoseconds>;
-    friend class Swapchain;
-public:
-    Window();
-    ~Window();
+namespace Arawn {
+    class Window {        
+        static void char_callback(GLFW_WINDOW window, unsigned int codepoint);
+        static void key_callback(GLFW_WINDOW window, int key, int scancode, int action, int mods);
+        static void mouse_move_callback(GLFW_WINDOW window, double xpos, double ypos);
+        static void mouse_scroll_callback(GLFW_WINDOW window, double xoffset, double yoffset);
+        static void mouse_button_callback(GLFW_WINDOW window, int button, int action, int mods);
     
-    Window(Window&&) = delete;
-    Window& operator=(Window&&) = delete;
+        using time = std::chrono::time_point<std::chrono::high_resolution_clock, std::chrono::nanoseconds>;
+        
+        static GLFW_WINDOW createWindow(const char* name);
+        static VK_TYPE(VkSurfaceKHR) createSurface(GLFW_WINDOW window);
+
+    public:
+        Window(const char* name);
+        ~Window();
+        
+        Window(Window&&);
+        Window& operator=(Window&&);
+
+        Window(const Window&) = delete;
+        Window& operator=(const Window&) = delete;
+        
+        void resize(uint32_t x, uint32_t y);
+        std::pair<uint32_t, uint32_t> size() const;
+        std::vector<std::pair<uint32_t, uint32_t>> enumResolutions(float ratio, float precision=0.1f) const;
     
-    Window(const Window&) = delete;
-    Window& operator=(const Window&) = delete;
+        void setDisplayMode(DisplayMode::Enum mode);
+        DisplayMode::Enum getDisplayMode() const;
     
-    void set_title(const char* title);
-    
-    void set_resolution(glm::uvec2 res);
-    auto get_resolution() const -> glm::uvec2;
-    auto enum_resolutions(float ratio = 4.0f / 3.0f, float precision=0.1f) const -> std::vector<glm::uvec2>;
+        void poll();
 
-    void set_display_mode(DisplayMode mode);
-    auto get_display_mode() const -> DisplayMode;
-    auto enum_display_modes() const -> std::vector<DisplayMode>;
+        void close();
 
-    void update();
-
-    // attributes
-    auto closed() const -> bool;
-    auto minimized() const -> bool;
-
-    auto mouse_position() const -> glm::vec2;
-
-private:
-    VK_TYPE(GLFWwindow*) window = nullptr;
-    time_point previous_frame;
-};
-
-extern Window window;
+        // attributes
+        bool closed() const;
+        bool minimized() const;
+    private:
+        time uptime;
+        GLFW_WINDOW window;
+        Swapchain swapchain;
+    };
+}

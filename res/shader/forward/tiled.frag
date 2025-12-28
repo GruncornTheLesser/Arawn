@@ -13,12 +13,12 @@ struct Light {
 };
 
 struct Frustum {
-	vec4 planes[4];
+    vec4 planes[4];
 };
 
 struct Cluster {
-	uint light_count;
-	uint indices[MAX_LIGHTS_PER_TILE];
+    uint light_count;
+    uint indices[MAX_LIGHTS_PER_TILE];
 };
 
 
@@ -27,8 +27,8 @@ layout (std140, set=0, binding=0) uniform Camera {
     mat4 view;
     mat4 inv_proj;
     uvec2 screen_size;
-	float near;
-	float far;
+    float near;
+    float far;
     vec3 eye;
 };
 
