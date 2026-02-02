@@ -51,11 +51,12 @@
 
 #endif
 
-#define VK_TYPE(TYPE) TYPE
+#define VK_TYPE(HANDLE) HANDLE
 #define VK_ENUM(ENUM) ENUM
 #define GLFW_WINDOW GLFWwindow*
+
 #else
-#define VK_TYPE(TYPE) std::nullptr_t
+#define VK_TYPE(HANDLE) std::nullptr_t
 #define VK_ENUM(ENUM) uint32_t
 #define GLFW_WINDOW std::nullptr_t
 #endif

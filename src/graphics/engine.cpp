@@ -8,21 +8,50 @@
 #include <algorithm>
 #include <cstring>
 
-
-using namespace Arawn;
-
+#ifndef VULKAN_VERSION
 #define VULKAN_VERSION VK_API_VERSION_1_2
+#endif 
 
-Engine::Engine()
+#ifdef ARAWN_DEBUG
+std::vector<const char*> instanceLayers = { "VK_LAYER_KHRONOS_validation" };
+std::vector<const char*> deviceLayers = { "VK_LAYER_KHRONOS_validation" };
+#endif
+
+std::vector<const char*> instanceExtensions = { VK_KHR_SURFACE_EXTENSION_NAME };
+std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+
+struct Arawn::DescriptorLayoutInfo {
+	friend bool operator==(const DescriptorLayoutInfo& lhs, const DescriptorLayoutInfo& rhs) {
+		if (lhs.bindings.size() != rhs.bindings.size()) {
+			return false;
+		}
+		
+		for (size_t i = 0; i < lhs.bindings.size(); ++i) {
+			if (lhs.bindings[i].binding != rhs.bindings[i].binding) return false;
+			if (lhs.bindings[i].descriptorType != rhs.bindings[i].descriptorType) return false;
+			if (lhs.bindings[i].descriptorCount != rhs.bindings[i].descriptorCount) return false;
+		}
+
+		return true;
+	}
+
+	friend auto operator<=>(const DescriptorLayoutInfo& lhs, const DescriptorLayoutInfo& rhs) {
+		if (lhs.bindings.size() != rhs.bindings.size()) return lhs.bindings.size() <=> rhs.bindings.size();
+
+		for (size_t i = 0; i < lhs.bindings.size(); ++i) {
+			if (lhs.bindings[i].binding != rhs.bindings[i].binding) return lhs.bindings[i].binding <=> rhs.bindings[i].binding;
+			if (lhs.bindings[i].descriptorType != rhs.bindings[i].descriptorType) return lhs.bindings[i].descriptorType <=> rhs.bindings[i].descriptorType;
+			if (lhs.bindings[i].descriptorCount != rhs.bindings[i].descriptorCount) return lhs.bindings[i].descriptorCount <=> rhs.bindings[i].descriptorCount;
+		}
+
+		return std::strong_ordering::equivalent;
+	}
+
+	std::vector<VkDescriptorSetLayoutBinding> bindings;
+};
+
+Arawn::Engine::Engine()
 {
-    #ifdef ARAWN_DEBUG
-    std::vector<const char*> instanceLayers = { "VK_LAYER_KHRONOS_validation" };
-    std::vector<const char*> deviceLayers = { "VK_LAYER_KHRONOS_validation" };
-    #endif
-
-    std::vector<const char*> instanceExtensions = { VK_KHR_SURFACE_EXTENSION_NAME };
-    std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-
     { // init glfw
         GLFW_ASSERT(glfwInit() == GLFW_TRUE);
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -500,243 +529,18 @@ Engine::Engine()
         };
         vmaCreateAllocator(&allocatorInfo, &allocator);
     }
-    
-    
-
-
-    /*
-    { // init descriptor pools
-        std::array<VkDescriptorPoolSize, 3> pool_sizes = { 
-            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 255 },
-            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 65535 },
-            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 65535 } // for textures
-        };
-
-        VkDescriptorPoolCreateInfo info{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT };
-        info.poolSizeCount = pool_sizes.size();
-        info.pPoolSizes = pool_sizes.data();
-        info.maxSets = 65535;
-
-        VK_ASSERT(vkCreateDescriptorPool(device, &info, nullptr, &descriptor_pool));
-    }
-
-    { // create sampler
-        VkPhysicalDeviceProperties properties;
-        vkGetPhysicalDeviceProperties(engine.gpu, &properties);
-
-        VkSamplerCreateInfo info{
-            VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, nullptr, 0, 
-            VK_FILTER_LINEAR, VK_FILTER_LINEAR, 
-            VK_SAMPLER_MIPMAP_MODE_LINEAR,
-            VK_SAMPLER_ADDRESS_MODE_REPEAT, 
-            VK_SAMPLER_ADDRESS_MODE_REPEAT, 
-            VK_SAMPLER_ADDRESS_MODE_REPEAT, 0.0f, 
-            VK_FALSE, 0.0f, 
-            VK_FALSE, VK_COMPARE_OP_NEVER, 0.0f, MAX_MIPMAP_LEVEL, 
-            VK_BORDER_COLOR_INT_OPAQUE_BLACK, VK_FALSE
-        };
- 
-        VK_ASSERT(vkCreateSampler(engine.device, &info, nullptr, &sampler));
-    }
-
-    { // init descriptor set layouts
-        { // camera layout
-            std::array<VkDescriptorSetLayoutBinding, 1> set_layout_binding;
-
-            VkDescriptorSetLayoutBinding& camera_binding = set_layout_binding[0];
-            camera_binding.binding = 0;
-            camera_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            camera_binding.descriptorCount = 1;
-            camera_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            camera_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutCreateInfo info{ 
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, 
-                set_layout_binding.size(), set_layout_binding.data() 
-            };
-            
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &camera_layout));
-        }
-
-        { // transform layout
-            std::array<VkDescriptorSetLayoutBinding, 1> set_layout_binding;
-
-            VkDescriptorSetLayoutBinding& transform_binding = set_layout_binding[0];
-            transform_binding.binding = 0;
-            transform_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            transform_binding.descriptorCount = 1;
-            transform_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            transform_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutCreateInfo info{
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0,
-                set_layout_binding.size(), set_layout_binding.data()
-            };
-            
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &transform_layout));
-        }
-
-        { // material layout
-            std::array<VkDescriptorSetLayoutBinding, 5> set_layout_binding;
-            std::array<VkDescriptorBindingFlags, 5> binding_flags;
-
-            VkDescriptorSetLayoutBinding& mat_binding = set_layout_binding[0];
-            mat_binding.binding = 0;
-            mat_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            mat_binding.descriptorCount = 1;
-            mat_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            mat_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorBindingFlags& mat_binding_flags = binding_flags[0];
-            mat_binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-
-            VkDescriptorSetLayoutBinding& albedo_binding = set_layout_binding[1];
-            albedo_binding.binding = 1;
-            albedo_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            albedo_binding.descriptorCount = 1;
-            albedo_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            albedo_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorBindingFlags& albedo_binding_flags = binding_flags[1];
-            albedo_binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-
-            VkDescriptorSetLayoutBinding& roughness_binding = set_layout_binding[2];
-            roughness_binding.binding = 2;
-            roughness_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            roughness_binding.descriptorCount = 1;
-            roughness_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            roughness_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorBindingFlags& roughness_binding_flags = binding_flags[2];
-            roughness_binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-
-            VkDescriptorSetLayoutBinding& metallic_binding = set_layout_binding[3];
-            metallic_binding.binding = 3;
-            metallic_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            metallic_binding.descriptorCount = 1;
-            metallic_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            metallic_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorBindingFlags& metallic_binding_flags = binding_flags[3];
-            metallic_binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-
-            VkDescriptorSetLayoutBinding& normal_binding = set_layout_binding[4];
-            normal_binding.binding = 4;
-            normal_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            normal_binding.descriptorCount = 1;
-            normal_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            normal_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorBindingFlags& normal_binding_flags = binding_flags[4];
-            normal_binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-
-            VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info{
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, nullptr, 
-                binding_flags.size(), binding_flags.data()
-            };
-
-            VkDescriptorSetLayoutCreateInfo info{
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, &binding_flags_info, 0,
-                set_layout_binding.size(), set_layout_binding.data()
-            };
-            
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &material_layout));
-        }
-
-        { // lights/clusters layout
-            std::array<VkDescriptorSetLayoutBinding, 4> set_layout_binding;
-            
-            VkDescriptorSetLayoutBinding& light_binding = set_layout_binding[0];
-            light_binding.binding = 0;
-            light_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            light_binding.descriptorCount = 1;
-            light_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            light_binding.pImmutableSamplers = nullptr;
-            
-            VkDescriptorSetLayoutBinding& frustum_binding = set_layout_binding[1];
-            frustum_binding.binding = 1;
-            frustum_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            frustum_binding.descriptorCount = 1;
-            frustum_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            frustum_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutBinding& cluster_binding = set_layout_binding[2];
-            cluster_binding.binding = 2;
-            cluster_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            cluster_binding.descriptorCount = 1;
-            cluster_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            cluster_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutBinding& depth_binding = set_layout_binding[3];
-            depth_binding.binding = 3;
-            depth_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            depth_binding.descriptorCount = 1;
-            depth_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            depth_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutCreateInfo info{
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, 
-                set_layout_binding.size(), set_layout_binding.data() 
-            };
-            
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &light_layout));
-            
-        }
-        
-        { // deferred input attachments
-            std::array<VkDescriptorSetLayoutBinding, 3> set_layout_binding;
-
-            VkDescriptorSetLayoutBinding& albedo_attachment_binding = set_layout_binding[0];
-            albedo_attachment_binding.binding = 0;
-            albedo_attachment_binding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-            albedo_attachment_binding.descriptorCount = 1;
-            albedo_attachment_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            albedo_attachment_binding.pImmutableSamplers = &sampler;
-
-            VkDescriptorSetLayoutBinding& normal_attachment_binding = set_layout_binding[1];
-            normal_attachment_binding.binding = 1;
-            normal_attachment_binding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-            normal_attachment_binding.descriptorCount = 1;
-            normal_attachment_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            normal_attachment_binding.pImmutableSamplers = &sampler;
-            
-            VkDescriptorSetLayoutBinding& position_attachment_binding = set_layout_binding[2];
-            position_attachment_binding.binding = 2;
-            position_attachment_binding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-            position_attachment_binding.descriptorCount = 1;
-            position_attachment_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            position_attachment_binding.pImmutableSamplers = nullptr;
-
-            VkDescriptorSetLayoutCreateInfo info{
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0,
-                set_layout_binding.size(), set_layout_binding.data()
-            };
-
-            VK_ASSERT(vkCreateDescriptorSetLayout(engine.device, &info, nullptr, &attachment_layout));
-        }
-    }
-    */
 }
 
-Engine::~Engine()
+
+
+Arawn::Engine::~Engine()
 {
-    /*
-    vkDestroySampler(engine.device, sampler, nullptr);
+    for (auto& [key, setLayout] : setLayouts) {
+        vkDestroyDescriptorSetLayout(device, setLayout, nullptr);
+    }
 
-    vkDestroyDescriptorSetLayout(engine.device, camera_layout, nullptr);
-    vkDestroyDescriptorSetLayout(engine.device, transform_layout, nullptr);
-    vkDestroyDescriptorSetLayout(engine.device, material_layout, nullptr);
-    vkDestroyDescriptorSetLayout(engine.device, light_layout, nullptr);
-    vkDestroyDescriptorSetLayout(engine.device, attachment_layout, nullptr);
-    
-    vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
-    */
+    vmaDestroyAllocator(allocator);
 
-    // vkDestroyCommandPool(device, graphics.pool, nullptr);
-    // vkDestroyCommandPool(device, compute.pool, nullptr);
-    // vkDestroyCommandPool(device, transfer.pool, nullptr);
-    // vkDestroyCommandPool(device, async.pool, nullptr);
-    
     vkDestroyDevice(device, nullptr);
 
     vkDestroyInstance(instance, nullptr);
@@ -744,42 +548,25 @@ Engine::~Engine()
     glfwTerminate();
 }
 
-/*
-uint32_t Engine::memory_type_index(VkMemoryRequirements& requirements, VkMemoryPropertyFlags memory_property_flags)
-{
-    VkPhysicalDeviceMemoryProperties properties;
-    vkGetPhysicalDeviceMemoryProperties(engine.gpu, &properties);
-
-    for (uint32_t i = 0; i < properties.memoryTypeCount; ++i)
-    {
-        if ((requirements.memoryTypeBits & (1 << i)) && 
-            (properties.memoryTypes[i].propertyFlags & memory_property_flags) == memory_property_flags)
-        {
-            return i;
-        }
+VkDescriptorSetLayout Arawn::Engine::setLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings) {
+    DescriptorLayoutInfo desc{ bindings };
+    auto it = setLayouts.find(desc);
+    if (it == setLayouts.end()) { 
+        return it->second;
     }
-
-    throw std::runtime_error("no supported memory index found");
-}
-*/
-
-/*
-VkShaderModule Engine::create_shader(std::filesystem::path fp) const {
-    std::ifstream file(fp, std::ios::ate | std::ios::binary);
-    if (!file.is_open()) throw std::runtime_error("could not open file: " + fp.string());
-
-    std::vector<char> buffer(static_cast<std::size_t>(file.tellg()));
-    file.seekg(0);
-    file.read(buffer.data(), buffer.size());
-    file.close();
-
-    VkShaderModuleCreateInfo info {
-        VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, nullptr, 0, 
-        buffer.size(), reinterpret_cast<uint32_t*>(buffer.data())
+    
+    VkDescriptorSetLayoutCreateInfo info{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .bindingCount = static_cast<uint32_t>(desc.bindings.size()),
+        .pBindings = desc.bindings.data(),
     };
+    
+    VkDescriptorSetLayout setLayout;
+    vkCreateDescriptorSetLayout(device, &info, nullptr, &setLayout);
 
-    VkShaderModule shader;
-    VK_ASSERT(vkCreateShaderModule(engine.device, &info, NULL, &shader));
-    return shader;
+    it = setLayouts.emplace_hint(it, std::move(desc), setLayout);
+
+    return setLayout;
 }
-*/

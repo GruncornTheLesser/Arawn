@@ -32,8 +32,10 @@ set(GLM_ENABLE_CXX_20 ON CACHE BOOL "")
 FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw GIT_TAG 3.4)
 FetchContent_Declare(glm GIT_REPOSITORY https://github.com/g-truc/glm GIT_TAG 1.0.1)
 FetchContent_Declare(vma GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git GIT_TAG v3.3.0)
+FetchContent_Declare(spirv GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Reflect.git GIT_TAG main)
+FetchContent_Declare(ecs GIT_REPOSITORY https://github.com/GruncornTheLesser/ECS.git GIT_TAG ecslite)
 
-FetchContent_MakeAvailable(glfw glm vma)
+FetchContent_MakeAvailable(glfw glm vma spirv ecs)
 
 # --------------------------
 # create library
@@ -48,11 +50,15 @@ PRIVATE
 	${glm_SOURCE_DIR} 
 	${vma_SOURCE_DIR}/include 
 	${Vulkan_INCLUDE_DIRS}
+	${spirv_SOURCE_DIR}
+	${ecs_SOURCE_DIR}/inc
 )
+
 target_link_libraries(arawn 
 PRIVATE
 	glfw
 	Vulkan::Vulkan
+    ecs_lib
 )
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")

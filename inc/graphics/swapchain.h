@@ -2,9 +2,18 @@
 #include <graphics/vulkan.h>
 
 namespace Arawn {
+    class Window;
+}
+
+namespace Arawn::Render {
+    class Graph;
+}
+
+namespace Arawn {
     class Swapchain {
+        friend class Render::Graph;
     public:
-        Swapchain(VK_TYPE(VkSurfaceKHR) surface);
+        Swapchain(Window& window);
 
         ~Swapchain();
         Swapchain(Swapchain&&);
@@ -13,8 +22,8 @@ namespace Arawn {
         Swapchain& operator=(const Swapchain&) = delete;
     
         void recreate(uint32_t width, uint32_t height);
-        
-    private:        
+
+    private:
         VK_ENUM(VkFormat) format;
         VK_ENUM(VkColorSpaceKHR) colour;
         VK_ENUM(VkPresentModeKHR) present;

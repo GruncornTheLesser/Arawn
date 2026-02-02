@@ -1,12 +1,14 @@
 #define ARAWN_IMPLEMENTATION
+#include <graphics/window.h>
 #include <graphics/swapchain.h>
 #include <graphics/engine.h>
 #include <core/settings.h>
 #include <algorithm>
-
 using namespace Arawn;
 
-Swapchain::Swapchain(VkSurfaceKHR surface) : surface(surface), swapchain(VK_NULL_HANDLE) { }
+Swapchain::Swapchain(Window& window) : swapchain(VK_NULL_HANDLE) { 
+    glfwCreateWindowSurface(engine.instance, window.window, NULL, &surface);
+}
 
 Swapchain::~Swapchain()
 {

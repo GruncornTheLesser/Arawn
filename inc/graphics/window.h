@@ -1,10 +1,12 @@
 #pragma once
-#include <graphics/swapchain.h>
+#include <graphics/vulkan.h>
 #include <core/settings.h>
 #include <chrono>
 
 namespace Arawn {
-    class Window {        
+    class Window {       
+        friend class Swapchain;
+        
         static void char_callback(GLFW_WINDOW window, unsigned int codepoint);
         static void key_callback(GLFW_WINDOW window, int key, int scancode, int action, int mods);
         static void mouse_move_callback(GLFW_WINDOW window, double xpos, double ypos);
@@ -43,6 +45,5 @@ namespace Arawn {
     private:
         time uptime;
         GLFW_WINDOW window;
-        Swapchain swapchain;
     };
 }

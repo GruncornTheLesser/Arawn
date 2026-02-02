@@ -47,7 +47,7 @@ VkSurfaceKHR Arawn::Window::createSurface(GLFW_WINDOW window)
     return surface;
 }
 
-Arawn::Window::Window(const char* name) : window(createWindow(name)), swapchain(createSurface(window))
+Arawn::Window::Window(const char* name) : window(createWindow(name))
 {
     assert(window);
 
@@ -63,7 +63,6 @@ Arawn::Window::Window(const char* name) : window(createWindow(name)), swapchain(
     uptime = std::chrono::high_resolution_clock::now();
 
     auto [width, height] = size();
-    swapchain.recreate(width, height);
 }
 
 Arawn::Window::~Window()
@@ -75,7 +74,7 @@ Arawn::Window::~Window()
 }
 
 
-Arawn::Window::Window(Window&& other) : window(other.window), swapchain(std::move(other.swapchain))
+Arawn::Window::Window(Window&& other) : window(other.window)
 {
     glfwSetWindowUserPointer(window, this);
     
@@ -88,9 +87,7 @@ Arawn::Window& Arawn::Window::operator=(Window&& other)
     {
         return *this;
     }
-    
-    swapchain = std::move(other.swapchain);
-    
+        
     if (window != nullptr)
     {
         glfwDestroyWindow(window);
