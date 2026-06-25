@@ -1,17 +1,19 @@
 #pragma once
-#include <cstdint>
 
 #ifdef ARAWN_IMPLEMENTATION
-#define VK_IMP(IMP, DEFAULT) IMP
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+
+
 #include <vk_mem_alloc.h>
-#include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
 
 #ifdef ARAWN_DEBUG
 #include <iostream>
-#define LOG(x) { std::cerr << x << std::endl; }
+#include <stdexcept>
+
+#define LOG(x) { std::cout << x << std::endl; }
 
 #define VK_ASSERT(x) {                                      \
     VkResult RESULT_VAL = (x);                              \
@@ -31,7 +33,6 @@
         throw std::runtime_error(std::string{ *desc });     \
     }                                                       \
 }
-
 #else
 #define LOG(x)
 
@@ -48,37 +49,17 @@
         throw std::runtime_error("glfw assert failed");     \
     }                                                       \
 }
-
 #endif
 
-#define VK_TYPE(HANDLE) HANDLE
+#define VK_TYPE(TYPE) TYPE
 #define VK_ENUM(ENUM) ENUM
 #define GLFW_WINDOW GLFWwindow*
 
 #else
-#define VK_TYPE(HANDLE) std::nullptr_t
+#include <cstdint>
+
+#define VK_TYPE(TYPE) void*
 #define VK_ENUM(ENUM) uint32_t
-#define GLFW_WINDOW std::nullptr_t
-#endif
+#define GLFW_WINDOW void*
 
-
-
-#ifndef MAX_FRAMES_IN_FLIGHT
-#define MAX_FRAMES_IN_FLIGHT 3
-#endif
-
-#ifndef MAX_LIGHTS
-#define MAX_LIGHTS 4096
-#endif
-
-#ifndef MAX_LIGHTS_PER_CLUSTER
-#define MAX_LIGHTS_PER_CLUSTER 63
-#endif
-
-#ifndef MAX_LIGHTS_PER_TILE
-#define MAX_LIGHTS_PER_TILE 127
-#endif
-
-#ifndef MAX_MIPMAP_LEVEL 
-#define MAX_MIPMAP_LEVEL 8
 #endif

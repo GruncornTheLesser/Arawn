@@ -1,7 +1,7 @@
 #define ARAWN_IMPLEMENTATION
-#include <graphics/resources/buffer.h>
 
-
+/*
+#include <render/resources/buffer.h>
 Arawn::Buffer::Buffer(std::size_t size, VK_ENUM(VkBufferUsageFlags) usage, VK_ENUM(VmaMemoryUsage) mem_usage) {
 	VkBufferCreateInfo info {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, 
@@ -40,3 +40,4 @@ Arawn::Buffer& Arawn::Buffer::operator=(Buffer&& other) noexcept {
 	
 	return *this;
 }
+*/

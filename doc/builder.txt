@@ -1,0 +1,529 @@
+/*
+
+#include <vulkan/vulkan_core.h>
+#define ARAWN_IMPLEMENTATION
+#include <graphics/render/builder.h>
+#include <numeric>
+#include <algorithm>
+
+using namespace Arawn;
+
+const uint32_t ACCESS_WRITE_MASK = 
+	VK_ACCESS_SHADER_WRITE_BIT | 
+	VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | 
+	VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | 
+	VK_ACCESS_TRANSFER_WRITE_BIT;
+
+const uint32_t ACCESS_READ_MASK = 
+	VK_ACCESS_SHADER_READ_BIT | 
+	VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | 
+	VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | 
+	VK_ACCESS_TRANSFER_READ_BIT;
+
+const uint32_t ACCESS_COLOR_ATTACHMENT_MASK = 
+	VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | 
+	VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+
+const uint32_t ACCESS_DEPTH_ATTACHMENT_MASK = 
+	VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | 
+	VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+
+const uint32_t ACCESS_TRANSFER_ATTACHMENT_MASK = 
+	VK_ACCESS_TRANSFER_READ_BIT | 
+	VK_ACCESS_TRANSFER_WRITE_BIT;
+
+
+const uint32_t ACCESS_ATTACHMENT_MASK =
+	VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | 
+	ACCESS_COLOR_ATTACHMENT_MASK | 
+	ACCESS_DEPTH_ATTACHMENT_MASK;
+
+
+VkPipelineStageFlags interpret_stage(VkAccessFlags access, Queue::Enum queue);
+VkImageLayout        interpret_layout(VkAccessFlags access);
+VkAccessFlags        interpret_write_access(VkAccessFlags access);
+
+uint32_t Arawn::Graph::Builder::add_task(const TaskInfo& info) {
+	uint32_t task_handle = task_registry.size();
+
+	task_registry.push_back({ info });
+	TaskMeta& task_info = task_registry.back();
+
+	auto add_dependency = [&](const ResourceMeta::TaskAccess& src, const ResourceMeta::TaskAccess& dst) {
+		auto& dst_task = task_registry[dst.task_id];
+		auto& src_task = task_registry[src.task_id];
+
+		if (auto it = task_deps.find({ src.task_id, dst.task_id }); it != task_deps.end()) {
+			auto& val = it->second;
+			val.src_stage  |= src.stage;
+			val.src_access |= src.access;
+			val.dst_stage  |= dst.stage;
+			val.dst_access |= dst.access;
+		}
+
+		if (dst_task.reachable.test(src.task_id)) {
+			for (auto& [key, val] : task_deps) {
+				if (key.dst_task_id == dst.task_id && task_registry[key.src_task_id].reachable.test(src.task_id)) {
+					val.src_stage  |= src.stage;
+					val.src_access |= src.access;
+					val.dst_stage  |= dst.stage;
+					val.dst_access |= dst.access;
+				}
+			}
+			return;
+		}
+
+		// check if new dependency make existing dependency obsolete
+		std::erase_if(task_deps, [&](const auto& dep) { 
+			if (dep.dst_task_id == dst.task_id && src_task.reachable.test(dep.srcSubpass)) {
+				--dst_task.dep_count;
+				return true;
+			}
+			return false;
+		});
+
+		// add new direct dependency
+		task_deps.insert({ { .src_task_id = src.task_id, .dst_task_id = dst.task_id }, { 
+			.src_stage  = src.stage,  .dst_stage  = dst.stage, 
+			.src_access = src.access, .dst_access = dst.access, 
+		}});
+		
+		// update reachability
+		dst_task.reachable.set(src.task_id);
+		dst_task.reachable |= src_task.reachable;
+
+		// propagate reachability
+		for (auto& task : task_registry) {
+			if (task.reachable.test(dst.task_id)) {
+				task.reachable |= dst_task.reachable;
+			}
+		}
+		++dst_task.dep_count;
+	};
+
+	for (auto& res_ref : task_info.resources) { 
+		auto& res = resource_registry[res_ref.handle];
+		
+		if (res_ref.stage == 0) {
+			res_ref.stage = interpret_stage(res_ref.access, info.queue);
+		}
+		
+		if (res.type == ResourceType::IMAGE) {
+			auto& img = image_registry[res.handle];
+			
+			if (res_ref.initial_layout == VK_IMAGE_LAYOUT_UNDEFINED) {
+				res_ref.initial_layout = img.layout;
+			}
+
+			if (res_ref.final_layout == VK_IMAGE_LAYOUT_UNDEFINED) {
+				res_ref.final_layout = res_ref.initial_layout;
+			}
+
+			if (res_ref.final_layout == VK_IMAGE_LAYOUT_UNDEFINED) {
+				res_ref.final_layout = interpret_layout(res_ref.access);
+			}
+
+			if (res_ref.final_layout != img.layout) {
+				img.layout = res_ref.final_layout;
+				res_ref.access |= interpret_write_access(res_ref.access);
+			}
+		} else { // if (res.type == ResourceType::BUFFER) {
+			// TODO: buffer
+		}
+
+		ResourceMeta::TaskAccess curr_access{ 
+			.task_id = task_handle, 
+			.access = res_ref.access, 
+			.stage = res_ref.stage
+		};
+		
+		if (res.last_write.task_id != UINT32_MAX) {
+			add_dependency(res.last_write, curr_access);
+		}
+
+		if (res_ref.access & ACCESS_WRITE_MASK) {
+			for (auto& last_read : res.last_reads) {
+				add_dependency(res.last_write, curr_access);
+			}
+			res.last_reads.clear();
+
+			res.last_write = curr_access;
+		}
+		else {
+			res.last_reads.push_back(curr_access);
+		}
+
+		res.access |= res_ref.access;
+		res.queues.set(task_info.queue);
+	}
+
+	return task_handle;
+}
+
+uint32_t Arawn::Graph::Builder::add_image(const ImageInfo& info) {
+	uint32_t image_handle = image_registry.size();
+	image_registry.push_back({ info });
+	
+	auto& image_info = image_registry.back();
+	if (image_info.sample_count == 0) {
+		image_info.sample_count = VK_SAMPLE_COUNT_1_BIT;
+	}
+
+	uint32_t resource_handle = resource_registry.size();
+	resource_registry.push_back({ .handle = image_handle, .type = ResourceType::IMAGE });
+	
+	return resource_handle;
+}
+
+uint32_t Arawn::Graph::Builder::add_buffer(const BufferInfo& info) {
+	uint32_t buffer_handle = buffer_registry.size();
+	buffer_registry.push_back({ info });
+	
+	uint32_t resource_handle = resource_registry.size();
+	resource_registry.push_back({ .handle = buffer_handle, .type = ResourceType::BUFFER });
+	
+	return resource_handle;
+}
+
+uint32_t Arawn::Graph::Builder::set_surface(const SurfaceInfo& info) {
+	uint32_t surface_handle = surface_registry.size();
+	surface_registry.push_back({ info });
+	
+	uint32_t image_handle = image_registry.size();
+	image_registry.push_back({ 
+		
+	});
+
+	uint32_t resource_handle = resource_registry.size();
+	resource_registry.push_back({ .handle = surface_handle, .type = ResourceType::IMAGE });
+
+	return resource_handle;
+}
+
+void Arawn::Graph::Builder::get_subpasses(uint32_t* subpass_tasks, uint32_t* subpass_count, VK_TYPE(VkSubpassDescription*) subpasses, uint32_t* ref_count, VK_TYPE(VkAttachmentReference*) refs, uint32_t* dep_count, VK_TYPE(VkSubpassDependency*) subpass_deps) {
+	if (subpasses == nullptr) {
+		uint32_t* task_end = subpass_tasks + task_registry.size();
+		
+		uint32_t subpass_index = 1;
+		task_registry[*subpass_tasks].subpass_id = 0;
+		
+		uint32_t next_pass_id, curr_pass_id = task_registry[*subpass_tasks].pass_id;
+		while (++subpass_tasks != task_end && ((next_pass_id = task_registry[*subpass_tasks].pass_id) == curr_pass_id)) { 
+			task_registry[*subpass_tasks].subpass_id = subpass_index++;
+		}
+
+		*subpass_count = subpass_index;
+		return;
+	}
+
+	if (refs == nullptr) {
+		uint32_t attachment_ref_count = 0;
+		std::for_each(subpass_tasks, subpass_tasks + *subpass_count, [&](uint32_t task_id) { 
+			auto& task = task_registry[task_id];
+			
+			auto& subpass = *subpasses;
+			++subpasses;
+			
+			subpass = {
+				.flags = 0, 
+				.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+			};
+
+			subpass.inputAttachmentCount = 0;
+			subpass.colorAttachmentCount = 0;
+
+			for (auto& res_ref : task.resources) {
+				if (res_ref.access & VK_ACCESS_INPUT_ATTACHMENT_READ_BIT) ++subpass.inputAttachmentCount;
+				if (res_ref.access & (VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT)) ++subpass.colorAttachmentCount;
+			}
+
+			attachment_ref_count += subpass.inputAttachmentCount + subpass.colorAttachmentCount;
+
+			auto multisampled = [&](const AccessInfo& res_ref)->bool { 
+				return (res_ref.access & ACCESS_COLOR_ATTACHMENT_MASK) && image_registry[resource_registry[res_ref.handle].handle].sample_count != VK_SAMPLE_COUNT_1_BIT;
+			};
+
+			if (std::ranges::any_of(task.resources, multisampled) && !std::ranges::all_of(task.resources, multisampled)) {
+				attachment_ref_count += subpass.colorAttachmentCount;
+				subpass.pResolveAttachments = static_cast<VkAttachmentReference*>(nullptr) + 1;
+			}
+
+			if (std::ranges::any_of(task.resources, [&](const auto& res_ref) { 
+				return (res_ref.access & (VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT));
+			})) {
+				++attachment_ref_count;
+				subpass.pDepthStencilAttachment = static_cast<VkAttachmentReference*>(nullptr) + 1; // flag attachment used
+			}
+		});
+
+		*ref_count = attachment_ref_count;
+		
+		*dep_count = std::accumulate(subpass_tasks, subpass_tasks + *subpass_count - 1, 0, [&](std::size_t acc, uint32_t task_id) { 
+			return acc + task_registry[task_id].dep_count;
+		});
+
+		return;
+	}
+
+	std::for_each(subpass_tasks, subpass_tasks + *subpass_count, [&](uint32_t task_id) { 
+		auto& task = task_registry[task_id];
+		auto& subpass = *subpasses++;
+		
+		uint32_t input_count = subpass.inputAttachmentCount;
+		uint32_t color_count = subpass.colorAttachmentCount;
+
+		bool depth = subpass.pDepthStencilAttachment;
+		bool resolve = subpass.pResolveAttachments;
+		
+		VkAttachmentReference* input_refs = nullptr;
+		VkAttachmentReference* resolve_refs = nullptr; 
+		VkAttachmentReference* color_refs = nullptr;
+		VkAttachmentReference* depth_ref = nullptr;
+		
+		if (input_count) {
+			input_refs = refs;
+			refs += input_count;
+		}
+		
+		if (color_count) {
+			color_refs = refs;   
+			refs += color_count;
+		}
+		
+		if (resolve) { 
+			resolve_refs = refs;
+			refs += color_count;
+		}
+		
+		if (depth) { 
+			depth_ref = refs;
+			refs += 1;
+		}
+
+		subpass.pInputAttachments = input_refs;
+		subpass.pColorAttachments = color_refs;
+		subpass.pResolveAttachments = resolve_refs;
+		subpass.pDepthStencilAttachment = depth_ref;
+
+		for (auto& res_ref : task.resources) {
+			auto& res = resource_registry[res_ref.handle];
+			
+			if (res_ref.access & ACCESS_ATTACHMENT_MASK) {
+				auto& img = image_registry[res.handle];
+
+				if (res_ref.access & VK_ACCESS_INPUT_ATTACHMENT_READ_BIT) {
+					*input_refs = { .attachment = img.attachment_index, .layout = res_ref.initial_layout, };
+					++input_refs;
+				} 
+				else if (res_ref.access & ACCESS_DEPTH_ATTACHMENT_MASK) {
+					*depth_ref = { .attachment = img.attachment_index, .layout = res_ref.initial_layout, };
+				}
+				else if (res_ref.access & ACCESS_COLOR_ATTACHMENT_MASK) {
+					if (!resolve_refs && img.sample_count == VK_SAMPLE_COUNT_1_BIT) {
+						*resolve_refs = { .attachment = img.attachment_index, .layout = res_ref.initial_layout, };
+						++resolve_refs;
+					} else {
+						*color_refs = { .attachment = img.attachment_index, .layout = res_ref.initial_layout, };
+						++color_refs;
+					}
+				}
+			}
+		}
+	});
+
+	std::for_each(subpass_tasks, subpass_tasks + *subpass_count - 1, [&](uint32_t task_id) { 
+		auto deps = get_dependants(task_deps, task_id);
+
+		std::ranges::for_each(deps, [&](auto& task_dep) {
+			*subpass_deps = {
+				.srcSubpass = task_registry[task_dep.srcSubpass].subpass_id,
+				.dstSubpass = task_registry[task_dep.dstSubpass].subpass_id,
+				.srcStageMask = task_dep.srcStageMask,
+				.dstStageMask = task_dep.dstStageMask,
+				.srcAccessMask = task_dep.srcAccessMask,
+				.dstAccessMask = task_dep.dstAccessMask,
+				.dependencyFlags = task_dep.dependencyFlags,
+			};
+			++subpass_deps;
+		});
+	});
+}
+
+void Arawn::Graph::Builder::get_attachments(uint32_t subpass_count, uint32_t* subpass_indices, uint32_t* attachment_count, VK_TYPE(VkAttachmentDescription*) attachments) {
+	if (attachments == nullptr) { // reserve renderpass attachments
+		*attachment_count = std::accumulate(subpass_indices, subpass_indices + subpass_count, 0, [&](uint32_t count, uint32_t task_id) { 
+			auto& task = task_registry[task_id];
+
+			count += std::accumulate(task.resources.begin(), task.resources.end(), count, [&](uint32_t count, auto& res_ref) { 
+				auto& res = resource_registry[res_ref.handle];
+				
+				if (res_ref.access & ACCESS_ATTACHMENT_MASK) {
+					auto& img = image_registry[res.handle];
+					
+					if (img.attachment_index == UINT32_MAX) {
+						img.attachment_index = count++;
+					}
+				}
+				return count;
+			});
+			return count;
+		});
+		
+		// reset attachments index
+		std::for_each(subpass_indices, subpass_indices + subpass_count, [&](auto task_id) { 
+			auto& task = task_registry[task_id];
+			
+			std::ranges::for_each(task.resources, [&](auto& res_ref) { 
+				auto& res = resource_registry[res_ref.handle];
+				
+				if (res_ref.access & ACCESS_ATTACHMENT_MASK) {
+					auto& img = image_registry[res.handle];
+
+					img.attachment_index = UINT32_MAX;
+				}
+			});
+
+		});
+
+		return;
+	} 
+	
+	uint32_t attachment_index = 0;
+	std::for_each(subpass_indices, subpass_indices + subpass_count, [&](uint32_t task_id) { 
+		auto& task = task_registry[task_id];
+		
+		std::for_each(task.resources.begin(), task.resources.end(), [&](const auto& res_ref) {
+			auto& res = resource_registry[res_ref.handle];
+			
+			if (res_ref.access & ACCESS_ATTACHMENT_MASK) {
+				auto& img = image_registry[res.handle];
+
+				if (img.attachment_index == UINT32_MAX) {
+					img.attachment_index = attachment_index++;
+					
+					auto& renderpass_attachment = attachments[img.attachment_index];
+					renderpass_attachment = VkAttachmentDescription{
+						.flags = 0,
+						.format = img.format,
+						.samples = static_cast<VkSampleCountFlagBits>(img.sample_count),
+						.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, // TODO: load and store ops
+						.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+						.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+						.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+						.initialLayout = res_ref.initial_layout,
+						.finalLayout = res_ref.final_layout,
+					};
+				} else {
+					auto& renderpass_attachment = attachments[img.attachment_index];
+					renderpass_attachment.finalLayout = res_ref.final_layout;
+				}
+			}
+		});
+	});
+}
+
+std::ranges::subrange<std::vector<VkSubpassDependency>::const_iterator> get_dependants(const std::vector<VkSubpassDependency>& deps, uint32_t src) {
+	auto first = std::lower_bound(deps.begin(), deps.end(), src, [](const VkSubpassDependency& lhs, uint32_t rhs)->bool { 
+		return lhs.srcSubpass < rhs; 
+	});
+	auto last = std::find_if(first, deps.end(), [&](const auto& dep) { 
+		return dep.srcSubpass != src;
+	});
+	return { first, last };
+}
+
+VkPipelineStageFlags interpret_stage(VkAccessFlags access, Queue::Enum queue)  {
+	VkPipelineStageFlags flags = 0;
+
+	if (access & (VK_ACCESS_INDEX_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT)) {
+		flags |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+	}
+
+	if (access & VK_ACCESS_INDIRECT_COMMAND_READ_BIT) {
+		flags |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+	}
+
+	if (access & (VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT)) {
+		if (queue == Queue::COMPUTE || queue == Queue::ASYNC) {
+			flags |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+		} else {
+			flags |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		}
+	}
+
+	if (access & (VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT)) {
+        flags |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    }
+    if (access & (VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)) {
+        flags |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    }
+    if (access & VK_ACCESS_INPUT_ATTACHMENT_READ_BIT) {
+        flags |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    }
+	if (access & (VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT)) {
+        flags |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+    }
+
+	if (flags == 0) {
+        flags = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    }
+
+	return flags;
+}
+
+VkImageLayout interpret_layout(VkAccessFlags access) {
+    if (access & VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT) {
+        return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    }
+    
+    if (access & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT) {
+        return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    }
+
+    if (access & VK_ACCESS_TRANSFER_WRITE_BIT) {
+        return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    }
+
+    if (access & VK_ACCESS_SHADER_WRITE_BIT) {
+        return VK_IMAGE_LAYOUT_GENERAL;
+    }
+
+    if (access & VK_ACCESS_TRANSFER_READ_BIT) {
+        return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    }
+
+    if (access & (VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT)) {
+        return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    }
+
+    if (access & VK_ACCESS_SHADER_READ_BIT) {
+        return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    }
+
+    if (access & VK_ACCESS_COLOR_ATTACHMENT_READ_BIT) {
+        return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    }
+
+    return VK_IMAGE_LAYOUT_UNDEFINED;
+}
+
+VkAccessFlags interpret_write_access(VkAccessFlags access) {
+	if (access & ACCESS_COLOR_ATTACHMENT_MASK) {
+        return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    }
+    
+    if (access & ACCESS_DEPTH_ATTACHMENT_MASK) {
+        return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    }
+
+    if (access & ACCESS_TRANSFER_ATTACHMENT_MASK) {
+        return VK_ACCESS_TRANSFER_WRITE_BIT;
+    }
+
+    if (access & VK_ACCESS_SHADER_WRITE_BIT) {
+        return VK_ACCESS_SHADER_WRITE_BIT;
+    }
+
+    return VK_IMAGE_LAYOUT_UNDEFINED;
+}
+*/

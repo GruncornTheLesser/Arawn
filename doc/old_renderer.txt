@@ -1,205 +1,4 @@
-#pragma once
-#include <graphics/engine.h>
-#include <graphics/swapchain.h>
-#include <memory_resource>
 
-namespace Arawn::Render {
-    
-    struct Resource {
-        enum Type { IMAGE, BUFFER, ATTACHMENT } type : 8;
-        uint32_t levels : 8, x : 16, y : 16, z : 16;
-        VK_ENUM(VkFormat) format;
-        union {
-            VK_TYPE(VkImage) image;
-            VK_TYPE(VkBuffer) buffer;
-        };
-        VK_TYPE(VkDeviceMemory) memory;
-    };
-    
-    class Task {
-        /*
-        VkSubmitInfo info {
-            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .pNext = nullptr, 
-            .waitSemaphoreCount = 0, .pWaitSemaphores = nullptr, .pWaitDstStageMask = nullptr, 
-            .commandBufferCount = 0, .pCommandBuffers = nullptr, 
-            .signalSemaphoreCount = 0, .pSignalSemaphores = nullptr
-        };
-
-        vkQueueSubmit(engine.graphics.queue, 1, &info, renderer.in_flight[frame_index]);
-        */
-    };
-
-    struct Builder {
-    private:
-        std::pmr::monotonic_buffer_resource cache;
-    public:
-        std::pmr::vector<Resource> resources{ &cache };
-        std::pmr::vector<Task>     tasks{ &cache };
-    };
-
-    class Graph {    
-        struct Task {
-            enum { PRESENT, GRAPHICS, COMPUTE, ASYNC, TRANSFER } queueType : 3;
-
-        };
-        
-        struct Node {
-            uint32_t waitCount, emitCount;
-            VK_TYPE(VkSemaphore)* wait;
-            VK_TYPE(VkSemaphore)* emit;
-        };
-
-        uint32_t frameCount, frameIndex, imageCount, imageIndex;
-        VK_TYPE(VkSemaphore)* frameReady;
-        VK_TYPE(VkFence)*     imageReady;
-
-        std::pmr::monotonic_buffer_resource cache;
-        std::pmr::vector<VK_TYPE(VkFence)> fences{ &cache };
-        std::pmr::vector<VK_TYPE(VkSemaphore)> semaphores{ &cache };
-        std::pmr::vector<VK_TYPE(VkPipeline)> pipelines{ &cache };
-        std::pmr::vector<VK_TYPE(VkPipelineLayout)> layouts{ &cache };
-        std::pmr::vector<VK_TYPE(VkImageView)> imageViews{ &cache };
-        std::pmr::vector<VK_TYPE(VkRenderPass)> renderpasses{ &cache };
-        std::pmr::vector<VK_TYPE(VkFramebuffer)> framebuffers{ &cache };
-        std::pmr::vector<VK_TYPE(VkCommandBuffer)> commands{ &cache };
-        std::pmr::vector<VK_TYPE(VkDescriptorSet)> descriptorSets{ &cache };
-
-        Graph(Builder& builder, uint32_t frameCount, uint32_t imageCount)
-         : frameCount(frameCount), frameIndex(0), imageCount(imageCount), imageIndex(0)
-        {
-            
-        }
-
-        void render() {
-            
-            { // acquire image 
-                // const uint64_t timeout = 1000000000;
-                // VK_ASSERT(vkWaitForFences(engine.device, 1, &frameReady[frame.index], true, timeout));
-                
-                // acquire next swapchain image
-                // VkResult res = vkAcquireNextImageKHR(engine.device, swapchain.swapchain, timeout, imageReady[frame.index], nullptr, &image.index);
-            
-                // { // recreate if out of date
-                //     if (res == VK_ERROR_OUT_OF_DATE_KHR)
-                //     {
-                //         recreate();
-                //         return;
-                //     }
-                //     else if (res != VK_SUBOPTIMAL_KHR)
-                //     {
-                //         VK_ASSERT(res);
-                //     }
-                // }
-            }
-
-            { // record command buffers
-                // multithread here, each component can record to a seperate worker
-            }
-
-            { // submit command buffers
-                // ...
-            }
-
-            { // present to screen
-                // VkPresentInfoKHR info{ 
-                //     VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, nullptr, 
-                //     1, &frame.ready[frame.index], // wait on frame ready
-                //     1, &swapchain.swapchain, &image.index, 
-                //     nullptr
-                // };
-                // VkResult res = vkQueuePresentKHR(engine.present.queue, &info);
-        
-                // if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR) {
-                //     return;
-                // } else {
-                //     VK_ASSERT(res);
-                // }
-            }
-        }
-    };
-
-    class Forward {
-    public:
-        Forward(Swapchain& swapchain);
-        ~Forward();
-        Forward(Forward&&);
-        Forward& operator=(Forward&&);
-
-        Forward(const Forward&) = delete;
-        Forward& operator=(const Forward&) = delete;
-        
-        void record();
-        void submit();
-
-    private:
-        // pipeline
-        struct {
-            VK_TYPE(VkPipeline) pipeline;
-            VK_TYPE(VkPipelineLayout) layout;
-        } pipeline;
-
-        // sync primitives
-        struct {
-            VK_TYPE(VkSemaphore) semaphore[MAX_FRAMES_IN_FLIGHT];
-            VK_TYPE(VkFence) fence[MAX_FRAMES_IN_FLIGHT];
-        } sync;
-        
-        // pass information
-        struct {
-            VK_TYPE(VkRenderpass) renderpass;
-            VK_TYPE(VkFramebuffer) framebuffer;
-            VK_TYPE(VkCommandBuffer) cmd[MAX_FRAMES_IN_FLIGHT];
-        } pass;
-    };
-}
-
-
-
-
-struct Texture;
-struct Buffer;
-
-class Renderer {
-public:
-    Renderer();
-    ~Renderer();
-    Renderer(Renderer&&);
-    Renderer& operator=(Renderer&&);
-    Renderer(const Renderer&) = delete;
-    Renderer& operator=(const Renderer&) = delete;
-
-    void draw();
-
-    void recreate();
-
-private:
-    struct { uint32_t x, y, z; } cluster_count;
-    uint32_t frame_index = 0;
-    uint32_t frame_count = 0;
-
-    // Texture msaa_attachment[MAX_FRAMES_IN_FLIGHT]; 
-    // Texture depth_attachment[MAX_FRAMES_IN_FLIGHT]; 
-    // Texture albedo_attachment[MAX_FRAMES_IN_FLIGHT]; 
-    // Texture normal_attachment[MAX_FRAMES_IN_FLIGHT]; 
-    // Texture position_attachment[MAX_FRAMES_IN_FLIGHT];
-    // Buffer light_attachment[MAX_FRAMES_IN_FLIGHT];
-    // Buffer cluster_attachment[MAX_FRAMES_IN_FLIGHT];
-    // Buffer frustum_buffer;
-    
-    VK_TYPE(VkDescriptorSet) light_set[MAX_FRAMES_IN_FLIGHT];
-    VK_TYPE(VkDescriptorSet) defer_set[MAX_FRAMES_IN_FLIGHT];
-
-    VK_TYPE(VkFence)         in_flight[MAX_FRAMES_IN_FLIGHT];
-
-    VK_TYPE(VkSemaphore) image_ready[MAX_FRAMES_IN_FLIGHT];
-    VK_TYPE(VkSemaphore) frame_ready[MAX_FRAMES_IN_FLIGHT];
-    VK_TYPE(VkSemaphore) depth_ready_graphic[MAX_FRAMES_IN_FLIGHT];
-    VK_TYPE(VkSemaphore) depth_ready_compute[MAX_FRAMES_IN_FLIGHT];
-    VK_TYPE(VkSemaphore) light_ready[MAX_FRAMES_IN_FLIGHT];
-    VK_TYPE(VkSemaphore) defer_ready[MAX_FRAMES_IN_FLIGHT];
-};
-
-/* headers
 class CullingPass {
 public:
     CullingPass() { cmd_buffer[0] = nullptr; }
@@ -296,7 +95,7 @@ public:
 };
 */
 
-/*
+/* .cpp
 CullingPass::CullingPass(Renderer& renderer) {
     { // create cmd buffers
         VkCommandBufferAllocateInfo info{ 
@@ -324,7 +123,7 @@ CullingPass::CullingPass(Renderer& renderer) {
         VkShaderModule comp_module;
         if (settings.culling_mode() == CullingMode::TILED) {
             if (settings.msaa_enabled()) {
-                comp_module = engine.create_shader("res/import/shader/cull/tiled_ms.comp.spv");
+                comp_module = engine.create_shader("res_info/import/shader/cull/tiled_ms.comp.spv");
             } else {
                 comp_module = engine.create_shader("res/import/shader/cull/tiled.comp.spv");
             }
@@ -710,8 +509,8 @@ void DeferredPass::record(uint32_t frame_index, uint32_t current_version) {
 
         VkRenderPassBeginInfo info{
             VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, nullptr, 
-            renderpass, framebuffer[frame_index], { { 0, 0 }, 
-            { swapchain.extent.x, swapchain.extent.y } }, 
+            renderpass, framebuffer[frame_index], 
+            { { 0, 0 }, { swapchain.extent.x, swapchain.extent.y } }, 
             clear.size(), clear.data()
         };
 
@@ -1880,4 +1679,3 @@ void Renderer::draw() {
     
     frame_index = (frame_index + 1) % settings.frame_count; // increment frame
 }
-*/
