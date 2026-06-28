@@ -35,7 +35,7 @@ FetchContent_Declare(vma GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndS
 FetchContent_Declare(spirv GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Reflect.git GIT_TAG main)
 FetchContent_Declare(ecs GIT_REPOSITORY https://github.com/GruncornTheLesser/ECS.git GIT_TAG ecslite)
 
-FetchContent_MakeAvailable(glfw glm vma spirv) # ecs
+FetchContent_MakeAvailable(glfw glm vma spirv ecs)
 
 # --------------------------
 # create library
@@ -47,7 +47,7 @@ target_include_directories(arawn
 PUBLIC 
 	${CMAKE_CURRENT_SOURCE_DIR}/inc 
 	${glm_SOURCE_DIR} 
-	# ${ecs_SOURCE_DIR}/inc
+	${ecs_SOURCE_DIR}/inc
 PRIVATE 
 	${vma_SOURCE_DIR}/include 
 	${Vulkan_INCLUDE_DIRS}
