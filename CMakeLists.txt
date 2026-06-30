@@ -63,6 +63,11 @@ PRIVATE
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	target_compile_definitions(arawn PUBLIC ARAWN_DEBUG=1)
+
+	target_compile_options(arawn PRIVATE
+		"-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/="
+		"-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/="
+	)
 endif()
 
 # --------------------------
