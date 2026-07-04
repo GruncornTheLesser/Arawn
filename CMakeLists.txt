@@ -37,6 +37,26 @@ FetchContent_Declare(ecs GIT_REPOSITORY https://github.com/GruncornTheLesser/ECS
 
 FetchContent_MakeAvailable(glfw glm vma spirv ecs)
 
+option(ENABLE_INFO_LOG "Enable info logging" OFF)
+option(ENABLE_DEBUG_LOG "Enable debug logging" OFF)
+option(ENABLE_WARNING_LOG "Enable warning logging" OFF)
+option(ENABLE_ERROR_LOG "Enable error logging" OFF)
+
+if(ENABLE_INFO_LOG)
+    target_compile_definitions(arawn PRIVATE ARAWN_INFO_LOG)
+endif()
+
+if(ENABLE_DEBUG_LOG)
+    target_compile_definitions(arawn PRIVATE ARAWN_DEBUG_LOG)
+endif()
+
+if(ENABLE_WARNING_LOG)
+    target_compile_definitions(arawn PRIVATE ARAWN_WARNING_LOG)
+endif()
+
+if(ENABLE_ERROR_LOG)
+    target_compile_definitions(arawn PRIVATE ARAWN_ERROR_LOG)
+endif()
 # --------------------------
 # create library
 # --------------------------
@@ -49,6 +69,7 @@ PUBLIC
 	${glm_SOURCE_DIR} 
 	${ecs_SOURCE_DIR}/inc
 PRIVATE 
+	${glfw_SOURCE_DIR}/include 
 	${vma_SOURCE_DIR}/include 
 	${Vulkan_INCLUDE_DIRS}
 	${spirv_SOURCE_DIR}
