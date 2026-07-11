@@ -14,17 +14,17 @@
 #define VK_TYPE(TYPE) TYPE
 
 #if ARAWN_DEBUG
-#define ARAWN_LOG_STRING(LEVEL, MESSAGE) std::format("[{}] - {}:{} - {}(): {}", #LEVEL, __FILE__, __LINE__, __func__, MESSAGE)
+#define ARAWN_LOG_MESSAGE(LEVEL, MESSAGE) std::format("[{}] - {}:{} - {}(): {}", #LEVEL, __FILE__, __LINE__, __func__, MESSAGE)
 #else
-#define ARAWN_LOG_STRING(LEVEL, MESSAGE) std::format("[{}]: {}", LEVEL, MESSAGE)
+#define ARAWN_LOG_MESSAGE(LEVEL, MESSAGE) std::format("[{}]: {}", LEVEL, MESSAGE)
 #endif
 
-#define ARAWN_LOG_IMPL(LEVEL, STREAM, MSG) STREAM << ARAWN_LOG_STRING(LEVEL, MSG) << std::endl;
+#define ARAWN_LOG_IMPL(LEVEL, STREAM, MSG) STREAM << ARAWN_LOG_MESSAGE(LEVEL, MSG) << std::endl;
 
-#ifdef ARAWN_LOG_INFO
-#define ARAWN_LOG_INFO_IMPL(MSG) ARAWN_LOG_IMPL(INFO, std::cout, MSG)
+#ifdef ARAWN_LOG_VERBOSE
+#define ARAWN_LOG_VERBOSE_IMPL(MSG) ARAWN_LOG_IMPL(VERBOSE, std::cout, MSG)
 #else
-#define ARAWN_LOG_INFO_IMPL(MSG)
+#define ARAWN_LOG_VERBOSE_IMPL(MSG)
 #endif
 
 #ifdef ARAWN_LOG_DEBUG
@@ -34,20 +34,20 @@
 #endif
 
 #ifdef ARAWN_LOG_WARNING
-#define ARAWN_LOG_WARNING_IMPL(MSG) ARAWN_LOG_IMPL(WARNING, std::cerr, MSG)
+#define ARAWN_LOG_WARNING_IMPL(MSG) ARAWN_LOG_IMPL(WARNING, std::cout, MSG)
 #else
 #define ARAWN_LOG_WARNING_IMPL(MSG)
 #endif
 
 #ifdef ARAWN_LOG_ERROR
-#define ARAWN_LOG_ERROR_IMPL(MSG) ARAWN_LOG_IMPL(ERROR, std::cerr, MSG)
+#define ARAWN_LOG_ERROR_IMPL(MSG) ARAWN_LOG_IMPL(ERROR, std::cout, MSG)
 #else
 #define ARAWN_LOG_ERROR_IMPL(MSG)
 #endif
 
 #define ARAWN_LOG(LEVEL, MESSAGE) ARAWN_LOG_##LEVEL##_IMPL(MESSAGE)
 
-#define ARAWN_ASSERT(STATEMENT, MESSAGE) if (STATEMENT) { } else [[unlikely]] { throw std::runtime_error(ARAWN_LOG_STRING(ERROR, MESSAGE)); }
+#define ARAWN_ASSERT(STATEMENT, MESSAGE) if (STATEMENT) { } else [[unlikely]] { throw std::runtime_error(ARAWN_LOG_MESSAGE(ERROR, MESSAGE)); }
 #define VK_ASSERT(STATEMENT) ARAWN_ASSERT(VkResult statement_result = STATEMENT; statement_result == VK_SUCCESS, string_VkResult(statement_result))
 
 #else

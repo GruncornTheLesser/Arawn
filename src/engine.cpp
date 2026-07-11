@@ -39,11 +39,10 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugger(VkDebugUtilsMessageSeverityFlagBit
 	}
 	
 	switch (severity) {
-		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT: ARAWN_LOG(INFO, info->pMessage) break;
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: ARAWN_LOG(VERBOSE, info->pMessage) break;
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT: ARAWN_LOG(VERBOSE, info->pMessage) break;
 		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: ARAWN_LOG(WARNING, info->pMessage) break;
-		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT: ARAWN_LOG(ERROR, info->pMessage) 
-			throw "";
-		break;
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT: throw std::runtime_error(ARAWN_LOG_MESSAGE(ERROR, info->pMessage));
 		default: break;
 	}
 	
@@ -54,13 +53,15 @@ PFN_vkDestroyDebugUtilsMessengerEXT destroyDebugUtilsMessengerEXT = nullptr;
 #endif
 
 Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) { 
+
+	// glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
 	if (!glfwInit()) throw std::runtime_error("error: failed to init glfw");
 
 	{ // create instance
-		uint32_t vulkanVersion = VK_API_VERSION_1_3;
+		uint32_t vulkanVersion = VK_API_VERSION_1_4;
 		
-		ARAWN_LOG(INFO, std::format("application version={}.{}.{}", app.version.major, app.version.minor, app.version.patch));
-		ARAWN_LOG(INFO, std::format("vulkan api version={}.{}.{}", VK_API_VERSION_MAJOR(vulkanVersion), VK_API_VERSION_MINOR(vulkanVersion), VK_API_VERSION_PATCH(vulkanVersion)));
+		ARAWN_LOG(VERBOSE, std::format("application version={}.{}.{}", app.version.major, app.version.minor, app.version.patch));
+		ARAWN_LOG(VERBOSE, std::format("vulkan api version={}.{}.{}", VK_API_VERSION_MAJOR(vulkanVersion), VK_API_VERSION_MINOR(vulkanVersion), VK_API_VERSION_PATCH(vulkanVersion)));
 		
 		std::vector<const char*> requiredExts = instanceExtensions;
 		uint32_t glfwExtCount;
@@ -75,7 +76,7 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 			return std::strcmp(lhs, rhs) == 0;
 		}).end(), requiredExts.end());
 		
-		ARAWN_LOG(DEBUG, std::format("required instance extensions={}", requiredExts));
+		ARAWN_LOG(DEBUG, std::format("instance extensions={}", requiredExts));
 				
 		VkApplicationInfo appInfo{
 			.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, 
@@ -114,11 +115,32 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 			.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
 			.pNext = nullptr,
 			.flags = 0, 
-			.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+			.messageSeverity = 0,
 			.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
 			.pfnUserCallback = vulkanDebugger,
 			.pUserData = nullptr
 		};
+
+
+#ifdef ARAWN_LOG_VERBOSE
+		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+#endif
+
+#ifdef ARAWN_LOG_DEBUG
+		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
+#endif
+
+#ifdef ARAWN_LOG_WARNING
+		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
+#endif
+
+#ifdef ARAWN_LOG_ERROR
+		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+#endif
+
+
+
+		
 		
 		VK_ASSERT(createDebugUtilsMessengerEXT(instance, &info, nullptr, &messenger));
 	}
@@ -129,7 +151,7 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 		glfwWindowHint(GLFW_REFRESH_RATE, display.refreshRate);
 		
-		// ARAWN_LOG(INFO, std::format("resolution=[{}, {}]", display.resolution.x, display.resolution.y));
+		ARAWN_LOG(VERBOSE, std::format("resolution={{ {}, {} }}", display.resolution.x, display.resolution.y));
 
 		switch(display.mode) {
 		case DisplayMode::WINDOWED: {
@@ -184,7 +206,6 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 			throw std::runtime_error("");
 		}
 		VK_ASSERT(glfwCreateWindowSurface(instance, window, nullptr, &surface));
-
 	}
 
 	{ // select gpu
@@ -298,7 +319,7 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 		
 		VkPhysicalDeviceProperties properties;
 		vkGetPhysicalDeviceProperties(gpu, &properties);
-		ARAWN_LOG(INFO, std::format("gpu=\"{}\"", properties.deviceName));
+		ARAWN_LOG(VERBOSE, std::format("gpu=\"{}\"", properties.deviceName));
 	}
 
 	{ // select device
@@ -394,15 +415,17 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 	
 		}
 
-		// ARAWN_LOG(INFO, std::format("graphics queue = {{ family = {}, index = {}, priority = {} }}", queue.graphics.family, queue.graphics.index, queueInfos[queue.graphics.family].pQueuePriorities[queue.graphics.index]));
-		// ARAWN_LOG(INFO, std::format("compute queue = {{ family = {}, index = {}, priority = {} }}", queue.compute.family, queue.compute.index, queueInfos[queue.compute.family].pQueuePriorities[queue.compute.index]));
-		// ARAWN_LOG(INFO, std::format("transfer queue = {{ family = {}, index = {}, priority = {} }}", queue.transfer.family, queue.transfer.index, queueInfos[queue.transfer.family].pQueuePriorities[queue.transfer.index]));
-		// ARAWN_LOG(INFO, std::format("present queue = {{ family = {}, index = {}, priority = {} }}", queue.present.family, queue.present.index, queueInfos[queue.present.family].pQueuePriorities[queue.present.index]));
+		// ARAWN_LOG(VERBOSE, std::format("graphics queue = {{ family = {}, index = {}, priority = {} }}", queue.graphics.family, queue.graphics.index, queueInfos[queue.graphics.family].pQueuePriorities[queue.graphics.index]));
+		// ARAWN_LOG(VERBOSE, std::format("compute queue = {{ family = {}, index = {}, priority = {} }}", queue.compute.family, queue.compute.index, queueInfos[queue.compute.family].pQueuePriorities[queue.compute.index]));
+		// ARAWN_LOG(VERBOSE, std::format("transfer queue = {{ family = {}, index = {}, priority = {} }}", queue.transfer.family, queue.transfer.index, queueInfos[queue.transfer.family].pQueuePriorities[queue.transfer.index]));
+		// ARAWN_LOG(VERBOSE, std::format("present queue = {{ family = {}, index = {}, priority = {} }}", queue.present.family, queue.present.index, queueInfos[queue.present.family].pQueuePriorities[queue.present.index]));
 
 		// reduce queues -> loses family mapping
 		std::erase_if(queueInfos, [](const auto& queueInfo) {
 			return queueInfo.queueCount == 0;
 		});
+
+		ARAWN_LOG(DEBUG, std::format("device extensions={}", deviceExtensions));
 
 		VkPhysicalDeviceFeatures features{ };
 		VkDeviceCreateInfo info {
@@ -465,18 +488,29 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 			.surface = surface,
 			.imageArrayLayers = 1,
 			.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-			.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
 			.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
 			.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
 			.clipped = VK_TRUE,
 			.oldSwapchain = nullptr,
 		};
 
-		createInfo.imageExtent = { display.resolution.x, display.resolution.y };
+		ARAWN_ASSERT(((capabilities.supportedUsageFlags & createInfo.imageUsage) == createInfo.imageUsage), "swapchain image usage not supported");
+
+		std::array<uint32_t, 2> families = { queue.graphics.family, queue.present.family };
+		if (queue.graphics.family == queue.present.family) {
+			createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		} else {
+			createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+			createInfo.pQueueFamilyIndices = families.data();
+			createInfo.queueFamilyIndexCount = 2;
+		}
+
 		if (capabilities.currentExtent.width != UINT32_MAX) {
+			createInfo.imageExtent = capabilities.currentExtent;
+		} else {
 			createInfo.imageExtent = {
-				std::clamp(capabilities.currentExtent.width,  capabilities.minImageExtent.width,  capabilities.maxImageExtent.width),
-			 	std::clamp(capabilities.currentExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
+				std::clamp(display.resolution.x, capabilities.minImageExtent.width,  capabilities.maxImageExtent.width),
+				std::clamp(display.resolution.y, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
 			};
 		}
 		
@@ -486,7 +520,6 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 		}
 
 		uint32_t presentModeCount;
-		
 		VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &presentModeCount, nullptr));
 		std::vector<VkPresentModeKHR> presentModes(presentModeCount);
 		VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &presentModeCount, presentModes.data()));
@@ -522,16 +555,14 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 			}
 		}
 
-		// ARAWN_LOG(INFO, std::format("swapchain present mode={}", string_VkPresentModeKHR(createInfo.presentMode)));
-
 		uint32_t formatCount;
 		VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &formatCount, nullptr));
-		std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
-		VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &formatCount, surfaceFormats.data()));
+		std::vector<VkSurfaceFormatKHR> supported(formatCount);
+		VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &formatCount, supported.data()));
 		
-		createInfo.imageFormat = surfaceFormats.front().format;
-		createInfo.imageColorSpace = surfaceFormats.front().colorSpace;
-		for (const auto& candidate : surfaceFormats) { // if preferred format
+		createInfo.imageFormat = supported.front().format;
+		createInfo.imageColorSpace = supported.front().colorSpace;
+		for (const auto& candidate : supported) { // if preferred format
 			switch (candidate.format)
 			{
 				case(VK_FORMAT_R8G8B8A8_SRGB): break;
@@ -543,11 +574,16 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 
 			createInfo.imageFormat = candidate.format;
 			createInfo.imageColorSpace = candidate.colorSpace;
+
+			break;
 		}
 
-		// ARAWN_LOG(INFO, std::format("swapchain image format={}", string_VkFormat(createInfo.imageFormat)));
+		ARAWN_LOG(VERBOSE, std::format("swapchain extent = {{ {}, {} }}", createInfo.imageExtent.width, createInfo.imageExtent.height))
+		ARAWN_LOG(VERBOSE, std::format("swapchain present mode={}", string_VkPresentModeKHR(createInfo.presentMode)));
+		ARAWN_LOG(VERBOSE, std::format("swapchain image format={}", string_VkFormat(createInfo.imageFormat)));
+		ARAWN_LOG(VERBOSE, std::format("swapchain image color space={}", string_VkColorSpaceKHR(createInfo.imageColorSpace)));
 		
-		VK_ASSERT(vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain))
+		VK_ASSERT(vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain));
 	}
 
 	{ // allocate resource context

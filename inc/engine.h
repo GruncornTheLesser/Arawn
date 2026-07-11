@@ -26,10 +26,6 @@ namespace Arawn { // settings.h
 	};
 }
 
-
-
-
-
 namespace Arawn {
 	class Engine {
 	public:
