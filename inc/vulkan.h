@@ -13,10 +13,10 @@
 #define VK_ENUM(ENUM) ENUM
 #define VK_TYPE(TYPE) TYPE
 
-#if ARAWN_DEBUG
+#ifdef ARAWN_DEBUG
 #define ARAWN_LOG_MESSAGE(LEVEL, MESSAGE) std::format("[{}] - {}:{} - {}(): {}", #LEVEL, __FILE__, __LINE__, __func__, MESSAGE)
 #else
-#define ARAWN_LOG_MESSAGE(LEVEL, MESSAGE) std::format("[{}]: {}", LEVEL, MESSAGE)
+#define ARAWN_LOG_MESSAGE(LEVEL, MESSAGE) std::format("[{}]: {}", #LEVEL, MESSAGE)
 #endif
 
 #define ARAWN_LOG_IMPL(LEVEL, STREAM, MSG) STREAM << ARAWN_LOG_MESSAGE(LEVEL, MSG) << std::endl;

@@ -4,599 +4,51 @@
 #include <vector>
 #include <ranges>
 
-const std::vector<const char*> instanceExtensions = {
-#if ARAWN_DEBUG
-	VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+constexpr std::array instanceExtensions = { 
+#ifdef ARAWN_DEBUG
+	VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 #endif
+	VK_KHR_SURFACE_EXTENSION_NAME
 };
-const std::vector<const char*> deviceExtensions = {
+constexpr std::array deviceExtensions = {
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 	VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
 };
-
-const std::vector<const char*> debugLayers {
-#if ARAWN_DEBUG
+#ifdef ARAWN_DEBUG
+constexpr std::array debugLayers = {
 	"VK_LAYER_KHRONOS_validation"
-#endif
 };
-
-template<typename ... Ts>
-uint32_t passIndex(const Ts& ... ctxs) {
-	uint32_t i = 0, w = 1;
-	([&]{ i += ctxs.index * w; w *= ctxs.count; }(), ...);
-	return i;
-}
-
-#if ARAWN_DEBUG
-VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugger(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* info, void* userData) {
-	const char* typeName = "";
-	switch(type) {
-    	case VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT: typeName = "general"; break;
-    	case VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT: typeName = "validation"; break;
-    	case VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT: typeName = "performance"; break;
-    	case VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT: typeName = "device_address_binding"; break;
-		default: break;
-	}
-	
-	switch (severity) {
-		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: ARAWN_LOG(VERBOSE, info->pMessage) break;
-		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT: ARAWN_LOG(VERBOSE, info->pMessage) break;
-		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: ARAWN_LOG(WARNING, info->pMessage) break;
-		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT: throw std::runtime_error(ARAWN_LOG_MESSAGE(ERROR, info->pMessage));
-		default: break;
-	}
-	
-	return VK_FALSE;
-}
-PFN_vkCreateDebugUtilsMessengerEXT createDebugUtilsMessengerEXT = nullptr;
-PFN_vkDestroyDebugUtilsMessengerEXT destroyDebugUtilsMessengerEXT = nullptr;
 #endif
 
-Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) { 
-
-	// glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
-	if (!glfwInit()) throw std::runtime_error("error: failed to init glfw");
-
-	{ // create instance
-		uint32_t vulkanVersion = VK_API_VERSION_1_4;
-		
-		ARAWN_LOG(VERBOSE, std::format("application version={}.{}.{}", app.version.major, app.version.minor, app.version.patch));
-		ARAWN_LOG(VERBOSE, std::format("vulkan api version={}.{}.{}", VK_API_VERSION_MAJOR(vulkanVersion), VK_API_VERSION_MINOR(vulkanVersion), VK_API_VERSION_PATCH(vulkanVersion)));
-		
-		std::vector<const char*> requiredExts = instanceExtensions;
-		uint32_t glfwExtCount;
-		const char** glfwExts = glfwGetRequiredInstanceExtensions(&glfwExtCount);
-		requiredExts.insert(requiredExts.end(), glfwExts, glfwExts + glfwExtCount);
-		
-		std::ranges::sort(requiredExts, [](const char* lhs, const char* rhs)->bool {
-			return std::strcmp(lhs, rhs);
-		});
-		
-		requiredExts.erase(std::ranges::unique(requiredExts, [](const char* lhs, const char* rhs)->bool {
-			return std::strcmp(lhs, rhs) == 0;
-		}).end(), requiredExts.end());
-		
-		ARAWN_LOG(DEBUG, std::format("instance extensions={}", requiredExts));
-				
-		VkApplicationInfo appInfo{
-			.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, 
-			.pNext = nullptr, 
-			.pApplicationName = app.title,
-			.applicationVersion = 1,
-			.pEngineName = "Arawn",
-			.engineVersion = 1,
-			.apiVersion = vulkanVersion
-		};
-
-		VkInstanceCreateInfo createInfo{
-			.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-			.pNext = nullptr,
-			.flags = 0,
-			.pApplicationInfo = &appInfo,
-#if ARAWN_DEBUG
-			.enabledLayerCount = static_cast<uint32_t>(debugLayers.size()),
-			.ppEnabledLayerNames = debugLayers.data(),
+Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display, QueueIndices&& queueIndices) 
+ : state(app, display)
+ , instance(createInstance())
+#ifdef ARAWN_DEBUG
+ , messenger(createMessenger())
 #endif
-			.enabledExtensionCount = static_cast<uint32_t>(requiredExts.size()),
-			.ppEnabledExtensionNames = requiredExts.data(),
-		};
-		
-		VK_ASSERT(vkCreateInstance(&createInfo, nullptr, &instance))
-	}
+ , window(createWindow())
+ , surface(createSurface())
+ , gpu(selectGPU())
+ , device(createDevice(queueIndices)) 
+ , queue({
+	getQueue(queueIndices.graphics),
+	getQueue(queueIndices.compute),
+	getQueue(queueIndices.transfer),
+	getQueue(queueIndices.present)
+ })
+ , allocator(createAllocator())
+ , swapchain(createSwapchain())
+ 
+{
+	{ // init frame domain
+		{ // allocate 
+			uint32_t frameCount = display.buffering == BufferingMode::DOUBLE ? 2 : 3;
+			Frame* frameData = std::allocator<Frame>().allocate(frameCount);
+			domain.frame = { frameData, frameCount };
 
-#if ARAWN_DEBUG
-	{ // create debug messenger
-		if (createDebugUtilsMessengerEXT == nullptr) {
-			createDebugUtilsMessengerEXT = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
-			destroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+			ARAWN_LOG(VERBOSE, std::format("frame frames = {}", frameCount))
 		}
 
-		VkDebugUtilsMessengerCreateInfoEXT info{
-			.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-			.pNext = nullptr,
-			.flags = 0, 
-			.messageSeverity = 0,
-			.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-			.pfnUserCallback = vulkanDebugger,
-			.pUserData = nullptr
-		};
-
-
-#ifdef ARAWN_LOG_VERBOSE
-		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
-#endif
-
-#ifdef ARAWN_LOG_DEBUG
-		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
-#endif
-
-#ifdef ARAWN_LOG_WARNING
-		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
-#endif
-
-#ifdef ARAWN_LOG_ERROR
-		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-#endif
-
-
-
-		
-		
-		VK_ASSERT(createDebugUtilsMessengerEXT(instance, &info, nullptr, &messenger));
-	}
-#endif
-
-	{ // window
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-		glfwWindowHint(GLFW_REFRESH_RATE, display.refreshRate);
-		
-		ARAWN_LOG(VERBOSE, std::format("resolution={{ {}, {} }}", display.resolution.x, display.resolution.y));
-
-		switch(display.mode) {
-		case DisplayMode::WINDOWED: {
-			glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
-			glfwWindowHint(GLFW_FLOATING, GLFW_FALSE);
-			
-			window = glfwCreateWindow(
-				display.resolution.x,
-				display.resolution.y,
-				app.title,
-				nullptr,
-				nullptr
-			);
-			break;
-		}
-		case DisplayMode::FULLSCREEN: {
-			GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-			const GLFWvidmode* vidmode = glfwGetVideoMode(monitor);
-			
-			glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
-			glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);
-	
-			window = glfwCreateWindow(
-				vidmode->width, 
-				vidmode->height,
-				app.title,
-				nullptr,
-				nullptr
-			);
-			break;
-		}
-		case DisplayMode::EXCLUSIVE: {
-			glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
-			glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);
-		
-			window = glfwCreateWindow(
-				display.resolution.x,
-				display.resolution.y,
-				app.title,
-				glfwGetPrimaryMonitor(),
-				nullptr
-			);
-			break;
-		}	
-		}
-	
-		if (!window) [[unlikely]] {
-			const char* message;
-			glfwGetError(&message);
-	
-			std::printf("glfw error: %s\n", message);
-			throw std::runtime_error("");
-		}
-		VK_ASSERT(glfwCreateWindowSurface(instance, window, nullptr, &surface));
-	}
-
-	{ // select gpu
-		auto unsupportedGPU = [&](VkPhysicalDevice gpu) { 
-			// properties
-			VkPhysicalDeviceProperties properties;
-			vkGetPhysicalDeviceProperties(gpu, &properties);
-			
-			if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU) {
-				return true;
-			}
-			
-			uint32_t queueFamilyCount;
-			vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queueFamilyCount, nullptr);
-			std::vector<VkQueueFamilyProperties> families(queueFamilyCount);
-			vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queueFamilyCount, families.data());
-
-			// queue requirements
-			if (std::ranges::none_of(families, [](const auto& family)->bool { 
-				return (family.queueFlags & VK_QUEUE_GRAPHICS_BIT) == VK_QUEUE_GRAPHICS_BIT;
-			})) return true;
-	
-			if (std::ranges::none_of(families, [](const auto& family)->bool { 
-				return (family.queueFlags & VK_QUEUE_COMPUTE_BIT) == VK_QUEUE_COMPUTE_BIT;
-			})) return true;
-	
-			if (std::ranges::none_of(families, [](const auto& family)->bool { 
-				return (family.queueFlags & VK_QUEUE_TRANSFER_BIT) == VK_QUEUE_TRANSFER_BIT;
-			})) return true;
-	
-			if (std::ranges::none_of(std::views::iota(static_cast<uint32_t>(0), static_cast<uint32_t>(families.size())), [&](uint32_t i)->bool { 
-				VkBool32 supported;
-				vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &supported);
-				return supported == VK_TRUE;
-			})) return true;
-	
-			// extensions
-			uint32_t extCount;
-			VK_ASSERT(vkEnumerateDeviceExtensionProperties(gpu, nullptr, &extCount, nullptr));
-			std::vector<VkExtensionProperties> extensions(extCount);
-			VK_ASSERT(vkEnumerateDeviceExtensionProperties(gpu, nullptr, &extCount, extensions.data()));
-
-			for (const char* ext : deviceExtensions) {
-				if (std::ranges::none_of(extensions, [ext](const auto& candidate) {
-					return strcmp(candidate.extensionName, ext);
-				})) return true;
-			}
-	
-			// features
-			// auto features = gpu.getFeatures();
-	
-			return false;
-		};
-	
-		auto scoreGPU = [&](VkPhysicalDevice gpu)->uint32_t {
-			uint32_t score = 0;
-		
-			VkPhysicalDeviceProperties properties;
-			vkGetPhysicalDeviceProperties(gpu, &properties);
-
-			if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-				score += 10000;
-			}
-			
-			VkPhysicalDeviceMemoryProperties memory;
-			vkGetPhysicalDeviceMemoryProperties(gpu, &memory);
-			
-			for (const auto& heap : memory.memoryHeaps) {
-				if (heap.flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
-					score += (heap.size / (1024 * 1024 * 1024)) * 50;
-				}
-			}
-			
-			// VkPhysicalDeviceFeatures features;
-			// vkGetPhysicalDeviceFeatures(gpu, &features);
-			
-			return score;
-		};
-		
-		uint32_t gpuCount;
-		VK_ASSERT(vkEnumeratePhysicalDevices(instance, &gpuCount, nullptr));
-		std::vector<VkPhysicalDevice> gpus(gpuCount);
-		VK_ASSERT(vkEnumeratePhysicalDevices(instance, &gpuCount, gpus.data()));
-
-		if (display.gpu == nullptr || [&]{ 
-			auto it = std::ranges::find_if(gpus, [&](const auto& gpu) { 
-				VkPhysicalDeviceProperties properties;
-				vkGetPhysicalDeviceProperties(gpu, &properties);
-				return strcmp(properties.deviceName, display.gpu);
-			});
-			
-			if (it == gpus.end()) {
-				ARAWN_LOG(WARNING, std::format("gpu \"{}\" not found.", display.gpu));
-				return true;
-			}
-
-			if (unsupportedGPU(*it)) {
-				ARAWN_LOG(WARNING, std::format("gpu \"{}\" not supported.", display.gpu));
-				gpus.erase(it);
-				return true;
-			}
-			
-			gpu = *it;
-			return false;
-		}()) {
-			std::erase_if(gpus, unsupportedGPU);
-			ARAWN_ASSERT(!gpus.empty(), "no supported gpus found");
-			
-			gpu = *std::ranges::max_element(gpus, {}, scoreGPU);
-		}
-		
-		VkPhysicalDeviceProperties properties;
-		vkGetPhysicalDeviceProperties(gpu, &properties);
-		ARAWN_LOG(VERBOSE, std::format("gpu=\"{}\"", properties.deviceName));
-	}
-
-	{ // select device
-		uint32_t familyCount;
-		vkGetPhysicalDeviceQueueFamilyProperties(gpu, &familyCount, nullptr);
-		std::vector<VkQueueFamilyProperties> families(familyCount);
-		vkGetPhysicalDeviceQueueFamilyProperties(gpu, &familyCount, families.data());
-		
-		std::vector<VkDeviceQueueCreateInfo> queueInfos(families.size(), VkDeviceQueueCreateInfo{ 
-			.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-			.pNext = nullptr,
-			.flags = 0
-		});
-		for (uint32_t i = 0; i < families.size(); ++i) queueInfos[i].queueFamilyIndex = i;
-
-		{ // assign queue family and index
-			auto assignQueue = [&](VkQueueFlags required, VkQueueFlags excluded, Queue& output) {
-				for (uint32_t i = 0; i < families.size(); ++i) {
-					auto& family = families[i];
-					auto& queueCount = queueInfos[i].queueCount;
-					
-					if ((family.queueFlags & required) != required) continue;
-					if ((family.queueFlags & excluded) != 0) continue;
-					if (queueCount == family.queueCount) continue;
-					
-					output.family = i;
-					output.index = queueCount++;
-					return;
-				}
-	
-				for (uint32_t i = 0; i < families.size(); ++i) {
-					auto& family = families[i];
-					
-					if (!(family.queueFlags & required)) continue;
-	
-					output.family = i;
-					output.index = 0;
-					return;
-				}
-	
-				ARAWN_ASSERT(false, "no suitable queue found on selected device.");
-			};
-	
-			auto assignPresentQueue = [&](Queue& output) {
-				VkPhysicalDeviceProperties properties;
-				vkGetPhysicalDeviceProperties(gpu, &properties);
-				
-				for (uint32_t i = 0; i < families.size(); ++i) {
-					auto& family = families[i];
-					
-					VkBool32 supported;
-					VK_ASSERT(vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &supported));
-					if (supported == VK_FALSE) continue;
-					if (!(family.queueFlags & VK_QUEUE_GRAPHICS_BIT)) continue;
-	
-					output.family = i;
-					output.index = 0;
-	
-					if (family.queueCount == 0) ++family.queueCount;
-					
-					return;
-				}
-	
-				throw std::runtime_error("error: no suitable queue found on selected device.");
-			};
-			
-			assignQueue(VK_QUEUE_GRAPHICS_BIT, 0, queue.graphics);
-			assignQueue(VK_QUEUE_COMPUTE_BIT, 0, queue.compute);
-			assignQueue(VK_QUEUE_TRANSFER_BIT, VK_QUEUE_GRAPHICS_BIT, queue.transfer);
-			assignPresentQueue(queue.present);
-		}
-	
-		// assign priorities
-		std::vector<float> priorities(std::ranges::fold_left(queueInfos, 0, [](uint32_t count, VkDeviceQueueCreateInfo& family) {
-			return count + family.queueCount;
-		}));
-		{
-			float* priority = priorities.data();
-			for (auto& family : queueInfos) {
-				family.pQueuePriorities = priority;
-				priority += family.queueCount;
-			}
-		
-			auto assignPriority = [&](const Queue& input, float priority) {
-				float& queuePriority = ((queueInfos[input.family].pQueuePriorities - priorities.data()) + priorities.data())[input.index];
-				queuePriority = std::max<float>(priority, queuePriority);
-			};
-		
-			assignPriority(queue.graphics, 0.8);
-			assignPriority(queue.compute, 0.6);
-			assignPriority(queue.transfer, 0.4);
-			assignPriority(queue.present, 1.0);
-	
-		}
-
-		// ARAWN_LOG(VERBOSE, std::format("graphics queue = {{ family = {}, index = {}, priority = {} }}", queue.graphics.family, queue.graphics.index, queueInfos[queue.graphics.family].pQueuePriorities[queue.graphics.index]));
-		// ARAWN_LOG(VERBOSE, std::format("compute queue = {{ family = {}, index = {}, priority = {} }}", queue.compute.family, queue.compute.index, queueInfos[queue.compute.family].pQueuePriorities[queue.compute.index]));
-		// ARAWN_LOG(VERBOSE, std::format("transfer queue = {{ family = {}, index = {}, priority = {} }}", queue.transfer.family, queue.transfer.index, queueInfos[queue.transfer.family].pQueuePriorities[queue.transfer.index]));
-		// ARAWN_LOG(VERBOSE, std::format("present queue = {{ family = {}, index = {}, priority = {} }}", queue.present.family, queue.present.index, queueInfos[queue.present.family].pQueuePriorities[queue.present.index]));
-
-		// reduce queues -> loses family mapping
-		std::erase_if(queueInfos, [](const auto& queueInfo) {
-			return queueInfo.queueCount == 0;
-		});
-
-		ARAWN_LOG(DEBUG, std::format("device extensions={}", deviceExtensions));
-
-		VkPhysicalDeviceFeatures features{ };
-		VkDeviceCreateInfo info {
-			.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-			.pNext = nullptr,
-			.flags = 0,
-			.queueCreateInfoCount = static_cast<uint32_t>(queueInfos.size()),
-			.pQueueCreateInfos = queueInfos.data(),
-			.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
-			.ppEnabledExtensionNames = deviceExtensions.data(),
-			.pEnabledFeatures = &features,
-		};
-		VK_ASSERT(vkCreateDevice(gpu, &info, nullptr, &device))
-		
-		vkGetDeviceQueue(device, queue.graphics.family, queue.graphics.index, &queue.graphics.queue);
-		vkGetDeviceQueue(device, queue.compute.family, queue.compute.index, &queue.compute.queue);
-		vkGetDeviceQueue(device, queue.transfer.family, queue.transfer.index, &queue.transfer.queue);
-		vkGetDeviceQueue(device, queue.present.family, queue.present.index, &queue.present.queue);
-		
-		{ // create descriptor pools
-			VkCommandPoolCreateInfo createInfo{
-				.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-				.pNext = nullptr,
-				.flags = 0,
-			};
-	
-			createInfo.queueFamilyIndex = queue.graphics.family;
-			VK_ASSERT(vkCreateCommandPool(device, &createInfo, nullptr, &queue.graphics.pool));
-	
-			createInfo.queueFamilyIndex = queue.compute.family;
-			VK_ASSERT(vkCreateCommandPool(device, &createInfo, nullptr, &queue.compute.pool));
-	
-			createInfo.queueFamilyIndex = queue.transfer.family;
-			VK_ASSERT(vkCreateCommandPool(device, &createInfo, nullptr, &queue.transfer.pool));
-	
-			createInfo.queueFamilyIndex = queue.present.family;
-			VK_ASSERT(vkCreateCommandPool(device, &createInfo, nullptr, &queue.present.pool));
-		}
-	}
-
-	{ // create allocator
-		VmaAllocatorCreateInfo createInfo = {
-			.flags = 0,
-			.physicalDevice = gpu,
-			.device = device,
-			.instance = instance,
-			.vulkanApiVersion = VK_API_VERSION_1_3,
-		};
-		VK_ASSERT(vmaCreateAllocator(&createInfo, &allocator));
-	}
-
-	{ // create swapchain
-		VkSurfaceCapabilitiesKHR capabilities;
-		VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &capabilities));
-	
-		VkSwapchainCreateInfoKHR createInfo{ 
-			.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-			.pNext = nullptr,
-			.flags = 0,
-			.surface = surface,
-			.imageArrayLayers = 1,
-			.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-			.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-			.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-			.clipped = VK_TRUE,
-			.oldSwapchain = nullptr,
-		};
-
-		ARAWN_ASSERT(((capabilities.supportedUsageFlags & createInfo.imageUsage) == createInfo.imageUsage), "swapchain image usage not supported");
-
-		std::array<uint32_t, 2> families = { queue.graphics.family, queue.present.family };
-		if (queue.graphics.family == queue.present.family) {
-			createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		} else {
-			createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-			createInfo.pQueueFamilyIndices = families.data();
-			createInfo.queueFamilyIndexCount = 2;
-		}
-
-		if (capabilities.currentExtent.width != UINT32_MAX) {
-			createInfo.imageExtent = capabilities.currentExtent;
-		} else {
-			createInfo.imageExtent = {
-				std::clamp(display.resolution.x, capabilities.minImageExtent.width,  capabilities.maxImageExtent.width),
-				std::clamp(display.resolution.y, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
-			};
-		}
-		
-		createInfo.minImageCount = std::max(display.buffering == BufferingMode::TRIPLE ? 3u : 2u, capabilities.minImageCount);
-		if (capabilities.maxImageCount > 0) {
-			createInfo.minImageCount = std::min(createInfo.minImageCount, capabilities.maxImageCount);
-		}
-
-		uint32_t presentModeCount;
-		VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &presentModeCount, nullptr));
-		std::vector<VkPresentModeKHR> presentModes(presentModeCount);
-		VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &presentModeCount, presentModes.data()));
-		
-		if (display.vsync == VsyncMode::ENABLED) {
-			switch (display.latency) {
-			case LowLatencyMode::ENABLED:
-			case LowLatencyMode::BALANCED:
-				if (std::ranges::contains(presentModes, VK_PRESENT_MODE_MAILBOX_KHR)) {
-					createInfo.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
-					break;
-				}
-			case LowLatencyMode::DISABLED:
-				createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
-				break;
-			}
-		} else {
-			switch (display.latency) {
-			case LowLatencyMode::ENABLED:
-				if (std::ranges::contains(presentModes, VK_PRESENT_MODE_IMMEDIATE_KHR)) {
-					createInfo.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
-					break;
-				}
-			case LowLatencyMode::BALANCED:
-			case LowLatencyMode::DISABLED:
-				if (std::ranges::contains(presentModes, VK_PRESENT_MODE_FIFO_RELAXED_KHR)) {
-					createInfo.presentMode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
-					break;
-				}
-				
-				createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
-				break;
-			}
-		}
-
-		uint32_t formatCount;
-		VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &formatCount, nullptr));
-		std::vector<VkSurfaceFormatKHR> supported(formatCount);
-		VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &formatCount, supported.data()));
-		
-		createInfo.imageFormat = supported.front().format;
-		createInfo.imageColorSpace = supported.front().colorSpace;
-		for (const auto& candidate : supported) { // if preferred format
-			switch (candidate.format)
-			{
-				case(VK_FORMAT_R8G8B8A8_SRGB): break;
-				case(VK_FORMAT_B8G8R8A8_SRGB): break;
-				case(VK_FORMAT_R8G8B8A8_UNORM): break;
-				case(VK_FORMAT_B8G8R8A8_UNORM): break;
-				default: continue;
-			}
-
-			createInfo.imageFormat = candidate.format;
-			createInfo.imageColorSpace = candidate.colorSpace;
-
-			break;
-		}
-
-		ARAWN_LOG(VERBOSE, std::format("swapchain extent = {{ {}, {} }}", createInfo.imageExtent.width, createInfo.imageExtent.height))
-		ARAWN_LOG(VERBOSE, std::format("swapchain present mode={}", string_VkPresentModeKHR(createInfo.presentMode)));
-		ARAWN_LOG(VERBOSE, std::format("swapchain image format={}", string_VkFormat(createInfo.imageFormat)));
-		ARAWN_LOG(VERBOSE, std::format("swapchain image color space={}", string_VkColorSpaceKHR(createInfo.imageColorSpace)));
-		
-		VK_ASSERT(vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain));
-	}
-
-	{ // allocate resource context
-		context.frame.index = 0;
-		context.frame.count = display.buffering == BufferingMode::DOUBLE ? 2 : 3;
-		context.frame.data = static_cast<Frame*>(cache.allocate(sizeof(Frame) * context.frame.count, alignof(Frame)));
-		
-		context.swap.index = 0;
-		vkGetSwapchainImagesKHR(device, swapchain, &context.swap.count, nullptr);
-		context.swap.data = static_cast<Swap*>(cache.allocate(sizeof(Swap) * context.swap.count, alignof(Swap)));
-	}
-
-	{ // init frame context
 		{ // init sync primitves
 			VkFenceCreateInfo fenceInfo{
     			.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
@@ -610,8 +62,8 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
     			.flags = 0,
 			};
 
-			for (uint32_t i = 0; i < context.frame.count; ++i) {
-				auto& ctx = context.frame.data[i];
+			for (uint32_t i = 0; i < domain.frame.size(); ++i) {
+				auto& ctx = domain.frame[i];
 				VK_ASSERT(vkCreateFence(device, &fenceInfo, nullptr, &ctx.inFlight));
 				VK_ASSERT(vkCreateSemaphore(device, &semaInfo, nullptr, &ctx.imageAvailable));
 				VK_ASSERT(vkCreateSemaphore(device, &semaInfo, nullptr, &ctx.forwardFinished));
@@ -677,8 +129,8 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 				},
 			};
 
-			for (uint32_t i = 0; i < context.frame.count; ++i) {
-				auto& attachment = context.frame.data[i].colorAttachment;
+			for (uint32_t i = 0; i < domain.frame.size(); ++i) {
+				auto& attachment = domain.frame[i].colorAttachment;
 				VK_ASSERT(vmaCreateImage(allocator, &imgInfo, &allocInfo, &attachment.image, &attachment.memory, nullptr));
 
 				viewInfo.image = attachment.image;
@@ -740,8 +192,8 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 				},
 			};
 
-			for (uint32_t i = 0; i < context.frame.count; ++i) {
-				auto& attachment = context.frame.data[i].depthAttachment;
+			for (uint32_t i = 0; i < domain.frame.size(); ++i) {
+				auto& attachment = domain.frame[i].depthAttachment;
 				VK_ASSERT(vmaCreateImage(allocator, &imgInfo, &allocInfo, &attachment.image, &attachment.memory, nullptr));
 
 				viewInfo.image = attachment.image;
@@ -750,7 +202,16 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
 		}
 	}
 
-	{ // init swapchain context
+	{ // init swapchain domain
+		{ // allocate
+			uint32_t frameCount;
+			vkGetSwapchainImagesKHR(device, swapchain, &frameCount, nullptr);
+			Swap* swapData = std::allocator<Swap>().allocate(frameCount);
+			domain.swap = { swapData, frameCount };
+
+			ARAWN_LOG(VERBOSE, std::format("swapchain frames = {}", frameCount))
+		}
+
 		{ // init sync primitves
 			VkSemaphoreCreateInfo semaInfo{
 				.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -758,99 +219,836 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display) {
     			.flags = 0,
 			};
 			
-			for (uint32_t i = 0; i < context.swap.count; ++i) {
-				VK_ASSERT(vkCreateSemaphore(device, &semaInfo, nullptr, &context.swap.data[i].postprocessFinished));
+			for (uint32_t i = 0; i < domain.swap.size(); ++i) {
+				VK_ASSERT(vkCreateSemaphore(device, &semaInfo, nullptr, &domain.swap[i].postprocessFinished));
 			}
 		}
 		
 		{ // init images
-			std::vector<VkImage> images(context.swap.count);
-			vkGetSwapchainImagesKHR(device, swapchain, &context.swap.count, images.data());
+			uint32_t swapCount = static_cast<uint32_t>(domain.swap.size());
+			std::vector<VkImage> images(domain.swap.size());
+			vkGetSwapchainImagesKHR(device, swapchain, &swapCount, images.data());
 			
 			for (uint32_t i = 0; i < images.size(); ++i) {
-				context.swap.data[i].image = images[i];
+				domain.swap[i].image = images[i];
 			}
 		}
 	}
 
-
-	struct DomainIndex { uint32_t index, count; };
-
 	{ // init forward pass
-		pass.forward.count = context.frame.count;
+		{ // allocate
+			uint32_t frameCount = static_cast<uint32_t>(domain.frame.size());
+			Forward* frameData = std::allocator<Forward>().allocate(frameCount);
+			pass.forward = { frameData, { frameCount } };
 
-		VkCommandBufferAllocateInfo cmdInfo{
-			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-			.pNext = nullptr,
-			.commandPool = queue.graphics.pool,
-			.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-			.commandBufferCount = pass.forward.count,
-		};
+			ARAWN_LOG(VERBOSE, std::format("forward frames = {}", frameCount))
+		}
 		
-		std::vector<VkCommandBuffer> cmds(context.frame.count * context.swap.count);
-		vkAllocateCommandBuffers(device, &cmdInfo, cmds.data());
-		for (uint32_t frameIndex = 0; frameIndex < context.frame.count; ++frameIndex) {
-			uint32_t index = passIndex(
-				DomainIndex{ .index = frameIndex, .count = context.frame.count }
-			);
+		{ // init command buffers
+			VkCommandBufferAllocateInfo cmdInfo{
+				.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+				.pNext = nullptr,
+				.commandPool = queue.graphics.pool,
+				.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+				.commandBufferCount = static_cast<uint32_t>(domain.frame.size()),
+			};
+	
+			std::vector<VkCommandBuffer> cmds(cmdInfo.commandBufferCount);
+			VK_ASSERT(vkAllocateCommandBuffers(device, &cmdInfo, cmds.data()));
+	
+			for (uint32_t cmdIndex = 0, frameIndex = 0; frameIndex < domain.frame.size(); ++frameIndex, ++cmdIndex) {
+				auto& pass = this->pass.forward[frameIndex];
+				pass.cmd = cmds[cmdIndex];
+			}
+		}
 
-			auto& pass = this->pass.forward.data[index];
-			pass.cmd = cmds[index];
-
-			pass.record(state, context.shared, context.frame.data[frameIndex]);
+		{ // record
+			for (uint32_t frameIndex = 0; frameIndex < domain.frame.size(); ++frameIndex) {
+				auto& pass = this->pass.forward[frameIndex];
+				pass.record(state, domain.shared, domain.frame[frameIndex]);
+			}
 		}
 	}
 
 	{ // init present pass
-		pass.present.count = context.frame.count * context.swap.count;
+		{ // allocate
+			uint32_t frameCount = static_cast<uint32_t>(domain.frame.size() * domain.swap.size());
+			Present* frameData = std::allocator<Present>().allocate(frameCount);
+			pass.present = { frameData, { domain.frame.size(), domain.swap.size() } };
 
-		VkCommandBufferAllocateInfo cmdInfo{
-			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-			.pNext = nullptr,
-			.commandPool = queue.present.pool,
-			.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-			.commandBufferCount = pass.present.count,
-		};
+			ARAWN_LOG(VERBOSE, std::format("present frames = {}", frameCount))
+		}
 		
-		std::vector<VkCommandBuffer> cmds(pass.present.count);
-		vkAllocateCommandBuffers(device, &cmdInfo, cmds.data());
+		{ // init cmd buffers
+			VkCommandBufferAllocateInfo cmdInfo{
+				.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+				.pNext = nullptr,
+				.commandPool = queue.present.pool,
+				.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+				.commandBufferCount = static_cast<uint32_t>(pass.present.size()),
+			};
+			
+			std::vector<VkCommandBuffer> cmds(cmdInfo.commandBufferCount);
 
-		for (uint32_t frameIndex = 0; frameIndex < context.frame.count; ++frameIndex) for (uint32_t swapIndex = 0; swapIndex < context.swap.count; ++swapIndex) {
-			uint32_t index = passIndex(
-				DomainIndex{ .index = frameIndex, .count = context.frame.count }, 
-				DomainIndex{ .index = swapIndex, .count = context.swap.count }
-			);
+			VK_ASSERT(vkAllocateCommandBuffers(device, &cmdInfo, cmds.data()));
 
-			auto& pass = this->pass.present.data[index];
-			pass.cmd = cmds[index];
+			for (uint32_t cmdIndex = 0, frameIndex = 0; frameIndex < domain.frame.size(); ++frameIndex) {
+				for (uint32_t swapIndex = 0; swapIndex < domain.swap.size(); ++swapIndex, ++cmdIndex) {
+					auto& pass = this->pass.present[frameIndex, swapIndex];
+					pass.cmd = cmds[cmdIndex];
+				}
+			}
+		}
 
-			pass.record(state, context.shared, context.frame.data[frameIndex], context.swap.data[swapIndex]);
+		{ // record
+			for (uint32_t frameIndex = 0; frameIndex < domain.frame.size(); ++frameIndex) {
+				for (uint32_t swapIndex = 0; swapIndex < domain.swap.size(); ++swapIndex) {
+					auto& pass = this->pass.present[frameIndex, swapIndex];
+					pass.record(state, domain.shared, domain.frame[frameIndex], domain.swap[swapIndex]);
+				}
+			}
 		}
 	}
 }
 
-bool Arawn::Engine::closed() const {
-	glfwPollEvents();
-	return glfwWindowShouldClose(window);
+VkInstance Arawn::Engine::Engine::createInstance() const {
+	if (!glfwInit()) throw std::runtime_error("error: failed to init glfw");
+	
+	uint32_t vulkanVersion = VK_API_VERSION_1_3;
+		
+	ARAWN_LOG(VERBOSE, std::format("application version={}.{}.{}", state.version.major, state.version.minor, state.version.patch));
+	ARAWN_LOG(VERBOSE, std::format("vulkan api version={}.{}.{}", VK_API_VERSION_MAJOR(vulkanVersion), VK_API_VERSION_MINOR(vulkanVersion), VK_API_VERSION_PATCH(vulkanVersion)));
+	
+	std::vector<const char*> extensions;
+	{
+		uint32_t glfwExtCount;
+		const char** glfwExts = glfwGetRequiredInstanceExtensions(&glfwExtCount);
+		extensions.append_range(std::span{ glfwExts, glfwExts + glfwExtCount });
+		extensions.append_range(instanceExtensions);
+	}
+	
+	std::ranges::sort(extensions, [](const char* lhs, const char* rhs)->bool {
+		return std::strcmp(lhs, rhs);
+	});
+	
+	extensions.erase(std::ranges::unique(extensions, [](const char* lhs, const char* rhs)->bool {
+		return std::strcmp(lhs, rhs) == 0;
+	}).end(), extensions.end());
+	
+	ARAWN_LOG(DEBUG, std::format("instance extensions={}", extensions));
+			
+	VkApplicationInfo appInfo{
+		.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, 
+		.pNext = nullptr, 
+		.pApplicationName = state.title,
+		.applicationVersion = 1,
+		.pEngineName = "Arawn",
+		.engineVersion = 1,
+		.apiVersion = vulkanVersion
+	};
+
+	VkInstanceCreateInfo createInfo{
+		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0,
+		.pApplicationInfo = &appInfo,
+#ifdef ARAWN_DEBUG
+		.enabledLayerCount = static_cast<uint32_t>(debugLayers.size()),
+		.ppEnabledLayerNames = debugLayers.data(),
+#endif
+		.enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
+		.ppEnabledExtensionNames = extensions.data(),
+	};
+	
+	VkInstance instance;
+	VK_ASSERT(vkCreateInstance(&createInfo, nullptr, &instance))
+	
+	return instance;
 }
 
+
+#ifdef ARAWN_DEBUG
+VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugger(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* info, void* userData) {
+	const char* typeName = "";
+	switch(type) {
+    	case VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT: typeName = "general"; break;
+    	case VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT: typeName = "validation"; break;
+    	case VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT: typeName = "performance"; break;
+    	case VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT: typeName = "device_address_binding"; break;
+		default: break;
+	}
+	
+	switch (severity) {
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: ARAWN_LOG(VERBOSE, info->pMessage) break;
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT: ARAWN_LOG(VERBOSE, info->pMessage) break;
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: ARAWN_LOG(WARNING, info->pMessage) break;
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT: throw std::runtime_error(ARAWN_LOG_MESSAGE(ERROR, info->pMessage));
+		default: break;
+	}
+	
+	return VK_FALSE;
+}
+PFN_vkCreateDebugUtilsMessengerEXT createDebugUtilsMessengerEXT;
+PFN_vkDestroyDebugUtilsMessengerEXT destroyDebugUtilsMessengerEXT;
+
+VkDebugUtilsMessengerEXT Arawn::Engine::createMessenger() const {
+	if (createDebugUtilsMessengerEXT == nullptr) {
+		createDebugUtilsMessengerEXT = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+		destroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+	}
+
+	VkDebugUtilsMessengerCreateInfoEXT info{
+		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+		.pNext = nullptr,
+		.flags = 0, 
+		.messageSeverity = 0,
+		.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+		.pfnUserCallback = vulkanDebugger,
+		.pUserData = nullptr
+	};
+
+#ifdef ARAWN_LOG_VERBOSE
+		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+#endif
+
+#ifdef ARAWN_LOG_DEBUG
+		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
+#endif
+
+#ifdef ARAWN_LOG_WARNING
+		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
+#endif
+
+#ifdef ARAWN_LOG_ERROR
+		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+#endif
+
+	VkDebugUtilsMessengerEXT messenger;
+	VK_ASSERT(createDebugUtilsMessengerEXT(instance, &info, nullptr, &messenger));
+	return messenger;
+}
+#endif
+
+GLFWwindow* Arawn::Engine::createWindow() const {
+	// select video mode
+	auto selectVideoMode = [&](GLFWmonitor* monitor, int targetWidth, int targetHeight, int targetRefresh)->const GLFWvidmode& {
+		int count;
+		const GLFWvidmode* modes = glfwGetVideoModes(monitor, &count);
+		return *std::ranges::min_element(std::span{ modes, modes + count }, {}, [&](const GLFWvidmode& mode)->uint32_t { 
+			uint32_t width = std::abs(mode.width - targetWidth); 
+			uint32_t height = std::abs(mode.height - targetHeight); 
+			uint32_t refreshRateDiff = std::abs(mode.refreshRate - targetRefresh); 
+
+			return (width + height) * 10000 + refreshRateDiff;
+		});
+	};
+
+	if (window != nullptr) {
+		auto resetVideoMode = [&](GLFWmonitor* monitor) {
+			int count;
+			const GLFWvidmode* modes = glfwGetVideoModes(monitor, &count);
+			const GLFWvidmode& mode = modes[count - 1];
+
+			glfwSetWindowMonitor(
+				window, 
+				monitor, 
+				0, 0, 
+				mode.width, mode.height,
+				mode.refreshRate
+			);
+		};
+
+		auto selectMonitor = [&](GLFWwindow* window)->GLFWmonitor* {
+			int count;
+			GLFWmonitor** monitorData = glfwGetMonitors(&count);
+			std::span monitors{ monitorData, monitorData + count };
+
+			if (state.monitor != nullptr) {
+				auto it = std::ranges::find(monitors, std::string_view{ state.monitor }, [&](GLFWmonitor* monitor)->std::string_view { 
+					return { glfwGetMonitorName(monitor) };
+				});
+
+				if (it != monitors.end()) {
+					return *it;
+				}
+			}
+			
+			struct { int x, y, width, height; } win;
+			glfwGetWindowPos(window, &win.x, &win.y);
+			glfwGetWindowSize(window, &win.width, &win.height);
+
+			return *std::ranges::max_element(monitors, {}, [&](GLFWmonitor* monitor)->uint32_t {
+				struct { int x, y, width, height; } mon;
+				glfwGetMonitorPos(monitor, &mon.x, &mon.y);
+				
+				const GLFWvidmode& mode = *glfwGetVideoMode(monitor);
+				mon.width = mode.width;
+				mon.height = mode.height;
+
+				int x1 = std::max(win.x, mon.x);
+				int y1 = std::max(win.y, mon.y);
+				int x2 = std::min(win.x + win.width, mon.x + mode.width);
+				int y2 = std::min(win.y + win.height, mon.y + mode.height);
+
+				return std::max(0, x2 - x1) * std::max(0, y2 - y1);
+			});
+		};
+		
+		switch(state.display) {
+		case DisplayMode::WINDOWED: {
+			GLFWmonitor* monitor = glfwGetWindowMonitor(window); 
+			if (monitor != nullptr) {
+				resetVideoMode(monitor);
+			}
+			
+			glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_TRUE);
+			glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE);
+			
+			glfwSetWindowMonitor(
+				window, 
+				nullptr, 
+				100, 100, 
+				state.resolution.x, state.resolution.y,
+				state.refreshRate
+			);
+			break;
+		}
+		case DisplayMode::FULLSCREEN: {
+			GLFWmonitor* monitor = glfwGetWindowMonitor(window); 
+			if (monitor != nullptr) {
+				resetVideoMode(monitor);
+			} else {
+				monitor = selectMonitor(window);
+			}
+			
+			glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_FALSE);
+			glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);
+			
+			struct { int x, y; } mon;
+			glfwGetMonitorPos(monitor, &mon.x, &mon.y);
+			const GLFWvidmode& mode = *glfwGetVideoMode(monitor);
+			
+			glfwSetWindowMonitor(
+				window,
+				nullptr,
+				mon.x, mon.y,
+				mode.width, mode.height,
+				state.refreshRate
+			);
+
+			break;
+		}
+		case Arawn::DisplayMode::EXCLUSIVE: {
+			GLFWmonitor* monitor = glfwGetWindowMonitor(window); 
+			if (monitor == nullptr) {
+				monitor = selectMonitor(window);	
+			}
+
+			const GLFWvidmode& mode = selectVideoMode(monitor, state.resolution.x, state.resolution.y, state.refreshRate);
+
+			glfwSetWindowMonitor(
+				window,
+				monitor,
+				0, 0,
+				mode.width, mode.height,
+				mode.refreshRate
+			);
+
+			break;
+		}
+		}
+		
+		return window;
+	} else {
+		auto selectMonitor = [&]{
+			int count;
+			GLFWmonitor** monitorData = glfwGetMonitors(&count);
+			std::span monitors{ monitorData, monitorData + count };
+
+			if (state.monitor != nullptr) {
+				auto it = std::ranges::find(monitors, std::string_view{ state.monitor }, [&](GLFWmonitor* monitor) { 
+					return std::string_view{ glfwGetMonitorName(monitor) };
+				});
+
+				if (it != monitors.end()) {
+					return *it;
+				}
+			}
+
+			return glfwGetPrimaryMonitor();
+		};
+
+		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+		glfwWindowHint(GLFW_REFRESH_RATE, state.refreshRate);
+		
+		GLFWwindow* window;
+		switch(state.display) {
+		case DisplayMode::WINDOWED: {
+			glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
+			glfwWindowHint(GLFW_FLOATING, GLFW_FALSE);
+			
+			window = glfwCreateWindow(
+				state.resolution.x,
+				state.resolution.y,
+				state.title,
+				nullptr,
+				nullptr
+			);
+			break;
+		}
+		case DisplayMode::FULLSCREEN: {
+			GLFWmonitor* monitor = selectMonitor();
+			const GLFWvidmode& mode = *glfwGetVideoMode(monitor);
+			
+			glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+			glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);
+	
+			window = glfwCreateWindow(
+				mode.width, 
+				mode.height,
+				state.title,
+				nullptr,
+				nullptr
+			);
+			break;
+		}
+		case DisplayMode::EXCLUSIVE: {
+			GLFWmonitor* monitor = selectMonitor();
+			const GLFWvidmode& mode = selectVideoMode(monitor, state.resolution.x, state.resolution.y, state.refreshRate);
+			
+			glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+			glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);
+			glfwWindowHint(GLFW_REFRESH_RATE, mode.refreshRate);
+
+			window = glfwCreateWindow(
+				mode.width,
+				mode.height,
+				state.title,
+				monitor,
+				nullptr
+			);
+			break;
+		}	
+		}
+	
+		if (!window) [[unlikely]] {
+			const char* message;
+			glfwGetError(&message);
+	
+			std::printf("glfw error: %s\n", message);
+			throw std::runtime_error(ARAWN_LOG_MESSAGE(ERROR, "failed to initialize window"));
+		}
+	
+		return window;
+	}
+}
+
+VkSurfaceKHR Arawn::Engine::createSurface() const {
+	VkSurfaceKHR surface;
+	VK_ASSERT(glfwCreateWindowSurface(instance, window, nullptr, &surface));
+	return surface;
+}
+
+VkPhysicalDevice Arawn::Engine::selectGPU() const {
+	VkPhysicalDevice gpu;
+	auto unsupportedGPU = [&](VkPhysicalDevice gpu) { 
+		// properties
+		VkPhysicalDeviceProperties properties;
+		vkGetPhysicalDeviceProperties(gpu, &properties);
+		
+		if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU) {
+			return true;
+		}
+		
+		uint32_t queueFamilyCount;
+		vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queueFamilyCount, nullptr);
+		std::vector<VkQueueFamilyProperties> families(queueFamilyCount);
+		vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queueFamilyCount, families.data());
+
+		// queue requirements
+		if (std::ranges::none_of(families, [](const auto& family)->bool { 
+			return (family.queueFlags & VK_QUEUE_GRAPHICS_BIT) == VK_QUEUE_GRAPHICS_BIT;
+		})) return true;
+
+		if (std::ranges::none_of(families, [](const auto& family)->bool { 
+			return (family.queueFlags & VK_QUEUE_COMPUTE_BIT) == VK_QUEUE_COMPUTE_BIT;
+		})) return true;
+
+		if (std::ranges::none_of(families, [](const auto& family)->bool { 
+			return (family.queueFlags & VK_QUEUE_TRANSFER_BIT) == VK_QUEUE_TRANSFER_BIT;
+		})) return true;
+
+		if (std::ranges::none_of(std::views::iota(static_cast<uint32_t>(0), static_cast<uint32_t>(families.size())), [&](uint32_t i)->bool { 
+			VkBool32 supported;
+			vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &supported);
+			return supported == VK_TRUE;
+		})) return true;
+
+		// extensions
+		uint32_t extCount;
+		VK_ASSERT(vkEnumerateDeviceExtensionProperties(gpu, nullptr, &extCount, nullptr));
+		std::vector<VkExtensionProperties> extensions(extCount);
+		VK_ASSERT(vkEnumerateDeviceExtensionProperties(gpu, nullptr, &extCount, extensions.data()));
+
+		for (const char* ext : deviceExtensions) {
+			if (std::ranges::none_of(extensions, [ext](const auto& candidate) {
+				return strcmp(candidate.extensionName, ext);
+			})) return true;
+		}
+
+		// VkPhysicalDeviceFeatures features;
+		// vkGetPhysicalDeviceFeatures(gpu, &features);
+
+		return false;
+	};
+
+	auto scoreGPU = [&](VkPhysicalDevice gpu) -> uint32_t {
+		uint32_t score = 0;
+	
+		VkPhysicalDeviceProperties properties;
+		vkGetPhysicalDeviceProperties(gpu, &properties);
+
+		if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+			score += 10000;
+		}
+		
+		VkPhysicalDeviceMemoryProperties memory;
+		vkGetPhysicalDeviceMemoryProperties(gpu, &memory);
+		
+		for (const auto& heap : memory.memoryHeaps) {
+			if (heap.flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+				score += (heap.size / (1024 * 1024 * 1024)) * 50;
+			}
+		}
+		
+		return score;
+	};
+	
+	uint32_t gpuCount;
+	VK_ASSERT(vkEnumeratePhysicalDevices(instance, &gpuCount, nullptr));
+	std::vector<VkPhysicalDevice> gpus(gpuCount);
+	VK_ASSERT(vkEnumeratePhysicalDevices(instance, &gpuCount, gpus.data()));
+
+	if (state.gpu == nullptr || [&]{ 
+		auto it = std::ranges::find_if(gpus, [&](const auto& gpu) { 
+			VkPhysicalDeviceProperties properties;
+			vkGetPhysicalDeviceProperties(gpu, &properties);
+			return strcmp(properties.deviceName, state.gpu);
+		});
+		
+		if (it == gpus.end()) {
+			ARAWN_LOG(WARNING, std::format("gpu \"{}\" not found.", state.gpu));
+			return true;
+		}
+
+		if (unsupportedGPU(*it)) {
+			ARAWN_LOG(WARNING, std::format("gpu \"{}\" not supported.", state.gpu));
+			gpus.erase(it);
+			return true;
+		}
+		
+		gpu = *it;
+		return false;
+	}()) {
+		std::erase_if(gpus, unsupportedGPU);
+		ARAWN_ASSERT(!gpus.empty(), "no supported gpus found");
+		
+		gpu = *std::ranges::max_element(gpus, {}, scoreGPU);
+	}
+	
+	ARAWN_LOG(VERBOSE, std::format("gpu=\"{}\"", [&]->std::string { 
+		VkPhysicalDeviceProperties properties;
+		vkGetPhysicalDeviceProperties(gpu, &properties);
+		return properties.deviceName;
+	}()));
+
+	return gpu;
+}
+
+VkDevice Arawn::Engine::createDevice(QueueIndices& queues) const {
+	uint32_t familyCount;
+	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &familyCount, nullptr);
+	std::vector<VkQueueFamilyProperties> families(familyCount);
+	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &familyCount, families.data());
+
+	std::vector<VkDeviceQueueCreateInfo> queueInfos(families.size(), { 
+		.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0
+	});
+	for (uint32_t i = 0; i < families.size(); ++i) queueInfos[i].queueFamilyIndex = i;
+
+	{ // assign queue family and index
+		auto assignQueue = [&](VkQueueFlags required, VkQueueFlags excluded, QueueIndex& output) {
+			for (uint32_t i = 0; i < families.size(); ++i) {
+				auto& family = families[i];
+				auto& queueCount = queueInfos[i].queueCount;
+				
+				if ((family.queueFlags & required) != required) continue;
+				if ((family.queueFlags & excluded) != 0) continue;
+				if (queueCount == family.queueCount) continue;
+				
+				output.family = i;
+				output.index = queueCount++;
+				return;
+			}
+	
+			for (uint32_t i = 0; i < families.size(); ++i) {
+				auto& family = families[i];
+				
+				if (!(family.queueFlags & required)) continue;
+	
+				output.family = i;
+				output.index = 0;
+				return;
+			}
+	
+			ARAWN_ASSERT(false, "no suitable queue found on selected device.");
+		};
+	
+		auto assignPresentQueue = [&](QueueIndex& output) {
+			VkPhysicalDeviceProperties properties;
+			vkGetPhysicalDeviceProperties(gpu, &properties);
+			
+			for (uint32_t i = 0; i < families.size(); ++i) {
+				auto& family = families[i];
+				
+				VkBool32 supported;
+				VK_ASSERT(vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &supported));
+				if (supported == VK_FALSE) continue;
+				if (!(family.queueFlags & VK_QUEUE_GRAPHICS_BIT)) continue;
+	
+				output.family = i;
+				output.index = 0;
+	
+				if (family.queueCount == 0) ++family.queueCount;
+				
+				return;
+			}
+	
+			throw std::runtime_error("error: no suitable queue found on selected device.");
+		};
+		
+		assignQueue(VK_QUEUE_GRAPHICS_BIT, 0, queues.graphics);
+		assignQueue(VK_QUEUE_COMPUTE_BIT, 0, queues.compute);
+		assignQueue(VK_QUEUE_TRANSFER_BIT, VK_QUEUE_GRAPHICS_BIT, queues.transfer);
+		assignPresentQueue(queues.present);
+	}
+
+	// assign priorities
+	std::vector<float> priorities(std::ranges::fold_left(queueInfos, 0, [](uint32_t count, VkDeviceQueueCreateInfo& family) {
+		return count + family.queueCount;
+	}));
+	{
+		float* priority = priorities.data();
+		for (auto& family : queueInfos) {
+			family.pQueuePriorities = priority;
+			priority += family.queueCount;
+		}
+	
+		auto assignPriority = [&](const QueueIndex& input, float priority) {
+			float& queuePriority = ((queueInfos[input.family].pQueuePriorities - priorities.data()) + priorities.data())[input.index];
+			queuePriority = std::max<float>(priority, queuePriority);
+		};
+	
+		assignPriority(queues.graphics, 0.8);
+		assignPriority(queues.compute, 0.6);
+		assignPriority(queues.transfer, 0.4);
+		assignPriority(queues.present, 1.0);
+	}
+
+	{ // create device
+		ARAWN_LOG(VERBOSE, std::format("device.graphicsQueue = {{ family = {}, index = {}, priority = {} }}", queues.graphics.family, queues.graphics.index, queueInfos[queues.graphics.family].pQueuePriorities[queues.graphics.index]));
+		ARAWN_LOG(VERBOSE, std::format("device.computeQueue = {{ family = {}, index = {}, priority = {} }}", queues.compute.family, queues.compute.index, queueInfos[queues.compute.family].pQueuePriorities[queues.compute.index]));
+		ARAWN_LOG(VERBOSE, std::format("device.transferQueue = {{ family = {}, index = {}, priority = {} }}", queues.transfer.family, queues.transfer.index, queueInfos[queues.transfer.family].pQueuePriorities[queues.transfer.index]));
+		ARAWN_LOG(VERBOSE, std::format("device.presentQueue = {{ family = {}, index = {}, priority = {} }}", queues.present.family, queues.present.index, queueInfos[queues.present.family].pQueuePriorities[queues.present.index]));
+	
+		// reduce queues -> loses family mapping
+		std::erase_if(queueInfos, [](const auto& queueInfo) {
+			return queueInfo.queueCount == 0;
+		});
+	
+		ARAWN_LOG(DEBUG, std::format("device extensions={}", deviceExtensions));
+	
+		VkPhysicalDeviceFeatures features{ };
+		VkDeviceCreateInfo info {
+			.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+			.pNext = nullptr,
+			.flags = 0,
+			.queueCreateInfoCount = static_cast<uint32_t>(queueInfos.size()),
+			.pQueueCreateInfos = queueInfos.data(),
+			.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
+			.ppEnabledExtensionNames = deviceExtensions.data(),
+			.pEnabledFeatures = &features,
+		};
+		VkDevice device;
+		VK_ASSERT(vkCreateDevice(gpu, &info, nullptr, &device))
+		return device;
+	}
+}
+
+Arawn::Engine::Queue Arawn::Engine::getQueue(const QueueIndex& indices) const {
+	VkQueue queue;
+	VkCommandPool pool;
+	vkGetDeviceQueue(device, indices.family, indices.index, &queue);
+
+	VkCommandPoolCreateInfo createInfo{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0,
+		.queueFamilyIndex = indices.family,
+	};
+	VK_ASSERT(vkCreateCommandPool(device, &createInfo, nullptr, &pool));
+
+	return { indices, queue, pool };
+}
+		
+VmaAllocator Arawn::Engine::createAllocator() const {
+	VmaAllocatorCreateInfo createInfo = {
+		.flags = 0,
+		.physicalDevice = gpu,
+		.device = device,
+		.instance = instance,
+		.vulkanApiVersion = VK_API_VERSION_1_3,
+	};
+	VmaAllocator allocator;
+	VK_ASSERT(vmaCreateAllocator(&createInfo, &allocator));
+	return allocator;
+}
+
+VkSwapchainKHR Arawn::Engine::createSwapchain() const {
+	VkSurfaceFormatKHR format = [&]->VkSurfaceFormatKHR  {
+
+		uint32_t formatCount;
+		VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &formatCount, nullptr));
+		std::vector<VkSurfaceFormatKHR> supported(formatCount);
+		VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &formatCount, supported.data()));
+		
+		for (const auto& candidate : supported) { // if preferred format
+			switch (candidate.format)
+			{
+				case(VK_FORMAT_R8G8B8A8_SRGB): break;
+				case(VK_FORMAT_B8G8R8A8_SRGB): break;
+				case(VK_FORMAT_R8G8B8A8_UNORM): break;
+				case(VK_FORMAT_B8G8R8A8_UNORM): break;
+				default: continue;
+			}
+		
+			return candidate;
+		}
+
+		return supported.front();
+	}();
+
+	VkSurfaceCapabilitiesKHR capabilities;
+	VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &capabilities));
+	
+	VkSwapchainCreateInfoKHR createInfo{ 
+		.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+		.pNext = nullptr,
+		.flags = 0,
+		.surface = surface,
+		.imageFormat = format.format,
+		.imageColorSpace = format.colorSpace,
+		.imageArrayLayers = 1,
+		.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+		.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+		.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+		.clipped = VK_TRUE,
+		.oldSwapchain = nullptr,
+	};
+	
+	ARAWN_ASSERT(((capabilities.supportedUsageFlags & createInfo.imageUsage) == createInfo.imageUsage), "swapchain image usage not supported");
+	
+	std::array<uint32_t, 2> families = { queue.graphics.family, queue.present.family };
+	if (queue.graphics.family == queue.present.family) {
+		createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	} else {
+		createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+		createInfo.pQueueFamilyIndices = families.data();
+		createInfo.queueFamilyIndexCount = 2;
+	}
+	
+	if (capabilities.currentExtent.width != UINT32_MAX) {
+		createInfo.imageExtent = capabilities.currentExtent;
+	} else {
+		createInfo.imageExtent = {
+			std::clamp(state.resolution.x, capabilities.minImageExtent.width,  capabilities.maxImageExtent.width),
+			std::clamp(state.resolution.y, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
+		};
+	}
+	
+	createInfo.minImageCount = std::max(state.buffering == BufferingMode::TRIPLE ? 3u : 2u, capabilities.minImageCount);
+	if (capabilities.maxImageCount > 0) {
+		createInfo.minImageCount = std::min(createInfo.minImageCount, capabilities.maxImageCount);
+	}
+	
+	uint32_t presentModeCount;
+	VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &presentModeCount, nullptr));
+	std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+	VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &presentModeCount, presentModes.data()));
+	
+	if (state.vsync == VsyncMode::ENABLED) {
+		switch (state.latency) {
+		case LowLatencyMode::ENABLED:
+		case LowLatencyMode::BALANCED:
+			if (std::ranges::contains(presentModes, VK_PRESENT_MODE_MAILBOX_KHR)) {
+				createInfo.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+				break;
+			}
+		case LowLatencyMode::DISABLED:
+			createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+			break;
+		}
+	} else {
+		switch (state.latency) {
+		case LowLatencyMode::ENABLED:
+			if (std::ranges::contains(presentModes, VK_PRESENT_MODE_IMMEDIATE_KHR)) {
+				createInfo.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+				break;
+			}
+		case LowLatencyMode::BALANCED:
+		case LowLatencyMode::DISABLED:
+			if (std::ranges::contains(presentModes, VK_PRESENT_MODE_FIFO_RELAXED_KHR)) {
+				createInfo.presentMode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+				break;
+			}
+			
+			createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+			break;
+		}
+	}
+	
+	ARAWN_LOG(VERBOSE, std::format("swapchain extent = {{ {}, {} }}", createInfo.imageExtent.width, createInfo.imageExtent.height))
+	ARAWN_LOG(VERBOSE, std::format("swapchain present mode={}", string_VkPresentModeKHR(createInfo.presentMode)));
+	ARAWN_LOG(VERBOSE, std::format("swapchain image format={}", string_VkFormat(createInfo.imageFormat)));
+	ARAWN_LOG(VERBOSE, std::format("swapchain image color space={}", string_VkColorSpaceKHR(createInfo.imageColorSpace)));
+	
+	VkSwapchainKHR swapchain;
+	VK_ASSERT(vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain));
+	return swapchain;
+
+}
 
 Arawn::Engine::~Engine() noexcept {
 	if (instance != nullptr) {
 		vkDeviceWaitIdle(device);
 
-		for (uint32_t i = 0; i < pass.forward.count; ++i) {
-			auto& pass = this->pass.forward.data[i];
+		for (uint32_t i = 0; i < pass.forward.size(); ++i) {
+			auto& pass = this->pass.forward.data_handle()[i];
 			vkFreeCommandBuffers(device, queue.graphics.pool, 1, &pass.cmd);
 		}
+		std::allocator<Forward>().deallocate(pass.forward.data_handle(), pass.forward.size());
 
-		for (uint32_t i = 0; i < pass.present.count; ++i) {
-			auto& pass = this->pass.present.data[i];
+		for (uint32_t i = 0; i < pass.present.size(); ++i) {
+			auto& pass = this->pass.present.data_handle()[i];
 			vkFreeCommandBuffers(device, queue.present.pool, 1, &pass.cmd);
 		}
-		
-		for (uint32_t i = 0; i < context.frame.count; ++i) {
-			auto& ctx = context.frame.data[i];
+		std::allocator<Present>().deallocate(pass.present.data_handle(), pass.present.size());
+
+		for (uint32_t i = 0; i < domain.frame.size(); ++i) {
+			auto& ctx = domain.frame[i];
 			vkDestroySemaphore(device, ctx.imageAvailable, nullptr);
 			vkDestroySemaphore(device, ctx.forwardFinished, nullptr);
 			vkDestroyFence(device, ctx.inFlight, nullptr);
@@ -861,12 +1059,16 @@ Arawn::Engine::~Engine() noexcept {
 			vkDestroyImageView(device, ctx.depthAttachment.view, nullptr);
 			vmaDestroyImage(allocator, ctx.depthAttachment.image, ctx.depthAttachment.memory);
 		}
+		std::allocator<Frame>().deallocate(domain.frame.data_handle(), domain.frame.size());
 
-		for (uint32_t i = 0; i < context.swap.count; ++i) {
-			auto& ctx = context.swap.data[i];
+		for (uint32_t i = 0; i < domain.swap.size(); ++i) {
+			auto& ctx = domain.swap[i];
 			vkDestroySemaphore(device, ctx.postprocessFinished, nullptr);
 		}
-		
+		std::allocator<Swap>().deallocate(domain.swap.data_handle(), domain.swap.size());
+
+
+
 		vkDestroySwapchainKHR(device, swapchain, nullptr);
 		vmaDestroyAllocator(allocator);
 		vkDestroyCommandPool(device, queue.graphics.pool, nullptr);
@@ -876,22 +1078,27 @@ Arawn::Engine::~Engine() noexcept {
 		vkDestroyDevice(device, nullptr);
 		vkDestroySurfaceKHR(instance, surface, nullptr);
 		glfwDestroyWindow(window);
-#if ARAWN_DEBUG
+#ifdef ARAWN_DEBUG
 		destroyDebugUtilsMessengerEXT(instance, messenger, nullptr);
 #endif
 		vkDestroyInstance(instance, nullptr);
 	}
 }
 
-void Arawn::Engine::render() {
-	Frame& frame = context.frame.data[context.frame.index];
+bool Arawn::Engine::closed() const {
+	glfwPollEvents();
+	return glfwWindowShouldClose(window);
+}
 
-	VK_ASSERT(vkWaitForFences(device, 1, &frame.inFlight, VK_TRUE, 1000000000)); // wait for frame ready
+void Arawn::Engine::render() {
+	Frame& frame = domain.frame[domain.frame.index];
+
+	VK_ASSERT(vkWaitForFences(device, 1, &frame.inFlight, VK_TRUE, 1000000000));
 	
 	VK_ASSERT(vkResetFences(device, 1, &frame.inFlight));
 
 	{ // forward pass
-		Forward& forwardPass = pass.forward.data[passIndex(context.frame)];
+		Forward& forwardPass = pass.forward[domain.frame.index];
 
 		std::array<VkSemaphore, 0> waits = { };
 		std::array<VkPipelineStageFlags, 0> stages = { };
@@ -913,18 +1120,19 @@ void Arawn::Engine::render() {
 	}
 	
 	{ // acquire swapchain image
-		VkResult res = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, frame.imageAvailable, nullptr, &context.swap.index);
+		VkResult res = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, frame.imageAvailable, nullptr, &domain.swap.index);
 		if (res == VK_ERROR_OUT_OF_DATE_KHR) [[unlikely]] {
 			// recreate swapchain
 		} else if (res == VK_SUBOPTIMAL_KHR) [[unlikely]] {
 			// recreate swapchain???
 		} else VK_ASSERT(res);
 	}
-	Swap& swap = context.swap.data[context.swap.index];
+	Swap& swap = domain.swap[domain.swap.index];
 	
 	{ // post process pass
-		Present& presentPass = pass.present.data[passIndex(context.frame, context.swap)];
-		
+		Present& presentPass = pass.present[domain.frame.index, domain.swap.index];
+		auto* x = &pass.present[domain.frame.index, domain.swap.index];
+
 		std::array<VkSemaphore, 2> waits = { frame.imageAvailable, frame.forwardFinished };
 		std::array<VkPipelineStageFlags, 2> stages = { VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT };
 		std::array<VkSemaphore, 1> signals = { swap.postprocessFinished };
@@ -953,7 +1161,7 @@ void Arawn::Engine::render() {
 			.pWaitSemaphores = waits.data(),
 			.swapchainCount = 1,
 			.pSwapchains = &swapchain,
-			.pImageIndices = &context.swap.index,
+			.pImageIndices = &domain.swap.index,
 			.pResults = nullptr,
 		};
 
@@ -964,10 +1172,10 @@ void Arawn::Engine::render() {
 	}
 	
 	// increment contexts
-	context.frame.index = (context.frame.index + 1) % context.frame.count;
+	domain.frame.index = (domain.frame.index + 1) % domain.frame.size();
 }
 
-void Arawn::Engine::Forward::record(const State& state, Shared& shared, Frame& frame) {
+void Arawn::Engine::Forward::record(const State& state, const Shared& shared, const Frame& frame) {
 	{ // begin command buffer
 		VkCommandBufferBeginInfo beginInfo{
 			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -1023,7 +1231,7 @@ void Arawn::Engine::Forward::record(const State& state, Shared& shared, Frame& f
 	vkEndCommandBuffer(cmd);
 }
 
-void Arawn::Engine::Present::record(const State& state, Shared& shared, Frame& frame, Swap& swap) {
+void Arawn::Engine::Present::record(const State& state, const Shared& shared, const Frame& frame, const Swap& swap) {
 	{ // begin command buffer
 		VkCommandBufferBeginInfo beginInfo{
 			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -1109,8 +1317,6 @@ void Arawn::Engine::Present::record(const State& state, Shared& shared, Frame& f
 
 	vkEndCommandBuffer(cmd);
 }
-
-
 
 VkFormat Arawn::Engine::findFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags required) const {
 	for (VkFormat candidate : candidates) {

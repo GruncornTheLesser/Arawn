@@ -37,24 +37,38 @@ FetchContent_Declare(ecs GIT_REPOSITORY https://github.com/GruncornTheLesser/ECS
 
 FetchContent_MakeAvailable(glfw glm vma spirv ecs)
 
-option(ENABLE_VERBOSE_LOG "Enable verbose logging" OFF)
-option(ENABLE_DEBUG_LOG "Enable debug logging" OFF)
-option(ENABLE_WARNING_LOG "Enable warning logging" OFF)
-option(ENABLE_ERROR_LOG "Enable error logging" OFF)
-
-
 # --------------------------
 # create library
 # --------------------------
 add_library(arawn STATIC ${SOURCES} ${HEADERS})
 add_library(arawn::engine ALIAS arawn)
 
-target_compile_definitions(arawn
-PRIVATE 
-	ARAWN_VERBOSE_LOG
-	ARAWN_DEBUG_LOG
-	ARAWN_WARNING_LOG
-	ARAWN_ERROR_LOG
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(DEFAULT_ARAWN_DEBUG ON)
+else()
+    set(DEFAULT_ARAWN_DEBUG OFF)
+endif()
+
+option(ARAWN_DEBUG "enables aditional validation layers" ${DEFAULT_ARAWN_DEBUG})
+option(ARAWN_LOG_VERBOSE "Enable verbose logging" OFF)
+option(ARAWN_LOG_DEBUG "Enable debug logging" OFF)
+option(ARAWN_LOG_WARNING "Enable warning logging" OFF)
+option(ARAWN_LOG_ERROR "Enable error logging" OFF)
+
+message(STATUS "ARAWN_DEBUG=${ARAWN_DEBUG}")
+message(STATUS "ARAWN_LOG_VERBOSE=${ARAWN_LOG_VERBOSE}")
+message(STATUS "ARAWN_LOG_DEBUG=${ARAWN_LOG_DEBUG}")
+message(STATUS "ARAWN_LOG_WARNING=${ARAWN_LOG_WARNING}")
+message(STATUS "ARAWN_LOG_ERROR=${ARAWN_LOG_ERROR}")
+
+target_compile_definitions(
+	arawn
+PRIVATE
+	$<$<BOOL:${ARAWN_DEBUG}>:ARAWN_DEBUG>
+    $<$<BOOL:${ARAWN_LOG_VERBOSE}>:ARAWN_LOG_VERBOSE>
+    $<$<BOOL:${ARAWN_LOG_DEBUG}>:ARAWN_LOG_DEBUG>
+    $<$<BOOL:${ARAWN_LOG_WARNING}>:ARAWN_LOG_WARNING>
+    $<$<BOOL:${ARAWN_LOG_ERROR}>:ARAWN_LOG_ERROR>
 )
 
 target_include_directories(arawn 
@@ -68,7 +82,10 @@ PRIVATE
 	${Vulkan_INCLUDE_DIRS}
 	${spirv_SOURCE_DIR}
 )
-
+target_compile_options(arawn PRIVATE
+	"-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/="
+	"-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/="
+)
 target_link_libraries(arawn 
 PRIVATE
 	glfw
@@ -76,14 +93,10 @@ PRIVATE
     # ecs_lib
 )
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-	target_compile_definitions(arawn PUBLIC ARAWN_DEBUG=1)
-
-	target_compile_options(arawn PRIVATE
-		"-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/="
-		"-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/="
-	)
-endif()
+target_compile_options(arawn PRIVATE
+	"-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/="
+	"-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/="
+)
 
 # --------------------------
 # shader compilation
