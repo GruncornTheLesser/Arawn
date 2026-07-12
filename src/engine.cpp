@@ -4,20 +4,19 @@
 #include <vector>
 #include <ranges>
 
-constexpr std::array instanceExtensions = { 
+constinit std::array instanceExtensions = std::to_array<const char*>({ 
 #ifdef ARAWN_DEBUG
 	VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 #endif
-	VK_KHR_SURFACE_EXTENSION_NAME
-};
-constexpr std::array deviceExtensions = {
+});
+constinit std::array deviceExtensions = std::to_array<const char*>({
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 	VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
-};
+});
 #ifdef ARAWN_DEBUG
-constexpr std::array debugLayers = {
+constinit std::array debugLayers = std::to_array<const char*>({
 	"VK_LAYER_KHRONOS_validation"
-};
+});
 #endif
 
 Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display, QueueIndices&& queueIndices) 
@@ -43,10 +42,10 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display, QueueIndic
 	{ // init frame domain
 		{ // allocate 
 			uint32_t frameCount = display.buffering == BufferingMode::DOUBLE ? 2 : 3;
-			Frame* frameData = std::allocator<Frame>().allocate(frameCount);
+			Frame* frameData = static_cast<Frame*>(cache.allocate(sizeof(Frame) * frameCount, alignof(Frame)));
 			domain.frame = { frameData, frameCount };
 
-			ARAWN_LOG(VERBOSE, std::format("frame frames = {}", frameCount))
+			ARAWN_LOG(DEBUG, std::format("render frames = {}", frameCount))
 		}
 
 		{ // init sync primitves
@@ -206,10 +205,10 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display, QueueIndic
 		{ // allocate
 			uint32_t frameCount;
 			vkGetSwapchainImagesKHR(device, swapchain, &frameCount, nullptr);
-			Swap* swapData = std::allocator<Swap>().allocate(frameCount);
+			Swap* swapData = static_cast<Swap*>(cache.allocate(sizeof(Swap) * frameCount, alignof(Swap)));
 			domain.swap = { swapData, frameCount };
 
-			ARAWN_LOG(VERBOSE, std::format("swapchain frames = {}", frameCount))
+			ARAWN_LOG(DEBUG, std::format("swapchain frames = {}", frameCount))
 		}
 
 		{ // init sync primitves
@@ -238,10 +237,10 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display, QueueIndic
 	{ // init forward pass
 		{ // allocate
 			uint32_t frameCount = static_cast<uint32_t>(domain.frame.size());
-			Forward* frameData = std::allocator<Forward>().allocate(frameCount);
+			Forward* frameData = static_cast<Forward*>(cache.allocate(sizeof(Forward) * frameCount, alignof(Forward)));
 			pass.forward = { frameData, { frameCount } };
 
-			ARAWN_LOG(VERBOSE, std::format("forward frames = {}", frameCount))
+			ARAWN_LOG(DEBUG, std::format("forward frames = {}", frameCount))
 		}
 		
 		{ // init command buffers
@@ -273,10 +272,10 @@ Arawn::Engine::Engine(const AppInfo& app, const DisplayInfo& display, QueueIndic
 	{ // init present pass
 		{ // allocate
 			uint32_t frameCount = static_cast<uint32_t>(domain.frame.size() * domain.swap.size());
-			Present* frameData = std::allocator<Present>().allocate(frameCount);
+			Present* frameData = static_cast<Present*>(cache.allocate(sizeof(Present) * frameCount, alignof(Present)));
 			pass.present = { frameData, { domain.frame.size(), domain.swap.size() } };
 
-			ARAWN_LOG(VERBOSE, std::format("present frames = {}", frameCount))
+			ARAWN_LOG(DEBUG, std::format("present frames = {}", frameCount))
 		}
 		
 		{ // init cmd buffers
@@ -316,8 +315,8 @@ VkInstance Arawn::Engine::Engine::createInstance() const {
 	
 	uint32_t vulkanVersion = VK_API_VERSION_1_3;
 		
-	ARAWN_LOG(VERBOSE, std::format("application version={}.{}.{}", state.version.major, state.version.minor, state.version.patch));
-	ARAWN_LOG(VERBOSE, std::format("vulkan api version={}.{}.{}", VK_API_VERSION_MAJOR(vulkanVersion), VK_API_VERSION_MINOR(vulkanVersion), VK_API_VERSION_PATCH(vulkanVersion)));
+	ARAWN_LOG(DEBUG, std::format("application version={}.{}.{}", state.version.major, state.version.minor, state.version.patch));
+	ARAWN_LOG(DEBUG, std::format("vulkan api version={}.{}.{}", VK_API_VERSION_MAJOR(vulkanVersion), VK_API_VERSION_MINOR(vulkanVersion), VK_API_VERSION_PATCH(vulkanVersion)));
 	
 	std::vector<const char*> extensions;
 	{
@@ -757,7 +756,7 @@ VkPhysicalDevice Arawn::Engine::selectGPU() const {
 		gpu = *std::ranges::max_element(gpus, {}, scoreGPU);
 	}
 	
-	ARAWN_LOG(VERBOSE, std::format("gpu=\"{}\"", [&]->std::string { 
+	ARAWN_LOG(DEBUG, std::format("gpu=\"{}\"", [&]->std::string { 
 		VkPhysicalDeviceProperties properties;
 		vkGetPhysicalDeviceProperties(gpu, &properties);
 		return properties.deviceName;
@@ -837,9 +836,10 @@ VkDevice Arawn::Engine::createDevice(QueueIndices& queues) const {
 	}
 
 	// assign priorities
-	std::vector<float> priorities(std::ranges::fold_left(queueInfos, 0, [](uint32_t count, VkDeviceQueueCreateInfo& family) {
+	uint32_t queueCount = std::ranges::fold_left(queueInfos, 0, [](uint32_t count, const VkDeviceQueueCreateInfo& family) {
 		return count + family.queueCount;
-	}));
+	});
+	std::vector<float> priorities(queueCount);
 	{
 		float* priority = priorities.data();
 		for (auto& family : queueInfos) {
@@ -859,10 +859,10 @@ VkDevice Arawn::Engine::createDevice(QueueIndices& queues) const {
 	}
 
 	{ // create device
-		ARAWN_LOG(VERBOSE, std::format("device.graphicsQueue = {{ family = {}, index = {}, priority = {} }}", queues.graphics.family, queues.graphics.index, queueInfos[queues.graphics.family].pQueuePriorities[queues.graphics.index]));
-		ARAWN_LOG(VERBOSE, std::format("device.computeQueue = {{ family = {}, index = {}, priority = {} }}", queues.compute.family, queues.compute.index, queueInfos[queues.compute.family].pQueuePriorities[queues.compute.index]));
-		ARAWN_LOG(VERBOSE, std::format("device.transferQueue = {{ family = {}, index = {}, priority = {} }}", queues.transfer.family, queues.transfer.index, queueInfos[queues.transfer.family].pQueuePriorities[queues.transfer.index]));
-		ARAWN_LOG(VERBOSE, std::format("device.presentQueue = {{ family = {}, index = {}, priority = {} }}", queues.present.family, queues.present.index, queueInfos[queues.present.family].pQueuePriorities[queues.present.index]));
+		ARAWN_LOG(DEBUG, std::format("device.graphicsQueue = {{ family = {}, index = {}, priority = {} }}", queues.graphics.family, queues.graphics.index, queueInfos[queues.graphics.family].pQueuePriorities[queues.graphics.index]));
+		ARAWN_LOG(DEBUG, std::format("device.computeQueue = {{ family = {}, index = {}, priority = {} }}", queues.compute.family, queues.compute.index, queueInfos[queues.compute.family].pQueuePriorities[queues.compute.index]));
+		ARAWN_LOG(DEBUG, std::format("device.transferQueue = {{ family = {}, index = {}, priority = {} }}", queues.transfer.family, queues.transfer.index, queueInfos[queues.transfer.family].pQueuePriorities[queues.transfer.index]));
+		ARAWN_LOG(DEBUG, std::format("device.presentQueue = {{ family = {}, index = {}, priority = {} }}", queues.present.family, queues.present.index, queueInfos[queues.present.family].pQueuePriorities[queues.present.index]));
 	
 		// reduce queues -> loses family mapping
 		std::erase_if(queueInfos, [](const auto& queueInfo) {
@@ -1020,10 +1020,10 @@ VkSwapchainKHR Arawn::Engine::createSwapchain() const {
 		}
 	}
 	
-	ARAWN_LOG(VERBOSE, std::format("swapchain extent = {{ {}, {} }}", createInfo.imageExtent.width, createInfo.imageExtent.height))
-	ARAWN_LOG(VERBOSE, std::format("swapchain present mode={}", string_VkPresentModeKHR(createInfo.presentMode)));
-	ARAWN_LOG(VERBOSE, std::format("swapchain image format={}", string_VkFormat(createInfo.imageFormat)));
-	ARAWN_LOG(VERBOSE, std::format("swapchain image color space={}", string_VkColorSpaceKHR(createInfo.imageColorSpace)));
+	ARAWN_LOG(DEBUG, std::format("swapchain extent = {{ {}, {} }}", createInfo.imageExtent.width, createInfo.imageExtent.height))
+	ARAWN_LOG(DEBUG, std::format("swapchain present mode={}", string_VkPresentModeKHR(createInfo.presentMode)));
+	ARAWN_LOG(DEBUG, std::format("swapchain image format={}", string_VkFormat(createInfo.imageFormat)));
+	ARAWN_LOG(DEBUG, std::format("swapchain image color space={}", string_VkColorSpaceKHR(createInfo.imageColorSpace)));
 	
 	VkSwapchainKHR swapchain;
 	VK_ASSERT(vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain));
@@ -1039,14 +1039,12 @@ Arawn::Engine::~Engine() noexcept {
 			auto& pass = this->pass.forward.data_handle()[i];
 			vkFreeCommandBuffers(device, queue.graphics.pool, 1, &pass.cmd);
 		}
-		std::allocator<Forward>().deallocate(pass.forward.data_handle(), pass.forward.size());
-
+		
 		for (uint32_t i = 0; i < pass.present.size(); ++i) {
 			auto& pass = this->pass.present.data_handle()[i];
 			vkFreeCommandBuffers(device, queue.present.pool, 1, &pass.cmd);
 		}
-		std::allocator<Present>().deallocate(pass.present.data_handle(), pass.present.size());
-
+		
 		for (uint32_t i = 0; i < domain.frame.size(); ++i) {
 			auto& ctx = domain.frame[i];
 			vkDestroySemaphore(device, ctx.imageAvailable, nullptr);
@@ -1059,15 +1057,12 @@ Arawn::Engine::~Engine() noexcept {
 			vkDestroyImageView(device, ctx.depthAttachment.view, nullptr);
 			vmaDestroyImage(allocator, ctx.depthAttachment.image, ctx.depthAttachment.memory);
 		}
-		std::allocator<Frame>().deallocate(domain.frame.data_handle(), domain.frame.size());
-
+		
 		for (uint32_t i = 0; i < domain.swap.size(); ++i) {
 			auto& ctx = domain.swap[i];
 			vkDestroySemaphore(device, ctx.postprocessFinished, nullptr);
 		}
-		std::allocator<Swap>().deallocate(domain.swap.data_handle(), domain.swap.size());
-
-
+		cache.release();
 
 		vkDestroySwapchainKHR(device, swapchain, nullptr);
 		vmaDestroyAllocator(allocator);

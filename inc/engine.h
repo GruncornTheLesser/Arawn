@@ -119,7 +119,7 @@ namespace Arawn {
 		VK_TYPE(VkSwapchainKHR) createSwapchain() const;
 
 		VK_ENUM(VkFormat) findFormat(const std::vector<VK_ENUM(VkFormat)>& candidates, VK_ENUM(VkImageTiling) tiling, VK_ENUM(VkFormatFeatureFlags) flags) const;
-
+		
 	private:
 		State state;
 
@@ -136,7 +136,8 @@ namespace Arawn {
 		VK_TYPE(VmaAllocator) allocator;
 		
 		VK_TYPE(VkSwapchainKHR) swapchain;
-	
+		
+		std::pmr::monotonic_buffer_resource cache;
 		struct {
 			Shared shared;
 			Domain<Frame> frame;
