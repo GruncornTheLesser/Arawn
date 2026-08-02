@@ -1,8 +1,5 @@
 #pragma once
 #include <cstdint>
-#include <glm/glm.hpp>
-#include <glm/ext/quaternion_float.hpp>
-
 #ifdef ARAWN_INCLUDE_VULKAN
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
@@ -50,7 +47,7 @@
 #define ARAWN_LOG(LEVEL, MESSAGE) ARAWN_LOG_##LEVEL##_IMPL(MESSAGE)
 
 #define ARAWN_THROW(MESSAGE) throw std::runtime_error(ARAWN_LOG_MESSAGE(ERROR, MESSAGE));
-#define ARAWN_ASSERT(STATEMENT, MESSAGE) if (STATEMENT) { } else [[unlikely]] { ARAWN_THROW(MESSAGE) }
+#define ARAWN_ASSERT(STATEMENT, MESSAGE) do { if (STATEMENT) { } else [[unlikely]] { ARAWN_THROW(MESSAGE) } } while(0)
 
 #define VK_ASSERT(STATEMENT) ARAWN_ASSERT(VkResult statement_result = STATEMENT; statement_result == VK_SUCCESS, string_VkResult(statement_result))
 

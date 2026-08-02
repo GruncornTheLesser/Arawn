@@ -1,246 +1,244 @@
 #pragma once
-#define ARAWN_IMPLEMENTAION
-#include <filesystem>
-#include <mdspan>
-#include <vulkan.h>
-#include <memory_resource>
-#include <span>
+#include "engine/core.h"
+#include "engine/window.h"
+#include "engine/device.h"
+#include "engine/swap.h"
+#include "engine/world.h"
+#include "engine/render.h"
+#include "engine/present.h"
+#include "assets/texture.h"
+#include "assets/material.h"
+#include "assets/mesh.h"
+#include "nodes/node.h"
+#include "nodes/light.h"
+#include "nodes/instance.h"
 
-namespace Arawn { // settings.h
-	enum class DisplayMode { WINDOWED, FULLSCREEN, EXCLUSIVE };
-	enum class BufferingMode { DOUBLE, TRIPLE };
-	enum class VsyncMode { DISABLED, ENABLED };
-	enum class LowLatencyMode { DISABLED, BALANCED, ENABLED };
-	enum class AntiAliasing { DISABLED, MSAA_2, MSAA_4, FXAA_2, FXAA_4, TAA };
-	
-	struct DisplayInfo {
-		const char* gpu = nullptr;
-		const char* monitor = nullptr;
-		struct { uint32_t x, y; } resolution = { 800, 600 };
-		uint32_t refreshRate = 60;
-		DisplayMode display = DisplayMode::WINDOWED;
-		VsyncMode vsync = VsyncMode::ENABLED;
-		LowLatencyMode latency = LowLatencyMode::BALANCED;
-		BufferingMode buffering = BufferingMode::DOUBLE;
-	};
-	
-	struct AppInfo {
-		const char* title = "Arawn App";
-		struct { uint32_t major, minor, patch; } version;
-	};
-}
-
-// NOTE: must be inline for allocations to work
-// raw heap allocations before main() are odd. 
-// inline allows the compiler to defer the initialization to the start of main()
-// this is called the static order initialization fiasco
-
-namespace Arawn {
-	
-	inline extern class Engine {
-		struct State : AppInfo, DisplayInfo { 
-			struct { 
-				VK_ENUM(VkFormat) format; 
-				VK_ENUM(VkColorSpaceKHR) colorSpace;
-			} surface;
-		};
-		struct QueueIndex { uint32_t family, index; };
-		struct QueueIndices { QueueIndex graphics, compute, transfer, present; };
-		struct Queue : QueueIndex { VK_TYPE(VkQueue) queue; VK_TYPE(VkCommandPool) pool; };
-
-		template<typename Dom_T>
-		struct Domain : std::mdspan<Dom_T, std::extents<uint32_t, Dom_T::buffering>> { 
-			Domain() { }
-			Domain(Dom_T* frames, uint32_t count) : std::mdspan<Dom_T, std::extents<uint32_t, Dom_T::buffering>>(frames, count), index(0) { }
-			uint32_t index;
-		};
-	
-		template<typename Pass_T, typename ... Dom_Ts>
-		struct Pass : std::mdspan<Pass_T, std::extents<uint32_t, Dom_Ts::buffering...>> { 
-			Pass() { }
-			Pass(Pass_T* frames, const std::array<uint32_t, sizeof...(Dom_Ts)>& counts) : std::mdspan<Pass_T, std::extents<uint32_t, Dom_Ts::buffering...>>(frames, counts) { }
-		};
-	
-		// ------------- domain frames ------------- 
-		struct Shared {
-			static constexpr std::size_t buffering = 1;
-			struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; void* data; } staging;
-			struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } vbo, ebo, ubo;
-		};
-		struct Frame {
-			static constexpr std::size_t buffering = std::dynamic_extent;
-			VK_TYPE(VkFence) inFlight;
-			VK_TYPE(VkSemaphore) imageAvailable;
-			VK_TYPE(VkSemaphore) forwardFinished;
-			struct { VK_TYPE(VkImage) image; VK_TYPE(VmaAllocation) memory; VK_TYPE(VkImageView) view; } colorAttachment, depthAttachment;
-		};
-		struct Swap {
-			static constexpr std::size_t buffering = std::dynamic_extent;
-			VK_TYPE(VkSemaphore) postprocessFinished;
-			VK_TYPE(VkImage) image;
-		};
-	
-		// ------------- pass frames ------------- 
-		struct Forward { // graphics queue
-			VK_TYPE(VkCommandBuffer) cmd;
-			void record(const State& state, const Shared& shared, const Frame& frame);
-		};
-		struct Present { // present queue
-			VK_TYPE(VkCommandBuffer) cmd;
-			void record(const State& state, const Shared& shared, const Frame& frame, const Swap& swap);
-		};
-		
-	private:
-		Engine(const AppInfo& app, const DisplayInfo& display, QueueIndices&& queueIndices);
-	public:
-		Engine(const AppInfo& app = {}, const DisplayInfo& display = {}) : Engine(app, display, {}) { }
+namespace arawn {
+	struct Engine {
+		Engine(const Settings& info);
 		~Engine() noexcept;
 
-		Engine(Engine&& engine) noexcept = delete;
-		Engine& operator=(Engine&& engine) noexcept = delete;
+		Engine(Engine&& engine) noexcept;
+		Engine& operator=(Engine&& engine) noexcept;
 		
 		Engine(const Engine& engine) noexcept = delete;
 		Engine& operator=(const Engine& engine) noexcept = delete;
-		
+
 		bool closed() const;
-		void render();
+
+		void update(const Settings& value);
+		
+		template<class T> Handle<T> create(const T::CreateInfo& info);
+		template<class T> void destroy(Handle<T> handle);
 
 	private:
-		VK_TYPE(VkInstance) createInstance() const;
-#ifdef ARAWN_DEBUG
-		VK_TYPE(VkDebugUtilsMessengerEXT) createMessenger() const;
-#endif
-		VK_TYPE(GLFWwindow*) createWindow() const;
-		VK_TYPE(VkSurfaceKHR) createSurface() const;
-		VK_TYPE(VkPhysicalDevice) selectGPU() const;
-		VK_TYPE(VkDevice) createDevice(QueueIndices& queueIndices) const;
-		Queue getQueue(const QueueIndex&) const;
-		VK_TYPE(VmaAllocator) createAllocator() const;
-		VK_TYPE(VkSwapchainKHR) createSwapchain() const;
+		Settings settings;
+		engine::Core core;
+		engine::Window window;
+		engine::Device device;
+		engine::Swap swap;
+		engine::World world;
+		engine::Render render;
+		engine::Present present;
+	};
 
-		VK_ENUM(VkFormat) findFormat(const std::vector<VK_ENUM(VkFormat)>& candidates, VK_ENUM(VkImageTiling) tiling, VK_ENUM(VkFormatFeatureFlags) flags) const;
-		
-	private:
-		State state;
+	template<> Handle<assets::Texture> Engine::create(const assets::Texture::CreateInfo&);
+	template<> void Engine::destroy(Handle<assets::Texture>);
 
-		VK_TYPE(VkInstance) instance;
-#ifdef ARAWN_DEBUG
-		VK_TYPE(VkDebugUtilsMessengerEXT) messenger;
-#endif
-		VK_TYPE(GLFWwindow*) window;
-		VK_TYPE(VkSurfaceKHR) surface;
-		VK_TYPE(VkPhysicalDevice) gpu;
-		VK_TYPE(VkDevice) device;
+	template<> Handle<assets::Material> Engine::create(const assets::Material::CreateInfo&);
+	template<> void Engine::destroy(Handle<assets::Material>);
 
-		struct { Queue graphics, compute, transfer, present; } queue;
-		VK_TYPE(VmaAllocator) allocator;
-		
-		VK_TYPE(VkSwapchainKHR) swapchain;
-		
-		std::pmr::monotonic_buffer_resource cache;
-		struct {
-			Shared shared;
-			Domain<Frame> frame;
-			Domain<Swap> swap;
-		} domain;
-	
-		struct {
-			Pass<Forward, Frame> forward;
-			Pass<Present, Frame, Swap> present;
-		} pass;
-	} engine;
+	template<> Handle<assets::Mesh> Engine::create(const assets::Mesh::CreateInfo&);
+	template<> void Engine::destroy(Handle<assets::Mesh>);
+
+	template<> Handle<nodes::Node> Engine::create(const nodes::Node::CreateInfo&);
+	template<> void Engine::destroy(Handle<nodes::Node>);
+
+	template<> Handle<nodes::Light> Engine::create(const nodes::Light::CreateInfo&);
+	template<> void Engine::destroy(Handle<nodes::Light>);
+
+	template<> Handle<nodes::Instance> Engine::create(const nodes::Instance::CreateInfo&);
+	template<> void Engine::destroy(Handle<nodes::Instance>);
 }
 
+
 /*
-	class Texture {
-	public:
-		static Texture load(std::filesystem::path path);	
-		Texture(uint32_t width, uint32_t height, std::byte* data = nullptr);
-		
-		~Texture();
-        Texture(const Texture&) = delete;
-        Texture& operator=(const Texture&) = delete;
-        Texture(Texture&&) noexcept;
-        Texture& operator=(Texture&&) noexcept;
+		struct Program { VK_TYPE(VkPipeline) pipeline; VK_TYPE(VkPipelineLayout) layout; };
 
-
-	private:
-		VK_TYPE(VkImage) image;
-		VK_TYPE(VkImageView) view;
-		VK_TYPE(VmaVirtualAllocation) memory;
-	};
+		// --------- domains --------- 
+		struct Scene {
+			struct {
+				VK_TYPE(VkBuffer) buffer;
+				VK_TYPE(VmaAllocation) memory;
+				void* data; 
+				uint64_t capacity, alloc, retire;
 	
-	class Buffer {
-	public:
-		static Buffer load(std::filesystem::path path);
-		Buffer(std::byte* data, uint32_t size);
-		
-		~Buffer();
-        Buffer(const Buffer&) = delete;
-        Buffer& operator=(const Buffer&) = delete;
-        Buffer(Buffer&&) noexcept;
-        Buffer& operator=(Buffer&&) noexcept;
-	private:
-		VK_TYPE(VkBuffer) buffer;
-		VK_TYPE(VmaVirtualAllocation) memory;
-	};
-
-	class Material {
-	public:
-		static Material load(std::filesystem::path path);
-		Material();
-	};
-
-	class Mesh {
-		struct Meshlet {
-			uint32_t index;
-			uint32_t count;
-			uint32_t material; // handle
+				VK_TYPE(VkSemaphore) semaphore;
+				VK_TYPE(VkFence) guard;
+			} staging;
+			struct {
+				struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } vertices;
+				struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } indices;
+				struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } manifest;
+			} geometry;
+			struct {
+				struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } manifest;
+			} material;
+			struct {
+				struct { VK_TYPE(VkImage) image; VK_TYPE(VmaAllocation) memory; } images;
+				struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } manifest;
+			} texture;
+			struct {
+				struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } manifest;
+			} light;
+			struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } cluster;
 		};
-	public:
-		Mesh(std::filesystem::path path);
 		
-		~Mesh();
-        Mesh(const Mesh&) = delete;
-        Mesh& operator=(const Mesh&) = delete;
-        Mesh(Mesh&&) noexcept = default;
-        Mesh& operator=(Mesh&&) noexcept = default;
-
-	private:
-		Buffer vertices;  // vertex buffer object
-		Buffer indices;   // element buffer object
-		Buffer manifest;  // meshlet buffer object
-	};
-
-	class Program {
-	public:
-		class Shader {
-			friend class Program;
-		public:
-			Shader(std::filesystem::path path);
-			~Shader();
-            
-            Shader(const Shader&) = delete;
-            Shader& operator=(const Shader&) = delete;
-            Shader(Shader&&) noexcept;
-            Shader& operator=(Shader&&) noexcept;
-
-		private:
-			VK_TYPE(VkShaderModule) shader;
+		struct Shadow {
+			struct { VK_TYPE(VkImage) image; VK_TYPE(VmaAllocation) memory; VK_TYPE(VkImageView) view; } atlas;
+			struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } source;
+		};
+		struct Reflect {
+			struct { VK_TYPE(VkImage) image; VK_TYPE(VmaAllocation) memory; VK_TYPE(VkImageView) view; } cubemaps;
+			struct { VK_TYPE(VkImage) image; VK_TYPE(VmaAllocation) memory; VK_TYPE(VkImageView) view; } target; // render here 
 		};
 
-		Program(Shader comp);
-		Program(Shader vert, Shader frag);
-		Program(Shader comp, Shader geom, Shader frag);
+		struct Frame {
+			VK_TYPE(VkFence) inFlight;
+			
+			struct {
+				struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } camera;
+			} world;
 
-		~Program();
-        Program(const Program&) = delete;
-        Program& operator=(const Program&) = delete;
-        Program(Program&&) noexcept;
-        Program& operator=(Program&&) noexcept;
+			struct {
+				// local passes
+				struct { VK_TYPE(VkCommandBuffer) cmd; VK_TYPE(VkSemaphore) finished; } genHiZ;      // generate the HZB pyramid from frame n-1
+				struct { VK_TYPE(VkCommandBuffer) cmd; VK_TYPE(VkSemaphore) finished; } earlyCull;   // test meshes against HZB pyramid
+				struct { VK_TYPE(VkCommandBuffer) cmd; VK_TYPE(VkSemaphore) finished; } depth;       // render early visible meshes to depth pass
+				struct { VK_TYPE(VkCommandBuffer) cmd; VK_TYPE(VkSemaphore) finished; } genClusters; // generate light clusters from depth
+				struct { VK_TYPE(VkCommandBuffer) cmd; VK_TYPE(VkSemaphore) finished; } lightCull;   // re test occluded meshes in frame n-1 with frame n
+				struct { VK_TYPE(VkCommandBuffer) cmd; VK_TYPE(VkSemaphore) finished; } lateCull;    // cull lights against clusters	
+				// external pass syncs
+				struct { VK_TYPE(VkSemaphore) finished; } earlyFwd;                                                    // write color attachment with early visible meshes, depth readonly
+				struct { VK_TYPE(VkSemaphore) finished; } lateFwd;	                                                   // write color attachmnt with late visible meshes, depth readwrite
+				struct { VK_TYPE(VkSemaphore) finished; } acquireI;                                                    // acquire image to present to
+				struct { VK_TYPE(VkSemaphore) finished; } postprocess;                                                 // copies frame to swapchain surface 
+			} pass;
+			
+			struct {
+				struct { VK_TYPE(VkImage) image; VK_TYPE(VkImageView) view; VK_TYPE(VmaAllocation) memory; } hiZ;
+				struct { VK_TYPE(VkImage) image; VK_TYPE(VkImageView) view; VK_TYPE(VmaAllocation) memory; } color;
+				struct { VK_TYPE(VkImage) image; VK_TYPE(VkImageView) view; VK_TYPE(VmaAllocation) memory; } depth;
+			} attachment;
+			
+			struct {
+				struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } cluster;
+				struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } light;
+				struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } early;
+				struct { VK_TYPE(VkBuffer) buffer; VK_TYPE(VmaAllocation) memory; } late;
+			} cull;
+		
+			
 
-	private:
-		VK_TYPE(VkPipeline) pipeline;
-		VK_TYPE(VkPipelineLayout) layout;
-	};
+			struct Container {
+				Container(Engine& engine);
+				~Container();
+				Container(Container&& other);
+				Container& operator=(Container&& other);
+				Container(const Container&) = delete;
+				Container& operator=(const Container&) = delete;
+				
+				struct {
+					struct { } genHiZPass;
+					struct { } earlyCullPass;
+					struct { } depthPass;
+					struct { } genClustersPass;
+					struct { } lightCullPass;
+					struct { } lateCullPass;
+				} pass;
+
+				struct {
+					struct { } hiZ;
+					struct { } color;
+					struct { } depth;
+				} attachment;
+
+				struct {
+					struct { } cluster;
+					struct { } light;
+					struct { } early;
+					struct { } late;
+				} cull;
+
+				uint32_t index, count, version;
+				Frame* frames;
+			};
+			
+		};
+
+		struct Swap {
+			VK_TYPE(VkSemaphore) finished;
+			struct { VK_TYPE(VkImage) image; VK_TYPE(VkImageView) view; VK_TYPE(VkSemaphore) ready; } surface;
+		
+			
+			struct Container {
+				Container(Engine& engine);
+				~Container();
+				Container(Container&& other);
+				Container& operator=(Container&& other);
+				Container(const Container&) = delete;
+				Container& operator=(const Container&) = delete;
+
+				VK_TYPE(VkSwapchainKHR) chain;
+
+				uint32_t index, count, version;
+				Swap* frames;
+			};
+		};
+		// --------- passes --------- 
+		struct Render {
+			struct {
+				struct { VK_TYPE(VkCommandBuffer) cmd; } earlyFwd; 
+				struct { VK_TYPE(VkCommandBuffer) cmd; } lateFwd;
+			} pass;
+
+			struct Container {
+				Container(Engine& engine);
+				~Container();
+				Container(Container&& other);
+				Container& operator=(Container&& other);
+				Container(const Container&) = delete;
+				Container& operator=(const Container&) = delete;
+
+				struct {
+					struct { } earlyFwd; 
+					struct { } lateFwd;
+				} pass;
+
+				uint32_t index, count, version;
+				Render* frames;
+			};
+		};
+		struct Present {
+			struct {
+				struct { VK_TYPE(VkCommandBuffer) cmd; } copy;
+			} pass;
+
+			struct Container {
+				Container(Engine& engine);
+				~Container();
+				Container(Container&& other);
+				Container& operator=(Container&& other);
+				Container(const Container&) = delete;
+				Container& operator=(const Container&) = delete;
+
+				struct {
+					struct { } copy;
+				} pass;
+				
+				uint32_t index, count, version;
+				Present* frames;
+			};
+		};
+
 */
