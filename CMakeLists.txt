@@ -1,6 +1,29 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(arawn VERSION 1.0 LANGUAGES CXX)
+execute_process(
+	COMMAND git describe --tags --abbrev=0
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+	OUTPUT_VARIABLE ARAWN_VERSION
+	OUTPUT_STRIP_TRAILING_WHITESPACE
+	ERROR_QUIET
+)
+
+math(EXPR ARAWN_VERSION_VARIANT "1") # branch 1
+math(EXPR ARAWN_VERSION_MAJOR   "0")
+math(EXPR ARAWN_VERSION_MINOR   "0")
+math(EXPR ARAWN_VERSION_PATCH   "0")
+if(ARAWN_VERSION MATCHES "^v?([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+    math(EXPR ARAWN_VERSION_MAJOR   "${CMAKE_MATCH_1}")
+    math(EXPR ARAWN_VERSION_MINOR   "${CMAKE_MATCH_2}")
+    math(EXPR ARAWN_VERSION_PATCH   "${CMAKE_MATCH_3}")
+endif()
+
+set(ARAWN_VERSION "${ARAWN_VERSION_VARIANT}.${ARAWN_VERSION_MAJOR}.${ARAWN_VERSION_MINOR}.${ARAWN_VERSION_PATCH}")
+
+message(STATUS "Arawn Version: ${ARAWN_VERSION}")
+
+project(arawn VERSION ${ARAWN_VERSION} LANGUAGES CXX)
+
 
 # --------------------------
 # c++ settings
@@ -18,24 +41,49 @@ file(GLOB_RECURSE HEADERS "inc/*.h")
 # --------------------------
 # dependencies
 # --------------------------
+
 include(FetchContent)
 
 find_package(Vulkan REQUIRED)
+find_package(assimp QUIET)
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
-
 set(GLM_ENABLE_CXX_20 ON CACHE BOOL "")
 
-FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw GIT_TAG 3.4)
-FetchContent_Declare(glm GIT_REPOSITORY https://github.com/g-truc/glm GIT_TAG 1.0.1)
-FetchContent_Declare(vma GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git GIT_TAG v3.3.0)
-FetchContent_Declare(spirv GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Reflect.git GIT_TAG main)
-FetchContent_Declare(ecs GIT_REPOSITORY https://github.com/GruncornTheLesser/ECS.git GIT_TAG ecslite)
+set(GLFW_INCLUDE_VULKAN ON CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(glfw glm vma spirv ecs)
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+set(ASSIMP_NO_EXPORT ON CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_OBJ_IMPORTER ON CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_GLTF_IMPORTER ON CACHE BOOL "" FORCE)
+
+set(MESHOPT_BUILD_DEMO OFF CACHE BOOL "" FORCE)
+set(MESHOPT_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(glm GIT_REPOSITORY https://github.com/g-truc/glm GIT_TAG 1.0.1)
+FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw GIT_TAG 3.4)
+FetchContent_Declare(vma GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git GIT_TAG v3.3.0)
+FetchContent_Declare(stb GIT_REPOSITORY https://github.com/nothings/stb.git GIT_TAG master)
+FetchContent_Declare(meshopt GIT_REPOSITORY https://github.com/zeux/meshoptimizer.git GIT_TAG v0.22)
+
+FetchContent_MakeAvailable(glfw glm vma stb meshopt)
+
+if (NOT TARGET stb::stb)
+    add_library(stb::stb INTERFACE IMPORTED GLOBAL)
+    target_include_directories(stb::stb INTERFACE ${stb_SOURCE_DIR})
+endif()
+
+if (NOT assimp_FOUND)
+	message(STATUS "dependency assimp not found, fetching from github...")
+	FetchContent_Declare(assimp GIT_REPOSITORY https://github.com/assimp/assimp.git GIT_TAG v5.4.3)
+	FetchContent_MakeAvailable(assimp)
+endif()
 
 # --------------------------
 # create library
@@ -43,6 +91,30 @@ FetchContent_MakeAvailable(glfw glm vma spirv ecs)
 add_library(arawn STATIC ${SOURCES} ${HEADERS})
 add_library(arawn::engine ALIAS arawn)
 
+target_compile_options(arawn PRIVATE
+	"-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/="
+	"-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/="
+)
+
+target_link_libraries(arawn 
+PRIVATE
+	glfw
+	GPUOpen::VulkanMemoryAllocator
+	Vulkan::Vulkan
+	stb::stb
+	assimp::assimp
+	meshoptimizer
+)
+
+target_include_directories(arawn 
+PUBLIC 
+	${CMAKE_CURRENT_SOURCE_DIR}/inc
+    ${glm_SOURCE_DIR}
+)
+
+# --------------------------
+# library options
+# --------------------------
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(DEFAULT_ARAWN_DEBUG ON)
 else()
@@ -51,51 +123,28 @@ endif()
 
 option(ARAWN_DEBUG "enables aditional validation layers" ${DEFAULT_ARAWN_DEBUG})
 option(ARAWN_LOG_VERBOSE "Enable verbose logging" OFF)
-option(ARAWN_LOG_DEBUG "Enable debug logging" OFF)
+option(ARAWN_LOG_INFO "Enable debug logging" OFF)
 option(ARAWN_LOG_WARNING "Enable warning logging" OFF)
 option(ARAWN_LOG_ERROR "Enable error logging" OFF)
 
 message(STATUS "ARAWN_DEBUG=${ARAWN_DEBUG}")
 message(STATUS "ARAWN_LOG_VERBOSE=${ARAWN_LOG_VERBOSE}")
-message(STATUS "ARAWN_LOG_DEBUG=${ARAWN_LOG_DEBUG}")
+message(STATUS "ARAWN_LOG_INFO=${ARAWN_LOG_INFO}")
 message(STATUS "ARAWN_LOG_WARNING=${ARAWN_LOG_WARNING}")
 message(STATUS "ARAWN_LOG_ERROR=${ARAWN_LOG_ERROR}")
 
 target_compile_definitions(
 	arawn
 PRIVATE
+	ARAWN_VERSION_VARIANT=${ARAWN_VERSION_VARIANT}
+	ARAWN_VERSION_MAJOR=${ARAWN_VERSION_MAJOR}
+	ARAWN_VERSION_MINOR=${ARAWN_VERSION_MINOR}
+	ARAWN_VERSION_PATCH=${ARAWN_VERSION_PATCH}
 	$<$<BOOL:${ARAWN_DEBUG}>:ARAWN_DEBUG>
     $<$<BOOL:${ARAWN_LOG_VERBOSE}>:ARAWN_LOG_VERBOSE>
-    $<$<BOOL:${ARAWN_LOG_DEBUG}>:ARAWN_LOG_DEBUG>
+    $<$<BOOL:${ARAWN_LOG_INFO}>:ARAWN_LOG_INFO>
     $<$<BOOL:${ARAWN_LOG_WARNING}>:ARAWN_LOG_WARNING>
     $<$<BOOL:${ARAWN_LOG_ERROR}>:ARAWN_LOG_ERROR>
-)
-
-target_include_directories(arawn 
-PUBLIC 
-	${CMAKE_CURRENT_SOURCE_DIR}/inc 
-	${glm_SOURCE_DIR} 
-	${ecs_SOURCE_DIR}/inc
-PRIVATE 
-	${glfw_SOURCE_DIR}/include 
-	${vma_SOURCE_DIR}/include 
-	${Vulkan_INCLUDE_DIRS}
-	${spirv_SOURCE_DIR}
-)
-target_compile_options(arawn PRIVATE
-	"-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/="
-	"-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/="
-)
-target_link_libraries(arawn 
-PRIVATE
-	glfw
-	Vulkan::Vulkan
-    # ecs_lib
-)
-
-target_compile_options(arawn PRIVATE
-	"-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/="
-	"-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/="
 )
 
 # --------------------------
