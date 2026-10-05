@@ -32,8 +32,8 @@ void engine::Core::create(const Settings& info) {
 		info.version.variant,
 		info.version.major,
 		info.version.minor,
-		info.version.patch)
-	);
+		info.version.patch
+	));
 	ARAWN_LOG(INFO, std::format("arawn version = {}.{}.{}.{}", 
 		VK_API_VERSION_VARIANT(ARAWN_VERSION),
 		VK_API_VERSION_MAJOR(ARAWN_VERSION),
@@ -104,7 +104,11 @@ void engine::Core::create(const Settings& info) {
 		};
 		
 		#ifdef ARAWN_LOG_VERBOSE
-		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+		#endif
+
+		#ifdef ARAWN_LOG_INFO
+		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
 		#endif
 	
 		#ifdef ARAWN_LOG_WARNING
@@ -127,7 +131,6 @@ void engine::Core::destroy() {
 	vkDestroyInstance(instance, nullptr);
 }
 
-
 #ifdef ARAWN_DEBUG
 VKAPI_ATTR VkBool32 VKAPI_CALL vkMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* info, void* userData) {
 	const char* typeName = "";
@@ -139,13 +142,25 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vkMessengerCallback(VkDebugUtilsMessageSeverityFl
 		default: break;
 	}
 	
+	const char* severityName;
 	switch (severity) {
-		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: ARAWN_LOG(VERBOSE, info->pMessage) break;
-		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT: ARAWN_LOG(INFO, info->pMessage) break;
-		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: ARAWN_LOG(WARNING, info->pMessage) break;
-		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT: throw std::runtime_error(ARAWN_LOG_MESSAGE(ERROR, info->pMessage));
-		default: break;
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+			severityName = "VERBOSE";
+			break;
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+			severityName = "INFO";
+			break;
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+			severityName = "WARNING";
+			break;
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+			severityName = "ERROR";
+			break;
+		default:
+			return VK_FALSE;
 	}
+
+	std::cout << std::format("[vulkan {}: {}] - {}\n", typeName, severityName, info->pMessage) << std::endl;
 
 	return VK_FALSE;
 }

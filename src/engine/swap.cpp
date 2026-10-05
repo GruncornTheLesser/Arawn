@@ -103,7 +103,7 @@ void engine::Swap::create(const Core& core, const Window& window, const Device& 
 
 	ARAWN_ASSERT(((capabilities.supportedUsageFlags & chainInfo.imageUsage) == chainInfo.imageUsage), "swapchain image usage not supported");
 
-	ARAWN_LOG(VERBOSE, std::format("swap extent = {{ {}, {} }}", chainInfo.imageExtent.width, chainInfo.imageExtent.height))
+	ARAWN_LOG(VERBOSE, std::format("swap extent = {{ {}, {} }}", chainInfo.imageExtent.width, chainInfo.imageExtent.height));
 	ARAWN_LOG(VERBOSE, std::format("swap present mode={}", string_VkPresentModeKHR(chainInfo.presentMode)));
 	ARAWN_LOG(VERBOSE, std::format("swap format={}", string_VkFormat(chainInfo.imageFormat)));
 	ARAWN_LOG(VERBOSE, std::format("swap colorspace={}", string_VkColorSpaceKHR(chainInfo.imageColorSpace)));

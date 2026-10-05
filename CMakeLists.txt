@@ -51,39 +51,39 @@ set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
-set(GLM_ENABLE_CXX_20 ON CACHE BOOL "")
-
 set(GLFW_INCLUDE_VULKAN ON CACHE BOOL "" FORCE)
 
-set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
-set(ASSIMP_NO_EXPORT ON CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_OBJ_IMPORTER ON CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_GLTF_IMPORTER ON CACHE BOOL "" FORCE)
+set(GLM_ENABLE_CXX_20 ON CACHE BOOL "")
 
-set(MESHOPT_BUILD_DEMO OFF CACHE BOOL "" FORCE)
-set(MESHOPT_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+# set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+# set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+# set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+# set(ASSIMP_NO_EXPORT ON CACHE BOOL "" FORCE)
+# set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF CACHE BOOL "" FORCE)
+# set(ASSIMP_BUILD_OBJ_IMPORTER ON CACHE BOOL "" FORCE)
+# set(ASSIMP_BUILD_GLTF_IMPORTER ON CACHE BOOL "" FORCE)
+
+# set(MESHOPT_BUILD_DEMO OFF CACHE BOOL "" FORCE)
+# set(MESHOPT_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(glm GIT_REPOSITORY https://github.com/g-truc/glm GIT_TAG 1.0.1)
 FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw GIT_TAG 3.4)
 FetchContent_Declare(vma GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git GIT_TAG v3.3.0)
-FetchContent_Declare(stb GIT_REPOSITORY https://github.com/nothings/stb.git GIT_TAG master)
-FetchContent_Declare(meshopt GIT_REPOSITORY https://github.com/zeux/meshoptimizer.git GIT_TAG v0.22)
+# FetchContent_Declare(stb GIT_REPOSITORY https://github.com/nothings/stb.git GIT_TAG master)
+# FetchContent_Declare(meshopt GIT_REPOSITORY https://github.com/zeux/meshoptimizer.git GIT_TAG v0.22)
 
-FetchContent_MakeAvailable(glfw glm vma stb meshopt)
+FetchContent_MakeAvailable(glfw glm vma) # stb meshopt
 
-if (NOT TARGET stb::stb)
-    add_library(stb::stb INTERFACE IMPORTED GLOBAL)
-    target_include_directories(stb::stb INTERFACE ${stb_SOURCE_DIR})
-endif()
+# if (NOT TARGET stb::stb)
+#     add_library(stb::stb INTERFACE IMPORTED GLOBAL)
+#     target_include_directories(stb::stb INTERFACE ${stb_SOURCE_DIR})
+# endif()
 
-if (NOT assimp_FOUND)
-	message(STATUS "dependency assimp not found, fetching from github...")
-	FetchContent_Declare(assimp GIT_REPOSITORY https://github.com/assimp/assimp.git GIT_TAG v5.4.3)
-	FetchContent_MakeAvailable(assimp)
-endif()
+# if (NOT assimp_FOUND)
+# 	message(STATUS "dependency assimp not found, fetching from github...")
+# 	FetchContent_Declare(assimp GIT_REPOSITORY https://github.com/assimp/assimp.git GIT_TAG v5.4.3)
+# 	FetchContent_MakeAvailable(assimp)
+# endif()
 
 # --------------------------
 # create library
@@ -101,9 +101,9 @@ PRIVATE
 	glfw
 	GPUOpen::VulkanMemoryAllocator
 	Vulkan::Vulkan
-	stb::stb
-	assimp::assimp
-	meshoptimizer
+# 	stb::stb
+# 	assimp::assimp
+# 	meshoptimizer
 )
 
 target_include_directories(arawn 
