@@ -282,7 +282,7 @@ void engine::Device::create(const Core& core, const Window& window, const Settin
 		VK_ASSERT(vmaCreateAllocator(&allocatorInfo, &allocator));
 	}
 
-	{ // create descriptor pool - dont know how many are needed
+	{ // create descriptor pool
 		auto sizes = std::to_array({
 			VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 64 },
 			VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 64 },
@@ -305,7 +305,6 @@ void engine::Device::recreate(const Core& core, const Window& window, const Sett
 	// destroy all command buffers
 	throw std::logic_error("not implemented yet");
 
-
 	vkDestroyCommandPool(device, queue.graphics.pool, nullptr);
 	vkDestroyCommandPool(device, queue.compute.pool, nullptr);
 	vkDestroyCommandPool(device, queue.transfer.pool, nullptr);
@@ -326,6 +325,8 @@ void engine::Device::recreate(const Core& core, const Window& window, const Sett
 }
 
 void engine::Device::destroy(const Core& core) {
+	vkDestroyDescriptorPool(device, descriptor.pool, nullptr);
+	
 	vmaDestroyAllocator(allocator);
 
 	vkDestroyCommandPool(device, queue.graphics.pool, nullptr);

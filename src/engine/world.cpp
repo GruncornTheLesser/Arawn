@@ -178,42 +178,42 @@ void engine::World::create(const Device& device, const Settings& info) {
 				.pImmutableSamplers = nullptr,
 			},
 			VkDescriptorSetLayoutBinding{ // mesh arena
-				.binding = 0,
+				.binding = 1,
 				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				.descriptorCount = 1,
 				.stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
 				.pImmutableSamplers = nullptr,
 			},
 			VkDescriptorSetLayoutBinding{ // material buffer
-				.binding = 0,
+				.binding = 2,
 				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				.descriptorCount = 1,
 				.stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
 				.pImmutableSamplers = nullptr,
 			},
 			VkDescriptorSetLayoutBinding{ // material buffer
-				.binding = 0,
+				.binding = 3,
 				.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
 				.descriptorCount = 1,
 				.stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
 				.pImmutableSamplers = nullptr,
 			},
 			VkDescriptorSetLayoutBinding{ // instance buffer
-				.binding = 0,
+				.binding = 4,
 				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				.descriptorCount = 1,
 				.stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
 				.pImmutableSamplers = nullptr,
 			},
 			VkDescriptorSetLayoutBinding{ // light buffer
-				.binding = 0,
+				.binding = 5,
 				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				.descriptorCount = 1,
 				.stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
 				.pImmutableSamplers = nullptr,
 			},
 			VkDescriptorSetLayoutBinding{ // uniform buffer
-				.binding = 0,
+				.binding = 6,
 				.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 				.descriptorCount = 1,
 				.stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
@@ -243,20 +243,15 @@ void engine::World::create(const Device& device, const Settings& info) {
 }
 
 void engine::World::destroy(const Device& device) {
-	// ---------- descriptor data ----------
-	vkFreeDescriptorSets(device.device, device.descriptor.pool, 1, &descriptor.set);
-	vkDestroyDescriptorSetLayout(device.device, descriptor.layout, nullptr);
+	vkDestroyDescriptorSetLayout(device.device, descriptor.layout, nullptr);	
 	
-	// ---------- instance data ----------
-	vmaDestroyBuffer(device.allocator, instance.buffer, nullptr);
-
-	// ---------- material data ----------
+	vmaDestroyBuffer(device.allocator, instance.buffer, instance.memory);
+	
 	vkDestroySampler(device.device, material.texture.sampler, nullptr);
-	vmaDestroyImage(device.allocator, material.texture.image, nullptr);;
-	vmaDestroyBuffer(device.allocator, material.buffer, nullptr);
+	vmaDestroyImage(device.allocator, material.texture.image, material.texture.memory);
+	vmaDestroyBuffer(device.allocator, material.buffer, material.memory);
 	
-	// ---------- mesh data ----------
-	vmaDestroyBuffer(device.allocator, mesh.buffer, nullptr);
+	vmaDestroyBuffer(device.allocator, mesh.buffer, mesh.memory);
 	vmaDestroyVirtualBlock(mesh.arena.block);
-	vmaDestroyBuffer(device.allocator, mesh.arena.buffer, nullptr);	
+	vmaDestroyBuffer(device.allocator, mesh.arena.buffer, mesh.arena.memory);	
 }

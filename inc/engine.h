@@ -6,12 +6,15 @@
 #include "engine/world.h"
 #include "engine/render.h"
 #include "engine/present.h"
+
 #include "assets/texture.h"
 #include "assets/material.h"
 #include "assets/mesh.h"
+
 #include "nodes/node.h"
 #include "nodes/light.h"
 #include "nodes/instance.h"
+#include "nodes/camera.h"
 
 namespace arawn {
 	struct Engine {
@@ -42,6 +45,20 @@ namespace arawn {
 		engine::Present present;
 	};
 
+	// NOTE: differentiating between assets vs nodes might be a mistake
+	// it makes it tricky to create dynamic textures/materials/meshes that require updates each frame
+	// a better solution would be to simply register dynamic vs static resuources
+	// everything is a resource that can either be stored in the dynamic or static pool
+	// how that effects the handle?
+	// 	could use a single bit to determine which pool static/dynamic to read from for each resource?
+
+	// each resource creates blocks of data in various locations
+	
+	// textures can remain 
+
+	
+
+
 	template<> Handle<assets::Texture> Engine::create(const assets::Texture::CreateInfo&);
 	template<> void Engine::destroy(Handle<assets::Texture>);
 
@@ -51,6 +68,8 @@ namespace arawn {
 	template<> Handle<assets::Mesh> Engine::create(const assets::Mesh::CreateInfo&);
 	template<> void Engine::destroy(Handle<assets::Mesh>);
 
+
+
 	template<> Handle<nodes::Node> Engine::create(const nodes::Node::CreateInfo&);
 	template<> void Engine::destroy(Handle<nodes::Node>);
 
@@ -59,6 +78,9 @@ namespace arawn {
 
 	template<> Handle<nodes::Instance> Engine::create(const nodes::Instance::CreateInfo&);
 	template<> void Engine::destroy(Handle<nodes::Instance>);
+
+	template<> Handle<nodes::Camera> Engine::create(const nodes::Camera::CreateInfo&);
+	template<> void Engine::destroy(Handle<nodes::Camera>);
 }
 
 

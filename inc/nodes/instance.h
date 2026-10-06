@@ -1,7 +1,6 @@
 #pragma once
-#include "node.h"
-#include "../assets/mesh.h"
-#include "../assets/material.h"
+#include <common/fwd.h>
+#include <common/handle.h>
 
 namespace arawn::nodes {
 	struct Instance {

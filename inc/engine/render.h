@@ -12,44 +12,37 @@ namespace arawn::engine {
 			VK_TYPE(VkCommandBuffer) cmd;
 			VK_TYPE(VkFence) inFlight;
 			struct {
-				struct { VK_TYPE(VkSemaphore) finished; } generateDepthTree;
-				struct { VK_TYPE(VkSemaphore) finished; } occlusionCulling;
+				struct { VK_TYPE(VkSemaphore) finished; } generateDepthTree; 	// from frame n - 1
+				struct { VK_TYPE(VkSemaphore) finished; } frustumCull;
+				struct { VK_TYPE(VkSemaphore) finished; } occlusionCull;
 				struct { VK_TYPE(VkSemaphore) finished; } depthPrepass;
 				struct { VK_TYPE(VkSemaphore) finished; } generateClusters;
+				struct { VK_TYPE(VkSemaphore) finished; } generateTiles;
 				struct { VK_TYPE(VkSemaphore) finished; } lightCulling;
-				struct { VK_TYPE(VkSemaphore) finished; } meshCulling;
-				struct { VK_TYPE(VkSemaphore) finished; } earlyForward;
-				struct { VK_TYPE(VkSemaphore) finished; } lateForward;
+				struct { VK_TYPE(VkSemaphore) finished; } clusterCull;
 				struct { VK_TYPE(VkSemaphore) finished; } acquireImage;
-				struct { VK_TYPE(VkSemaphore) finished; } render;
+				struct { VK_TYPE(VkSemaphore) finished; } forwardPass;
 			} pass;
 
 			struct {
 				VK_TYPE(VkBuffer) buffer;
 				VK_TYPE(VmaAllocation) memory;
-				struct {
-					VK_TYPE(VkBuffer) buffer;
-					VK_TYPE(VmaAllocation) memory;
-				} staging;
-				struct {
-					VK_TYPE(VkDescriptorSet) set;
-				} descriptor;
 			} camera;
 			
-			struct {
-				struct {
-					VK_TYPE(VkBuffer) buffer;
-					VK_TYPE(VmaAllocation) memory;
-				} early;
-				struct {
-					VK_TYPE(VkBuffer) buffer;
-					VK_TYPE(VmaAllocation) memory;
-				} late;
-				struct {
+			struct { // mesh instances
+				struct { // meshes to draw this frame 
 					VK_TYPE(VkBuffer) buffer;
 					VK_TYPE(VmaAllocation) memory;
 				} manifest;
-			} mesh;
+				struct { // visible from frustum and reproj cull
+					VK_TYPE(VkBuffer) buffer;
+					VK_TYPE(VmaAllocation) memory;
+				} early;
+				struct { // visible from cluster cull
+					VK_TYPE(VkBuffer) buffer;
+					VK_TYPE(VmaAllocation) memory;
+				} late;
+			} instance;
 
 			struct { 
 				VK_TYPE(VkBuffer) buffer;
@@ -68,7 +61,7 @@ namespace arawn::engine {
 					struct {
 						VK_TYPE(VkImageView) standard;
 						VK_TYPE(VkImageView) tree;
-						VK_TYPE(VkImageView) mips[15];
+						VK_TYPE(VkImageView) mips[15]; // depth tree
 					} view;
 				} depth;
 
@@ -94,15 +87,19 @@ namespace arawn::engine {
 			struct {
 				VK_TYPE(VkPipeline) pipeline;
 				VK_TYPE(VkPipelineLayout) layout;
-			} occlusionCulling;
+			} frustumCull;
 			struct {
 				VK_TYPE(VkPipeline) pipeline;
 				VK_TYPE(VkPipelineLayout) layout;
-			} depthPrepass;
+			} occlusionCull; // reprojection cull
 			struct {
 				VK_TYPE(VkPipeline) pipeline;
 				VK_TYPE(VkPipelineLayout) layout;
-			} generateClusters;
+			} depthPass; // rdepth prepass
+			struct {
+				VK_TYPE(VkPipeline) pipeline;
+				VK_TYPE(VkPipelineLayout) layout;
+			} generateClusters; // 
 			struct {
 				VK_TYPE(VkPipeline) pipeline;
 				VK_TYPE(VkPipelineLayout) layout;

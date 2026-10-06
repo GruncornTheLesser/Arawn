@@ -1,6 +1,8 @@
 #pragma once
-#include "node.h"
-#include "../assets/texture.h"
+#include <common/fwd.h>
+#include <common/handle.h>
+#include <glm/glm.hpp>
+#include <glm/ext.hpp>
 
 namespace arawn::nodes {
 	struct Light {

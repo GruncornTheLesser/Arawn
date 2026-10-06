@@ -1,5 +1,6 @@
 #pragma once
-#include "../common/handle.h"
+#include <common/fwd.h>
+#include <common/handle.h>
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 

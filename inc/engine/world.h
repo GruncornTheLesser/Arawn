@@ -7,6 +7,7 @@ namespace arawn::engine {
 		void recreate(const Device& device, const Settings& info);
 		void destroy(const Device& device);
 
+	private:
 		struct {
 			struct {
 				VK_TYPE(VkBuffer) buffer;
@@ -17,6 +18,7 @@ namespace arawn::engine {
 			VK_TYPE(VkBuffer) buffer; // ring buffer of current meshes
 			VK_TYPE(VmaAllocation) memory;
 		} mesh;
+
 		struct {
 			VK_TYPE(VkBuffer) buffer;
 			VK_TYPE(VmaAllocation) memory;
@@ -34,9 +36,10 @@ namespace arawn::engine {
 			VK_TYPE(VkBuffer) buffer;
 			VK_TYPE(VmaAllocation) memory;
 		} light;
+
 		struct { 
 			VK_TYPE(VkDescriptorSetLayout) layout;
 			VK_TYPE(VkDescriptorSet) set;
-		} descriptor; // descriptor for mesh data
+		} descriptor; // descriptor for world data
 	};
 }
