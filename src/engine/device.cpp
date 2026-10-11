@@ -249,17 +249,22 @@ void engine::Device::create(const Core& core, const Window& window, const Settin
 		});
 	
 		ARAWN_LOG(VERBOSE, std::format("device extensions={}", deviceExtensions));
-	
-		VkPhysicalDeviceFeatures features{ };
+		
+		VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeature{
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
+			.pNext = nullptr,
+			.dynamicRendering = VK_TRUE
+		};
+		VkPhysicalDeviceFeatures coreFeatures{ };
 		VkDeviceCreateInfo deviceInfo {
 			.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-			.pNext = nullptr,
+			.pNext = &dynamicRenderingFeature,
 			.flags = 0,
 			.queueCreateInfoCount = static_cast<uint32_t>(queueInfos.size()),
 			.pQueueCreateInfos = queueInfos.data(),
 			.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
 			.ppEnabledExtensionNames = deviceExtensions.data(),
-			.pEnabledFeatures = &features,
+			.pEnabledFeatures = &coreFeatures,
 		};
 		VK_ASSERT(vkCreateDevice(gpu, &deviceInfo, nullptr, &device));
 	}

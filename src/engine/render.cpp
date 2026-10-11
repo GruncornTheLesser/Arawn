@@ -70,6 +70,8 @@ namespace arawn::shaders {
 void engine::Render::create(const Core &core, const Window &window, const Device &device, const World& world, const Settings &settings) {
     frames.resize(settings.buffering == BufferingMode::DOUBLE ? 2 : 3);
 
+    uint32_t attachmentMipCount = std::min<uint32_t>(kDepthMipCount, std::bit_width(std::min(settings.resolution.x, settings.resolution.y)));
+
     { // create descriptor layout
         auto bindings = std::to_array<VkDescriptorSetLayoutBinding>({
             { 
@@ -429,6 +431,30 @@ void engine::Render::create(const Core &core, const Window &window, const Device
         createGraphics(0, shaders::forward_vert, shaders::forward_frag, kColorFormat, kDepthFormat, VK_COMPARE_OP_EQUAL, false, &pass.forward.forward);    
     }
     
+    { // create depth sampler
+        VkSamplerCreateInfo samplerInfo{
+            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .magFilter = VK_FILTER_NEAREST,
+            .minFilter = VK_FILTER_NEAREST,
+            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            .mipLodBias = 0.0,
+            .anisotropyEnable = VK_FALSE,
+            .maxAnisotropy = 1.0f,
+            .compareEnable = VK_FALSE,
+            .compareOp = VK_COMPARE_OP_ALWAYS ,
+            .minLod = 0.0f,
+            .maxLod = 0.0f,
+            .borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+            .unnormalizedCoordinates = VK_TRUE,
+        };
+
+        VK_ASSERT(vkCreateSampler(device.device, &samplerInfo, nullptr, &attachment.depth.sampler));
+    }
     for (auto& frame : frames) {
         { // create fence
             VkFenceCreateInfo fenceInfo{
@@ -567,18 +593,6 @@ void engine::Render::create(const Core &core, const Window &window, const Device
                 std::ranges::sort(families);
                 families.erase(std::ranges::unique(families).begin(), families.end());
 
-                uint32_t mipCount = 0;
-                if constexpr (requires{ out->mips; }) {
-                    mipCount = sizeof(out->mips) / sizeof(VkImageView);
-                }
-
-                VkImageLayout layout;
-                switch (aspect) {
-                    case VK_IMAGE_ASPECT_COLOR_BIT: layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; break;
-                    case VK_IMAGE_ASPECT_DEPTH_BIT: layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL; break;
-                    default: layout = VK_IMAGE_LAYOUT_GENERAL; break;
-                }
-
                 VkImageCreateInfo imageInfo{
                     .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                     .pNext = nullptr,
@@ -586,7 +600,7 @@ void engine::Render::create(const Core &core, const Window &window, const Device
                     .imageType = VK_IMAGE_TYPE_2D,
                     .format = format,
                     .extent = { settings.resolution.x, settings.resolution.y, 1 },
-                    .mipLevels = mipCount,
+                    .mipLevels = attachmentMipCount,
                     .arrayLayers = 1,
                     .samples = samples,
                     .tiling = VK_IMAGE_TILING_OPTIMAL,
@@ -594,7 +608,7 @@ void engine::Render::create(const Core &core, const Window &window, const Device
                     .sharingMode = families.size() > 1 ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE,
                     .queueFamilyIndexCount = static_cast<uint32_t>(families.size()),
                     .pQueueFamilyIndices = families.data(),
-                    .initialLayout = layout,
+                    .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                 };
                 
                 VmaAllocationCreateInfo allocInfo {
@@ -602,7 +616,8 @@ void engine::Render::create(const Core &core, const Window &window, const Device
                     .usage = VMA_MEMORY_USAGE_AUTO,
                 };
 
-                VK_ASSERT(vmaCreateImage(device.allocator, &imageInfo, &allocInfo, &out->image, &out->memory, nullptr));
+                VmaAllocationInfo info{};
+                VK_ASSERT(vmaCreateImage(device.allocator, &imageInfo, &allocInfo, &out->image, &out->memory, &info));
 
                 VkImageViewCreateInfo viewInfo{
                     .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -614,7 +629,7 @@ void engine::Render::create(const Core &core, const Window &window, const Device
                     .subresourceRange = { 
                         .aspectMask = aspect,
                         .baseMipLevel = 0,
-                        .levelCount = mipCount,
+                        .levelCount = requires{ out->mips; } ? attachmentMipCount : 1,
                         .baseArrayLayer = 0,
                         .layerCount = 1
                     }  
@@ -623,7 +638,7 @@ void engine::Render::create(const Core &core, const Window &window, const Device
                 VK_ASSERT(vkCreateImageView(device.device, &viewInfo, nullptr, &out->view));
 
                 if constexpr (requires{ out->mips; }) {
-                    for (uint32_t i = 0; i < mipCount; ++i) {
+                    for (uint32_t i = 0; i < viewInfo.subresourceRange.levelCount; ++i) {
                         VkImageViewCreateInfo viewInfo{
                             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                             .pNext = nullptr,
@@ -643,12 +658,24 @@ void engine::Render::create(const Core &core, const Window &window, const Device
                         VK_ASSERT(vkCreateImageView(device.device, &viewInfo, nullptr, &out->mips[i]));
                     }
                 }
-
-
             };
             
-            createImage(VK_IMAGE_ASPECT_COLOR_BIT, VK_FORMAT_R8G8B8A8_UNORM, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, { device.queue.graphics.family }, &frame.attachment.color);
-            createImage(VK_IMAGE_ASPECT_DEPTH_BIT, VK_FORMAT_R8G8B8A8_UNORM, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, { device.queue.graphics.family, device.queue.compute.family }, &frame.attachment.depth);
+            createImage(
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                VK_FORMAT_R8G8B8A8_UNORM,
+                VK_SAMPLE_COUNT_1_BIT,
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                { device.queue.graphics.family, device.queue.present.family },
+                &frame.attachment.color
+            );
+            createImage( // create sampler
+                VK_IMAGE_ASPECT_DEPTH_BIT,
+                VK_FORMAT_D32_SFLOAT,
+                VK_SAMPLE_COUNT_1_BIT,
+                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
+                { device.queue.graphics.family, device.queue.compute.family },
+                &frame.attachment.depth
+            );
         }
 
         { // create descriptor set
@@ -702,10 +729,11 @@ void engine::Render::create(const Core &core, const Window &window, const Device
                 .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
             };
             VkDescriptorImageInfo depthMipsInfos[kDepthMipCount];
-            for (uint32_t i = 0; i < kDepthMipCount; ++i) {
+            
+            for (uint32_t i = 0; i < attachmentMipCount; ++i) {
                 depthMipsInfos[i] = { 
                     .sampler = VK_NULL_HANDLE,  
-                    .imageView = frame.attachment.depth.mips[i],  // TODO: 
+                    .imageView = frame.attachment.depth.mips[i], 
                     .imageLayout = VK_IMAGE_LAYOUT_GENERAL
                 };
             }
@@ -779,7 +807,7 @@ void engine::Render::create(const Core &core, const Window &window, const Device
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                     .dstSet = frame.descriptor.set,
                     .dstBinding = 8, .dstArrayElement = 0,
-                    .descriptorCount = kDepthMipCount,
+                    .descriptorCount = attachmentMipCount,
                     .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                     .pImageInfo = depthMipsInfos
                 },
@@ -794,8 +822,6 @@ void engine::Render::destroy(const Core &core, const Device &device) {
 
     for (auto& frame : frames) {
         vkDestroyFence(device.device, frame.inFlight, nullptr);
-
-        vkFreeDescriptorSets(device.device, device.descriptor.pool, 1, &frame.descriptor.set);
 
         vkFreeCommandBuffers(device.device, device.queue.compute.pool,  1, &frame.pass.depthTree.cmd);
         vkFreeCommandBuffers(device.device, device.queue.compute.pool,  1, &frame.pass.earlyCull.cmd);
@@ -827,6 +853,8 @@ void engine::Render::destroy(const Core &core, const Device &device) {
         vmaDestroyImage(device.allocator, frame.attachment.color.image, frame.attachment.color.memory);
         
     }
+
+    vkDestroySampler(device.device, attachment.depth.sampler, nullptr);
 
     vkDestroyPipeline(device.device, pass.depthTree.generate.pipeline, nullptr);
     vkDestroyPipelineLayout(device.device, pass.depthTree.generate.layout, nullptr);

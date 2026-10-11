@@ -31,14 +31,12 @@
 
 #ifdef ARAWN_INCLUDE_VULKAN
 #ifdef ARAWN_DEBUG
-#define ARAWN_LOG_MESSAGE(LEVEL, MESSAGE) std::format("[arawn {}] - {}:{} - {}", LEVEL, __FILE__, __LINE__, MESSAGE)
+#define ARAWN_LOG_MESSAGE(LEVEL, MESSAGE) std::format("[arawn: {}] - {}:{} - {}", LEVEL, __FILE__, __LINE__, MESSAGE)
 #else
-#define ARAWN_LOG_MESSAGE(LEVEL, MESSAGE) std::format("[arawn {}]: {}", LEVEL, MESSAGE)
+#define ARAWN_LOG_MESSAGE(LEVEL, MESSAGE) std::format("[arawn: {}] - {}", LEVEL, MESSAGE)
 #endif
 
-#define ARAWN_LOG_IMPL(LEVEL, MESSAGE) do {													\
-	std::cout << ARAWN_LOG_MESSAGE(#LEVEL, MESSAGE) << std::endl;							\
-} while(0)
+#define ARAWN_LOG_IMPL(LEVEL, MESSAGE) do {	std::cout << ARAWN_LOG_MESSAGE(#LEVEL, MESSAGE) << std::endl; } while(0)
 
 #ifdef ARAWN_LOG_VERBOSE
 #define ARAWN_LOG_VERBOSE_IMPL(MESSAGE) ARAWN_LOG_IMPL(VERBOSE, MESSAGE)
@@ -66,6 +64,6 @@
 
 #define ARAWN_LOG(LEVEL, STATEMENT) ARAWN_LOG_##LEVEL##_IMPL(STATEMENT)
 #define ARAWN_ASSERT(STATEMENT, MESSAGE) do { if (STATEMENT) { } else [[unlikely]] { throw std::runtime_error(ARAWN_LOG_MESSAGE("ERROR", MESSAGE)); } } while(0)
-#define ARAWN_THROW(MESSAGE) throw std::runtime_error(ARAWN_LOG_MESSAGE("ERROR", MESSAGE))
+#define ARAWN_THROW(MESSAGE) do { throw std::runtime_error(ARAWN_LOG_MESSAGE("ERROR", MESSAGE)); } while(0)
 #define VK_ASSERT(STATEMENT) ARAWN_ASSERT(VkResult statement_result = STATEMENT; statement_result == VK_SUCCESS, string_VkResult(statement_result))
 #endif

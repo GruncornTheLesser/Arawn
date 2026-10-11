@@ -168,6 +168,10 @@ option(ARAWN_LOG_VERBOSE "Enable verbose logging" OFF)
 option(ARAWN_LOG_INFO "Enable debug logging" OFF)
 option(ARAWN_LOG_WARNING "Enable warning logging" OFF)
 option(ARAWN_LOG_ERROR "Enable error logging" OFF)
+option(ARAWN_VULKAN_LOG_VERBOSE "Enable vulkan verbose logging" OFF)
+option(ARAWN_VULKAN_LOG_INFO "Enable vulkan debug logging" OFF)
+option(ARAWN_VULKAN_LOG_WARNING "Enable vulkan warning logging" OFF)
+option(ARAWN_VULKAN_LOG_ERROR "Enable vulkan error logging" OFF)
 
 target_compile_definitions(arawn
 PRIVATE
@@ -180,4 +184,8 @@ PRIVATE
 	$<$<BOOL:${ARAWN_LOG_INFO}>:ARAWN_LOG_INFO>
 	$<$<BOOL:${ARAWN_LOG_WARNING}>:ARAWN_LOG_WARNING>
 	$<$<BOOL:${ARAWN_LOG_ERROR}>:ARAWN_LOG_ERROR>
+	$<$<BOOL:${ARAWN_VULKAN_LOG_VERBOSE}>:ARAWN_VULKAN_LOG_VERBOSE>
+	$<$<BOOL:${ARAWN_VULKAN_LOG_INFO}>:ARAWN_VULKAN_LOG_INFO>
+	$<$<BOOL:${ARAWN_VULKAN_LOG_WARNING}>:ARAWN_VULKAN_LOG_WARNING>
+	$<$<BOOL:${ARAWN_VULKAN_LOG_ERROR}>:ARAWN_VULKAN_LOG_ERROR>
 )

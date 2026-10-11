@@ -103,19 +103,19 @@ void engine::Core::create(const Settings& info) {
 			.pUserData = nullptr
 		};
 		
-		#ifdef ARAWN_LOG_VERBOSE
+		#ifdef ARAWN_VULKAN_LOG_VERBOSE
 		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
 		#endif
 
-		#ifdef ARAWN_LOG_INFO
+		#ifdef ARAWN_VULKAN_LOG_INFO
 		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
 		#endif
 	
-		#ifdef ARAWN_LOG_WARNING
+		#ifdef ARAWN_VULKAN_LOG_WARNING
 		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
 		#endif
 	
-		#ifdef ARAWN_LOG_ERROR
+		#ifdef ARAWN_VULKAN_LOG_ERROR
 		info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 		#endif
 	
@@ -160,8 +160,16 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vkMessengerCallback(VkDebugUtilsMessageSeverityFl
 			return VK_FALSE;
 	}
 
-	std::cout << std::format("[vulkan {}: {}] - {}\n", typeName, severityName, info->pMessage) << std::endl;
+	std::cout << std::format("[vulkan: {}] - {}\n", severityName, info->pMessage) << std::endl;
 
+	switch (severity) {
+		// case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+			return VK_TRUE;
+		default:
+			return VK_FALSE;
+	}
+	
 	return VK_FALSE;
 }
 #endif
