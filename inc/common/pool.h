@@ -1,121 +1,85 @@
 #pragma once
 #include "handle.h"
 #include "assert.h"
-#include <queue>
 #include <vector>
-#include <algorithm>
-#include <ranges>
+#include <deque>
 
 
 namespace arawn::common {
-	template<class T>
+    template<typename T>
 	class Pool {
+        struct slot_type {
+            T data;
+            uint16_t version : 12 = 0;
+            uint16_t active : 4 = 0;
+        };
+
         using handle_type = Handle<T>;
-        using lookup_type = Handle<T>;
+        struct framebuffer_type { uint32_t size() const { return 2; } uint32_t index() const { return 1; } }; // placeholder
 
-		template<typename ... Arg_Ts>
-		Handle<T> create(Arg_Ts&& ... args) {
-            handle_type hnd;
-
-            if (!free_list.empty()) {
-                uint32_t idx = static_cast<uint32_t>(free_list.back());
-                free_list.pop_back();
-
-                hnd = { idx, sparse[idx].version };
-                sparse[idx].index = static_cast<uint32_t>(storage.size());
+        template<typename ... arg_Ts>
+        handle_type create(const framebuffer_type& framebuffer, arg_Ts&& ... args) {
+            uint32_t index;
+            if (!free.empty() && !slots[free.back()].active) {
+                index = free.back(); 
+                free.pop_back();
             } else {
-                hnd = { static_cast<uint32_t>(sparse.size()), 0 };
-                sparse.push_back({ static_cast<uint32_t>(storage.size()), 0 });
+                index = static_cast<uint32_t>(slots.size());
+                slots.emplace_back();
             }
+            slot_type& slot = slots[index];
+            slot.data.create(std::forward<arg_Ts>(args)...);
+            
+            slot.active = (1u << framebuffer.size()) - 1u; // mark active for all frames
+            return handle_type{ index, slot.version };
+        }
 
-            storage.emplace_back(std::forward<Arg_Ts>(args)...);
-			packed.push_back(hnd);
-			return hnd;
-		}
+        void destroy(handle_type hnd) {
+            if (!alive(hnd)) return;
+            slot_type& slot = slots[hnd.index];
+            slot.version += 1;
+            free.push_front(hnd.index);
+        }
+        template<typename ... arg_Ts>
+        void flush(const framebuffer_type& framebuffer, arg_Ts&& ... args) {
+            uint32_t frame_mask = (1 << framebuffer.index());
+            for (uint32_t index : free) {
+                slot_type& slot = slots[index];
+                
+                if ((slot.active & frame_mask) == 0)
+                    break;
 
-		void destroy(Handle<T> hnd) {
-			uint32_t pos = sparse[hnd.index].index;
-            uint32_t end = static_cast<uint32_t>(storage.size() - 1);
-
-            if (pos != end) {
-                std::swap(storage[pos], storage[end]);
-                std::swap(packed[pos], packed[end]);
-
-                uint32_t idx = packed[pos].index;
-                sparse[idx].index = pos;
-            }
-
-            storage.pop_back();
-            packed.pop_back();
-
-            sparse[hnd.index].index = 0xfffff;
-            free_list.push_back(hnd.index);
-		}
-
-		void destroy(Handle<T> hnd, uint32_t frame_index) {
-			uint32_t pos = sparse[hnd.index].index;
-            uint32_t end = static_cast<uint32_t>(storage.size() - 1);
-
-            if (pos != end) {
-                std::swap(storage[pos], storage[end]);
-                std::swap(packed[pos], packed[end]);
-
-                uint32_t idx = packed[pos].index;
-                sparse[idx].index = pos;
-            }
-            destroy_queue.push_back({ { hnd.index, frame_index }, std::move(storage.back()) });
-
-            storage.pop_back();
-            packed.pop_back();
-
-            sparse[hnd.index].index = 0xfffff;
-		}
-
-        void advance(uint32_t current_frame) {
-            while (!destroy_queue.empty()) {
-                auto& curr = destroy_queue.front();
-
-                if (curr.first.index != current_frame) {
-                    return;
+                slot.active &= ~frame_mask;
+                
+                if (slot.active) {
+                    continue;
                 }
-
-                free_list.push_back(curr.first.index);
-                destroy_queue.pop_front();
+                slot.data.destroy(args...);
             }
         }
 
-        void flush() {
-            free_list.append_range(std::ranges::transform(destroy_queue, {}, [](auto& curr) { return curr.first.index; }));
-            destroy_queue.clear();
+        template<typename ... arg_Ts>
+        void flush_all(arg_Ts&& ... args) {
+            for (auto& slot : slots) {
+                if (slot.active) {
+                    slot.data.destroy(args...);
+                }
+            }
+            slots.clear();
+            free.clear();
         }
 
-        void clear() {
-            storage.clear();
-            packed.clear();
-            sparse.clear();
-            free_list.clear();
-            destroy_queue.clear();
+
+        bool alive(handle_type hnd) const {
+            if (hnd.index >= slots.size()) return false;
+            const slot_type& slot = slots[hnd.index];
+            return slot.active != 0 && slot.version == hnd.version;
         }
 
-		bool alive(Handle<T> hnd) const {
-			if (hnd.index >= sparse.size()) return false;
-			Handle<T> ind = sparse[hnd.index];
-			if (ind.version != hnd.index) return false;
-			Handle<T> pck = packed[ind.index];
-			return hnd == pck;
-		}
-
-		T& get(Handle<T> hnd) { return storage[sparse[hnd.index].index]; }
-		const T& get(Handle<T> hnd) const { return storage[sparse[hnd.index].index]; }
-		
-		T& at(uint32_t idx) { return storage[idx]; }
-		const T& at(uint32_t idx) const { return storage[idx]; }
-		
+        T& get(handle_type hnd) { return slots[hnd.index].data; }
+        const T& get(handle_type hnd) const { return slots[hnd.index].data; }
 	private:
-        std::vector<lookup_type> sparse; // alive + dead handle mappings
-        std::vector<handle_type> packed; // alive handle
-        std::vector<T>           storage; // actual data
-        std::vector<uint32_t>    free_list; // free handles
-        std::queue<std::pair<handle_type, T>> destroy_queue;
+        std::vector<slot_type> slots;
+        std::deque<uint32_t> free;
 	};
 }

@@ -59,27 +59,27 @@ namespace arawn {
 	
 
 
-	template<> Handle<assets::Texture> Engine::create(const assets::Texture::CreateInfo&);
+	template<> [[nodiscard]] Handle<assets::Texture> Engine::create(const assets::Texture::CreateInfo&);
 	template<> void Engine::destroy(Handle<assets::Texture>);
 
-	template<> Handle<assets::Material> Engine::create(const assets::Material::CreateInfo&);
+	template<> [[nodiscard]] Handle<assets::Material> Engine::create(const assets::Material::CreateInfo&);
 	template<> void Engine::destroy(Handle<assets::Material>);
 
-	template<> Handle<assets::Mesh> Engine::create(const assets::Mesh::CreateInfo&);
+	template<> [[nodiscard]] Handle<assets::Mesh> Engine::create(const assets::Mesh::CreateInfo&);
 	template<> void Engine::destroy(Handle<assets::Mesh>);
 
 
 
-	template<> Handle<nodes::Node> Engine::create(const nodes::Node::CreateInfo&);
+	template<> [[nodiscard]] Handle<nodes::Node> Engine::create(const nodes::Node::CreateInfo&);
 	template<> void Engine::destroy(Handle<nodes::Node>);
 
-	template<> Handle<nodes::Light> Engine::create(const nodes::Light::CreateInfo&);
+	template<> [[nodiscard]] Handle<nodes::Light> Engine::create(const nodes::Light::CreateInfo&);
 	template<> void Engine::destroy(Handle<nodes::Light>);
 
-	template<> Handle<nodes::Instance> Engine::create(const nodes::Instance::CreateInfo&);
+	template<> [[nodiscard]] Handle<nodes::Instance> Engine::create(const nodes::Instance::CreateInfo&);
 	template<> void Engine::destroy(Handle<nodes::Instance>);
 
-	template<> Handle<nodes::Camera> Engine::create(const nodes::Camera::CreateInfo&);
+	template<> [[nodiscard]] Handle<nodes::Camera> Engine::create(const nodes::Camera::CreateInfo&);
 	template<> void Engine::destroy(Handle<nodes::Camera>);
 }
 

@@ -1,32 +1,30 @@
 #pragma once
-#include "device.h"
+#include <engine/device.h>
+#include <engine/world.h>
+#include <nodes/camera.h>
 #include <vector>
 
 namespace arawn::engine {
 	struct Render {
-		void create(const Core& core, const Window& window, const Device& device, const Settings& info);
-		void recreate(const Core& core, const Window& window, const Device& device, const Settings& info);
+		void create(const Core& core, const Window& window, const Device& device, const World& world, const Settings& info);
+		void recreate(const Core& core, const Window& window, const Device& device, const World& world, const Settings& info);
 		void destroy(const Core& core, const Device& device);
-
+		
 		struct Frame {
-			VK_TYPE(VkCommandBuffer) cmd;
 			VK_TYPE(VkFence) inFlight;
+
 			struct {
-				struct { VK_TYPE(VkSemaphore) finished; } generateDepthTree; 	// from frame n - 1
-				struct { VK_TYPE(VkSemaphore) finished; } frustumCull;
-				struct { VK_TYPE(VkSemaphore) finished; } occlusionCull;
-				struct { VK_TYPE(VkSemaphore) finished; } depthPrepass;
-				struct { VK_TYPE(VkSemaphore) finished; } generateClusters;
-				struct { VK_TYPE(VkSemaphore) finished; } generateTiles;
-				struct { VK_TYPE(VkSemaphore) finished; } lightCulling;
-				struct { VK_TYPE(VkSemaphore) finished; } clusterCull;
-				struct { VK_TYPE(VkSemaphore) finished; } acquireImage;
-				struct { VK_TYPE(VkSemaphore) finished; } forwardPass;
+				struct { VK_TYPE(VkCommandBuffer) cmd; VK_TYPE(VkSemaphore) finished; } depthTree; // compute/graphic??
+				struct { VK_TYPE(VkCommandBuffer) cmd; VK_TYPE(VkSemaphore) finished; } earlyCull; // compute: frustum cull, occl cull
+				struct { VK_TYPE(VkCommandBuffer) cmd; VK_TYPE(VkSemaphore) finished; } depthOnly; // graphic: depth prepass
+				struct { VK_TYPE(VkCommandBuffer) cmd; VK_TYPE(VkSemaphore) finished; } lateCull;  // compute: light tile cull, mesh cluster culll
+				struct { VK_TYPE(VkCommandBuffer) cmd; VK_TYPE(VkSemaphore) finished; } forward;   // graphic: forward pass
 			} pass;
 
 			struct {
 				VK_TYPE(VkBuffer) buffer;
 				VK_TYPE(VmaAllocation) memory;
+				primitives::Camera* mapped;
 			} camera;
 			
 			struct { // mesh instances
@@ -42,35 +40,34 @@ namespace arawn::engine {
 					VK_TYPE(VkBuffer) buffer;
 					VK_TYPE(VmaAllocation) memory;
 				} late;
+				struct { // mesh indices per cluster
+					VK_TYPE(VkBuffer) buffer;
+					VK_TYPE(VmaAllocation) memory;
+				} cluster;
 			} instance;
 
 			struct { 
-				VK_TYPE(VkBuffer) buffer;
-				VK_TYPE(VmaAllocation) memory;
+				struct {
+					VK_TYPE(VkBuffer) buffer;
+					VK_TYPE(VmaAllocation) memory;
+				} manifest;
+				struct {
+					VK_TYPE(VkBuffer) buffer;
+					VK_TYPE(VmaAllocation) memory;
+				} tile;
 			} light;
 
-			struct { // bounding boxes per tile
-				VK_TYPE(VkBuffer) buffer;
-				VK_TYPE(VmaAllocation) memory;
-			} cluster;
-
-			struct { 
+			struct {
 				struct { 
 					VK_TYPE(VkImage) image;
 					VK_TYPE(VmaAllocation) memory;
-					struct {
-						VK_TYPE(VkImageView) standard;
-						VK_TYPE(VkImageView) tree;
-						VK_TYPE(VkImageView) mips[15]; // depth tree
-					} view;
+					VK_TYPE(VkImageView) view;
+					VK_TYPE(VkImageView) mips[15]; // depth tree
 				} depth;
-
 				struct { 
 					VK_TYPE(VkImage) image;
 					VK_TYPE(VmaAllocation) memory;
-					struct {
-						VK_TYPE(VkImageView) standard;
-					} view;
+					VK_TYPE(VkImageView) view;
 				} color;
 			} attachment;
 
@@ -78,52 +75,66 @@ namespace arawn::engine {
 				VK_TYPE(VkDescriptorSet) set;
 			} descriptor;
 		};
-
+		
 		struct {
 			struct {
-				VK_TYPE(VkPipeline) pipeline;
-				VK_TYPE(VkPipelineLayout) layout;
-			} generateDepthTree;
+				struct {
+					VK_TYPE(VkPipeline) pipeline;
+					VK_TYPE(VkPipelineLayout) layout;
+				} generate;
+			} depthTree; // compute/graphic??
+			struct { 
+				struct {
+					VK_TYPE(VkPipeline) pipeline;
+					VK_TYPE(VkPipelineLayout) layout;
+				} frustumCull;
+				struct {
+					VK_TYPE(VkPipeline) pipeline;
+					VK_TYPE(VkPipelineLayout) layout;
+				} occlusionCull; // reprojection cull
+			} earlyCull; // compute: frustum cull, occl cull
+			struct { 
+				struct {
+					VK_TYPE(VkPipeline) pipeline;
+					VK_TYPE(VkPipelineLayout) layout;
+				} depthPass; // rdepth prepass
+
+			} depthOnly; // graphic
+			
+			struct { 
+				struct {
+					VK_TYPE(VkPipeline) pipeline;
+					VK_TYPE(VkPipelineLayout) layout;
+				} generateTiles;
+				struct {
+					VK_TYPE(VkPipeline) pipeline;
+					VK_TYPE(VkPipelineLayout) layout;
+				} generateClusters;
+				struct {
+					VK_TYPE(VkPipeline) pipeline;
+					VK_TYPE(VkPipelineLayout) layout;
+				} lightCulling;
+				struct {
+					VK_TYPE(VkPipeline) pipeline;
+					VK_TYPE(VkPipelineLayout) layout;
+				} meshCulling;
+			} lateCull;  // compute
 			struct {
-				VK_TYPE(VkPipeline) pipeline;
-				VK_TYPE(VkPipelineLayout) layout;
-			} frustumCull;
-			struct {
-				VK_TYPE(VkPipeline) pipeline;
-				VK_TYPE(VkPipelineLayout) layout;
-			} occlusionCull; // reprojection cull
-			struct {
-				VK_TYPE(VkPipeline) pipeline;
-				VK_TYPE(VkPipelineLayout) layout;
-			} depthPass; // rdepth prepass
-			struct {
-				VK_TYPE(VkPipeline) pipeline;
-				VK_TYPE(VkPipelineLayout) layout;
-			} generateClusters; // 
-			struct {
-				VK_TYPE(VkPipeline) pipeline;
-				VK_TYPE(VkPipelineLayout) layout;
-			} lightCulling;
-			struct {
-				VK_TYPE(VkPipeline) pipeline;
-				VK_TYPE(VkPipelineLayout) layout;
-			} meshCulling;
-			struct {
-				VK_TYPE(VkPipeline) pipeline;
-				VK_TYPE(VkPipelineLayout) layout;
-			} earlyForward;
-			struct {
-				VK_TYPE(VkPipeline) pipeline;
-				VK_TYPE(VkPipelineLayout) layout;
-			} lateForward;
+				struct {
+					VK_TYPE(VkPipeline) pipeline;
+					VK_TYPE(VkPipelineLayout) layout;
+				} forward;
+			} forward;   // graphic
 		} pass;
 
+		
 		struct { 
-			struct { VK_ENUM(VkFormat) format; } depth;
+			struct { VK_ENUM(VkFormat) format; VK_TYPE(VkSampler) sampler; } depth;
 			struct { VK_ENUM(VkFormat) format; } color;
 		} attachment;
 
-		struct {
+		struct Descriptor {
+			VK_TYPE(VkDescriptorPool) pool;
 			VK_TYPE(VkDescriptorSetLayout) layout;
 		} descriptor;
 

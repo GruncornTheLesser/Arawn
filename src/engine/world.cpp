@@ -10,6 +10,7 @@ void engine::World::create(const Device& device, const Settings& info) {
 	std::array requiredFamilies = std::to_array({ 
 		device.queue.compute.family, 
 		device.queue.graphics.family,
+		device.queue.transfer.family, // ??
 	});
 	std::ranges::sort(requiredFamilies);
 	std::span<uint32_t> families = { 
@@ -17,7 +18,7 @@ void engine::World::create(const Device& device, const Settings& info) {
 		static_cast<uint32_t>(std::ranges::unique(requiredFamilies).begin() - requiredFamilies.begin())
 	};
 	VkSharingMode sharingMode = families.size() == 1 ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
-	// ---------- mesh data ----------
+	
 	{ // mesh buffer
 		VkBufferCreateInfo bufferInfo{
 			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -51,6 +52,7 @@ void engine::World::create(const Device& device, const Settings& info) {
 				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | 
 				VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
 				VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			.sharingMode = sharingMode,
 			.queueFamilyIndexCount = static_cast<uint32_t>(families.size()),
 			.pQueueFamilyIndices = families.data(),
 		};
@@ -68,7 +70,6 @@ void engine::World::create(const Device& device, const Settings& info) {
 		VK_ASSERT(vmaCreateVirtualBlock(&blockInfo, &mesh.arena.block));
 	}
 
-	// ---------- material data ----------
 	{ // material buffer
 		VkBufferCreateInfo bufferInfo{
 			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -90,7 +91,7 @@ void engine::World::create(const Device& device, const Settings& info) {
 		VK_ASSERT(vmaCreateBuffer(device.allocator, &bufferInfo, &allocInfo, &material.buffer, &material.memory, nullptr));
 	}
 
-	{ // texture
+	if (info.texture.enabled) { // texture
 		VkImageCreateInfo imageInfo {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 			.pNext = nullptr,
@@ -109,7 +110,7 @@ void engine::World::create(const Device& device, const Settings& info) {
 			.usage = VK_IMAGE_USAGE_SAMPLED_BIT | 
 				VK_IMAGE_USAGE_TRANSFER_SRC_BIT | 
 				VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-			.sharingMode = (families.size() > 1) ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE,
+			.sharingMode = sharingMode,
 			.queueFamilyIndexCount = static_cast<uint32_t>(families.size()),
 			.pQueueFamilyIndices = families.data(),
 		};
@@ -118,7 +119,7 @@ void engine::World::create(const Device& device, const Settings& info) {
 			.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
 		};
 		
-		VK_ASSERT(vmaCreateImage(device.allocator, &imageInfo, &allocInfo, &material.texture.image, &material.texture.memory, nullptr));
+		VK_ASSERT(vmaCreateImage(device.allocator, &imageInfo, &allocInfo, &texture.image, &texture.memory, nullptr));
 	}
 
 	{ // sampler
@@ -144,10 +145,9 @@ void engine::World::create(const Device& device, const Settings& info) {
 			.unnormalizedCoordinates = VK_FALSE,
 		};
 
-		VK_ASSERT(vkCreateSampler(device.device, &samplerInfo, nullptr, &material.texture.sampler));
+		VK_ASSERT(vkCreateSampler(device.device, &samplerInfo, nullptr, &texture.sampler));
 	}
 
-	// ---------- instance data ----------
 	{ // instance buffer
 		VkBufferCreateInfo bufferInfo{
 			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -168,51 +168,51 @@ void engine::World::create(const Device& device, const Settings& info) {
 		VK_ASSERT(vmaCreateBuffer(device.allocator, &bufferInfo, &allocInfo, &instance.buffer, &instance.memory, nullptr));
 	}
 
-	{ // descriptor
-		auto bindings = std::to_array({
-			VkDescriptorSetLayoutBinding{ // mesh buffer
+	{ // world descriptor
+		auto bindings = std::to_array<VkDescriptorSetLayoutBinding>({
+			{ // mesh buffer
 				.binding = 0,
 				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				.descriptorCount = 1,
 				.stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
 				.pImmutableSamplers = nullptr,
 			},
-			VkDescriptorSetLayoutBinding{ // mesh arena
+			{ // mesh arena
 				.binding = 1,
 				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				.descriptorCount = 1,
 				.stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
 				.pImmutableSamplers = nullptr,
 			},
-			VkDescriptorSetLayoutBinding{ // material buffer
+			{ // material buffer
 				.binding = 2,
 				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				.descriptorCount = 1,
 				.stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
 				.pImmutableSamplers = nullptr,
 			},
-			VkDescriptorSetLayoutBinding{ // material buffer
+			{ // material buffer
 				.binding = 3,
 				.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
 				.descriptorCount = 1,
 				.stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
 				.pImmutableSamplers = nullptr,
 			},
-			VkDescriptorSetLayoutBinding{ // instance buffer
+			{ // instance buffer
 				.binding = 4,
 				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				.descriptorCount = 1,
 				.stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
 				.pImmutableSamplers = nullptr,
 			},
-			VkDescriptorSetLayoutBinding{ // light buffer
+			{ // light buffer
 				.binding = 5,
 				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				.descriptorCount = 1,
 				.stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
 				.pImmutableSamplers = nullptr,
 			},
-			VkDescriptorSetLayoutBinding{ // uniform buffer
+			{ // uniform buffer
 				.binding = 6,
 				.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 				.descriptorCount = 1,
@@ -247,8 +247,8 @@ void engine::World::destroy(const Device& device) {
 	
 	vmaDestroyBuffer(device.allocator, instance.buffer, instance.memory);
 	
-	vkDestroySampler(device.device, material.texture.sampler, nullptr);
-	vmaDestroyImage(device.allocator, material.texture.image, material.texture.memory);
+	vkDestroySampler(device.device, texture.sampler, nullptr);
+	vmaDestroyImage(device.allocator, texture.image, texture.memory);
 	vmaDestroyBuffer(device.allocator, material.buffer, material.memory);
 	
 	vmaDestroyBuffer(device.allocator, mesh.buffer, mesh.memory);

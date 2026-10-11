@@ -22,6 +22,7 @@ namespace arawn { // settings.h
 		DisplayMode display = DisplayMode::WINDOWED;
 
 		struct {
+			bool enabled = true;
 			struct { 
 				uint32_t width = 256;
 				uint32_t height = 256;
@@ -44,8 +45,8 @@ namespace arawn { // settings.h
 
 		struct { 
 			uint64_t budget = 512 * 1024 * 1024;  // 256Mb
-			uint32_t meshCount = 1024 * 1024; // 8Mb
-			uint32_t instanceCount = 4 * 1024 * 1024; // 32Mb
+			uint32_t meshCount = 1024 * 1024;
+			uint32_t instanceCount = 4 * 1024 * 1024; 
 			struct { uint8_t vertices, triangles; } meshlet = { 64, 64 };
 		} geometry;
 

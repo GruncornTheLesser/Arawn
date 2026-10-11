@@ -1,9 +1,9 @@
 #pragma once
 
 namespace arawn::common {
-	template<class T> struct Handle;
-	template<class T> struct Pool;
-	template<class T> struct Flag;
+	template<typename T> struct Handle;
+	template<typename T> struct Pool;
+	template<typename T> struct Flag;
 	struct Settings;
 }
 

@@ -7,13 +7,18 @@ Engine::Engine(const Settings& info) {
 	core.create(info);
 	window.create(core, info);
 	device.create(core, window, info);
-	swap.create(core, window, device, info);
 	world.create(device, info);
+	swap.create(core, window, device, info);
+	// TODO: vvv
+	render.create(core, window, device, world, info); 
+	//present.create(core, window, device, info);
 }
 
-Engine::~Engine() noexcept { 
-	world.destroy(device);
+Engine::~Engine() noexcept {
+	// present.destroy(core, device);
+	render.destroy(core, device);
 	swap.destroy(core, device);
+	world.destroy(device);
 	device.destroy(core);
 	window.destroy(core);
 	core.destroy();

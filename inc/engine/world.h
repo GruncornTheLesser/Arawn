@@ -1,5 +1,9 @@
 #pragma once
-#include "device.h"
+#include "assets/material.h"
+#include <assets/mesh.h>
+#include <assets/texture.h>
+#include <engine/device.h>
+#include <common/pool.h>
 
 namespace arawn::engine {
 	struct World {
@@ -7,8 +11,7 @@ namespace arawn::engine {
 		void recreate(const Device& device, const Settings& info);
 		void destroy(const Device& device);
 
-	private:
-		struct {
+		struct : common::Pool<assets::Mesh> {
 			struct {
 				VK_TYPE(VkBuffer) buffer;
 				VK_TYPE(VmaAllocation) memory;
@@ -19,24 +22,24 @@ namespace arawn::engine {
 			VK_TYPE(VmaAllocation) memory;
 		} mesh;
 
-		struct {
+		struct : common::Pool<assets::Texture> {  // mega texture
+			VK_TYPE(VkImage) image;
+			VK_TYPE(VmaAllocation) memory;
+			VK_TYPE(VkSampler) sampler;
+		} texture;
+		struct : common::Pool<assets::Material> {
 			VK_TYPE(VkBuffer) buffer;
 			VK_TYPE(VmaAllocation) memory;
-			struct {  // mega texture
-				VK_TYPE(VkImage) image;
-				VK_TYPE(VmaAllocation) memory;
-				VK_TYPE(VkSampler) sampler;
-			} texture;
 		} material;
-		struct { 
+		struct : common::Pool<nodes::Instance> {
 			VK_TYPE(VkBuffer) buffer;
 			VK_TYPE(VmaAllocation) memory;
 		} instance;
-		struct { 
+		struct : common::Pool<nodes::Light> { 
 			VK_TYPE(VkBuffer) buffer;
 			VK_TYPE(VmaAllocation) memory;
 		} light;
-
+		
 		struct { 
 			VK_TYPE(VkDescriptorSetLayout) layout;
 			VK_TYPE(VkDescriptorSet) set;
