@@ -67,18 +67,16 @@ FetchContent_Declare(vma GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndS
 
 FetchContent_MakeAvailable(glfw glm vma) # stb meshopt assimp
 
-find_program(GLSLC_EXECUTABLE glslc)
-find_program(GLSLANGVALIDATOR glslangValidator)
-
-if (GLSLC_EXECUTABLE)
+find_program(GLSLC glslc)
+if(GLSLC)
 	message(STATUS "ARAWN: using glslc from path")
-	set(GLSLC_EXECUTABLE glslc --target-env=vulkan1.3)
+	set(GLSLC glslc)
 elseif(DEFINED ENV{VULKAN_SDK})
 	message(STATUS "using vulkan sdk")
 	if(WIN32)
-		set(GLSLC_EXECUTABLE "$ENV{VULKAN_SDK}\\Bin\\glslc.exe")
+		set(GLSLC "$ENV{VULKAN_SDK}\\Bin\\glslc.exe")
 	elseif(UNIX)
-		set(GLSLC_EXECUTABLE "$ENV{VULKAN_SDK}/Bin/glslc")
+		set(GLSLC "$ENV{VULKAN_SDK}/Bin/glslc")
 	else()
 		message(FATAL_ERROR "ARAWN: unsupported platform cannot compile shaders")
 	endif()
@@ -91,7 +89,8 @@ endif()
 # --------------------------
 file(GLOB_RECURSE SOURCES "src/*.cpp")
 file(GLOB_RECURSE HEADERS "inc/*.h")
-file(GLOB_RECURSE SHADERS "res/*.vert"
+file(GLOB_RECURSE SHADERS 
+	"res/*.vert"
 	"res/*.frag"
 	"res/*.comp"
 	"res/*.geom"
@@ -103,16 +102,17 @@ file(GLOB_RECURSE SHADERS "res/*.vert"
 set(SHADER_TARGETS "")
 foreach(SHADER ${SHADERS})
 	file(RELATIVE_PATH REL_PATH ${CMAKE_CURRENT_SOURCE_DIR}/res ${SHADER})
-	
+
 	set(OUT_FILE ${CMAKE_CURRENT_BINARY_DIR}/import/${REL_PATH}.spv)
 	list(APPEND SHADER_TARGETS ${OUT_FILE})
 
+	get_filename_component(SHADER_DIR ${SHADER} DIRECTORY)
 	get_filename_component(OUT_DIR ${OUT_FILE} DIRECTORY)
 
 	add_custom_command(
 		OUTPUT ${OUT_FILE}
 		COMMAND ${CMAKE_COMMAND} -E make_directory ${OUT_DIR}
-		COMMAND ${GLSLC_EXECUTABLE} ${SHADER} -o ${OUT_FILE}
+		COMMAND ${GLSLC} --target-env=vulkan1.3 -I${SHADER_DIR} ${SHADER} -o ${OUT_FILE}
 		DEPENDS ${SHADER}
 		COMMENT "compiling shader: ${REL_PATH}"
 		VERBATIM
@@ -131,9 +131,9 @@ add_dependencies(arawn shaders)
 
 target_compile_options(arawn
 PRIVATE
+	--embed-dir=${CMAKE_CURRENT_BINARY_DIR}/import
 	"-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/="
 	"-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/="
-	--embed-dir=${CMAKE_CURRENT_BINARY_DIR}/import
 )
 
 target_link_libraries(arawn 
