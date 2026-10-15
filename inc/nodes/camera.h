@@ -14,12 +14,3 @@ namespace arawn::nodes {
         glm::mat4 projection;
     };
 }
-
-namespace arawn::primitives {
-    struct Camera {
-        glm::mat4 view;
-        glm::vec3 eye;
-        float fov;
-        // planes[6];
-    };
-}

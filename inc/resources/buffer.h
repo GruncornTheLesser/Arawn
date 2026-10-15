@@ -13,6 +13,8 @@ namespace arawn::resources {
 			std::initializer_list<uint32_t> queues,
 			void** mapped = nullptr
 		);
+		VK_TYPE(VmaVirtualBlock) createBlock(std::size_t size, uint32_t flags = 0) const;
+
 		void destroy(const engine::Device& device);
 		
 		VK_TYPE(VkBuffer) buffer;

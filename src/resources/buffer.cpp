@@ -40,6 +40,13 @@ void Buffer::create(const engine::Device &device,
     if (mapped != nullptr) *mapped = info.pMappedData;
 }
 
+VmaVirtualBlock Buffer::createBlock(std::size_t size, uint32_t flags) const {
+    VmaVirtualBlock block;
+	VmaVirtualBlockCreateInfo blockInfo{ .size = size, .flags = flags };
+	VK_ASSERT(vmaCreateVirtualBlock(&blockInfo, &block));
+    return block;
+}
+
 void Buffer::destroy(const engine::Device &device) {
     vmaDestroyBuffer(device.allocator, buffer, memory);
 }

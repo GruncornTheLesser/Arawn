@@ -15,16 +15,3 @@ namespace arawn::assets {
 		VK_TYPE(VmaVirtualAllocation) meshlets;
 	};
 }
-
-namespace arawn::primitives {
-	struct Mesh {
-		uint32_t meshletOffset;
-		uint32_t meshletCount;
-	};
-	struct Meshlet {
-		uint32_t vertexOffset;
-		uint32_t triangleOffset;
-		uint32_t vertexCount;
-		uint32_t triangleCount;
-	};
-}

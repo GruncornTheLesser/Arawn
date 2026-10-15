@@ -15,12 +15,3 @@ namespace arawn::nodes {
 		Handle<assets::Material> material;
 	};
 }
-
-namespace arawn::primitives {
-	struct Instance {
-		uint32_t node;
-		uint32_t mesh;
-		uint32_t material;
-		uint32_t skeleton;
-	};
-};

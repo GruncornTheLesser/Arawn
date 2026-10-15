@@ -2,10 +2,10 @@
 #include <engine/world.h>
 #include <engine/device.h>
 #include <common/settings.h>
-#include <assets/mesh.h>
-#include <nodes/instance.h>
-#include <algorithm>
-#include <ranges>
+#include <primitive/mesh.h>
+#include <primitive/material.h>
+#include <primitive/instance.h>
+
 using namespace arawn;
 
 void engine::World::create(const Device& device, const Settings& settings) {
@@ -20,12 +20,9 @@ void engine::World::create(const Device& device, const Settings& settings) {
 		VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
 		{ device.queue.compute.family, device.queue.graphics.family, device.queue.transfer.family }
 	);
-	VmaVirtualBlockCreateInfo blockInfo{ 
-		.size = settings.budget.allocation
-	};
-	VK_ASSERT(vmaCreateVirtualBlock(&blockInfo, &mesh.arena.block));
+	mesh.arena.block = mesh.arena.createBlock(settings.budget.allocation);
 
-	material.create(device, settings.budget.maxMaterial * sizeof(primitives::Mesh), 
+	material.create(device, settings.budget.maxMaterial * sizeof(primitives::Material), 
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
 		0, 
 		{ device.queue.compute.family, device.queue.graphics.family, device.queue.transfer.family }

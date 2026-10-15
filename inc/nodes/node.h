@@ -27,9 +27,3 @@ namespace arawn::nodes {
 		uint8_t updateFlags;
 	};
 }
-
-namespace arawn::primitives {
-	struct Node { 
-		glm::mat4 transform;
-	};
-}

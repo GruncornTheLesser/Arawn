@@ -4,8 +4,9 @@
 #include <engine/device.h>
 #include <engine/world.h>
 #include <common/settings.h>
-#include <nodes/camera.h>
-#include <nodes/light.h>
+#include <primitive/light.h>
+#include <primitive/camera.h>
+#include <primitive/cluster.h>
 #include <algorithm>
 #include <array>
 #include <vector>
@@ -242,7 +243,7 @@ void engine::Render::create(const Window& window, const Device& device, const Wo
             );
             
             frame.instance.cluster.create(
-                device, sizeof(uint32_t) * clusterCount, 
+                device, sizeof(primitives::Cluster) * clusterCount, 
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 0, 
                 { device.queue.graphics.family, device.queue.compute.family }
