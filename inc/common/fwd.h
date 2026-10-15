@@ -7,9 +7,16 @@ namespace arawn::common {
 	struct Settings;
 }
 
-namespace arawn::primitive {
+namespace arawn::resources {
+	struct Buffer;
+	struct Image;
+	struct Pipeline;
+}
+
+namespace arawn::primitives {
 	struct Meshlet;
 	struct Vertex;
+	struct Camera;
 }
 
 namespace arawn {
@@ -18,14 +25,12 @@ namespace arawn {
 
 namespace arawn::engine {
 	struct Core;
-	struct Device;
-	struct Present;
-	struct Render;
-	struct Swap;
 	struct Window;
+	struct Device;
+	struct Swap;
 	struct World;
+	struct Render;
 }
-
 namespace arawn::assets {
 	struct Mesh;
 	struct Texture;
@@ -42,4 +47,5 @@ namespace arawn::nodes {
 namespace arawn {
 	template<class T>
 	using Handle = common::Handle<T>;
+	using Settings = common::Settings;
 }

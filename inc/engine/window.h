@@ -1,5 +1,6 @@
 #pragma once
-#include "core.h"
+#include <common/fwd.h>
+#include <common/vulkan.h>
 
 namespace arawn::engine {
 	struct Window {

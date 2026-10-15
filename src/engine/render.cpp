@@ -1,76 +1,28 @@
 #define ARAWN_INCLUDE_VULKAN
 #include <engine/render.h>
+#include <engine/window.h>
+#include <engine/device.h>
+#include <engine/world.h>
 #include <common/settings.h>
 #include <nodes/camera.h>
 #include <nodes/light.h>
 #include <algorithm>
 #include <array>
-#include <span>
 #include <vector>
 
 using namespace arawn;
+using namespace arawn::common;
 
-constexpr VkFormat kColorFormat = VK_FORMAT_B8G8R8A8_UNORM;
-constexpr VkFormat kDepthFormat = VK_FORMAT_D32_SFLOAT;
-
-constexpr uint32_t kMaxInstances     = 1u << 16;
-constexpr uint32_t kMaxLights        = 1u << 10;
-constexpr uint32_t kMaxLightsPerTile = 256;
-constexpr uint32_t kMaxTiles         = 240 * 135;
-constexpr uint32_t kMaxClusters      = 16 * 9 * 24; // ???
-constexpr uint32_t kDepthMipCount    = 15;
-
-namespace arawn::shaders {
-
-    alignas(uint32_t) const unsigned char depth_tree_comp[] = {
-    #embed "shaders/depth_tree.comp.spv"
-    };
-    
-    alignas(uint32_t) const unsigned char depth_frag[] = {
-    #embed "shaders/depth.frag.spv"
-    };
-    
-    alignas(uint32_t) const unsigned char depth_vert[] = {
-    #embed "shaders/depth.vert.spv"
-    };
-    
-    alignas(uint32_t) const unsigned char forward_frag[] = {
-    #embed "shaders/forward.frag.spv"
-    };
-    
-    alignas(uint32_t) const unsigned char forward_vert[] = {
-    #embed "shaders/forward.vert.spv"
-    };
-    
-    alignas(uint32_t) const unsigned char frust_cull_comp[] = {
-    #embed "shaders/frust_cull.comp.spv"
-    };
-    
-    alignas(uint32_t) const unsigned char gen_clusters_comp[] = {
-    #embed "shaders/gen_clusters.comp.spv"
-    };
-    
-    alignas(uint32_t) const unsigned char gen_tiles_comp[] = {
-    #embed "shaders/gen_tiles.comp.spv"
-    };
-    
-    alignas(uint32_t) const unsigned char mesh_cull_comp[] = {
-    #embed "shaders/mesh_cull.comp.spv"
-    };
-    
-    alignas(uint32_t) const unsigned char occl_cull_comp[] = {
-    #embed "shaders/occl_cull.comp.spv"
-    };
-    
-    alignas(uint32_t) const unsigned char tile_cull_comp[] = {
-    #embed "shaders/tile_cull.comp.spv"
-    };
-}
-
-void engine::Render::create(const Core &core, const Window &window, const Device &device, const World& world, const Settings &settings) {
+void engine::Render::create(const Window& window, const Device& device, const World& world, const Swap& Swap, const Settings& settings) {
     frames.resize(settings.buffering == BufferingMode::DOUBLE ? 2 : 3);
 
-    uint32_t attachmentMipCount = std::min<uint32_t>(kDepthMipCount, std::bit_width(std::min(settings.resolution.x, settings.resolution.y)));
+    uint32_t attachmentMipCount = std::min<uint32_t>(maxMipLevels, std::bit_width(std::min(settings.resolution.x, settings.resolution.y)));
+    struct { uint32_t x, y; } tileResolution {
+        .x = (settings.resolution.x + settings.budget.tileSize - 1) / settings.budget.tileSize,
+        .y = (settings.resolution.y + settings.budget.tileSize - 1) / settings.budget.tileSize,
+    };
+    uint32_t tileCount = tileResolution.x * tileResolution.y;
+    uint32_t clusterCount = settings.budget.clusterResolution.x * settings.budget.clusterResolution.y;
 
     { // create descriptor layout
         auto bindings = std::to_array<VkDescriptorSetLayoutBinding>({
@@ -133,7 +85,7 @@ void engine::Render::create(const Core &core, const Window &window, const Device
             { 
                 .binding = 8, 
                 .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          
-                .descriptorCount = 15, 
+                .descriptorCount = attachmentMipCount, 
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT,
                 .pImmutableSamplers = nullptr
             },
@@ -166,7 +118,7 @@ void engine::Render::create(const Core &core, const Window &window, const Device
             },
             { 
                 .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          
-                .descriptorCount = kDepthMipCount * n
+                .descriptorCount = attachmentMipCount * n
             },
         });
         VkDescriptorPoolCreateInfo poolInfo{
@@ -181,254 +133,15 @@ void engine::Render::create(const Core &core, const Window &window, const Device
     }
     
     { // create pipelines
-        auto sets = std::to_array<VkDescriptorSetLayout>({
-            descriptor.layout,
-            world.descriptor.layout
-        });
-        auto createCompute = [&](
-            uint32_t pushData,
-            std::span<const unsigned char> compSpv,
-            auto* out
-        ) {
-            VkPushConstantRange range{
-                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                .offset = 0,
-                .size = pushData
-            };
-            VkPipelineLayoutCreateInfo info{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .setLayoutCount = static_cast<uint32_t>(sets.size()),
-                .pSetLayouts = sets.data(),
-                .pushConstantRangeCount = pushData ? 1u : 0u,
-                .pPushConstantRanges = pushData ? &range : nullptr,
-            };
-            VK_ASSERT(vkCreatePipelineLayout(device.device, &info, nullptr, &out->layout));
-    
-            VkShaderModule comp;
-            VkShaderModuleCreateInfo compInfo{
-                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .codeSize = compSpv.size(),
-                .pCode = reinterpret_cast<const uint32_t*>(compSpv.data()),
-            };
-            VK_ASSERT(vkCreateShaderModule(device.device, &compInfo, nullptr, &comp));
-    
-            VkComputePipelineCreateInfo pipelineInfo{
-                .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .stage = {
-                    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                    .pNext = nullptr,
-                    .flags = 0,
-                    .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-                    .module = comp,
-                    .pName = "main",
-                    .pSpecializationInfo = nullptr,
-                },
-                .layout = out->layout,
-                .basePipelineHandle = VK_NULL_HANDLE,
-                .basePipelineIndex = -1,
-            };
-            VK_ASSERT(vkCreateComputePipelines(device.device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &out->pipeline));
-            vkDestroyShaderModule(device.device, comp, nullptr);
-        };
-    
-        createCompute(0, shaders::depth_tree_comp, &pass.depthTree.generate);
-        createCompute(0, shaders::frust_cull_comp, &pass.earlyCull.frustumCull);
-        createCompute(0, shaders::occl_cull_comp, &pass.earlyCull.occlusionCull);
-        createCompute(0, shaders::gen_tiles_comp, &pass.lateCull.generateTiles);
-        createCompute(0, shaders::gen_clusters_comp, &pass.lateCull.generateClusters);
-        createCompute(0, shaders::tile_cull_comp, &pass.lateCull.lightCulling);
-        createCompute(0, shaders::mesh_cull_comp, &pass.lateCull.meshCulling);
-        
-        auto createGraphics = [&](
-            uint32_t pushData,
-            std::span<const unsigned char> vertSpv,
-            std::span<const unsigned char> fragSpv,
-            VkFormat colorFormat,
-            VkFormat depthFormat,
-            VkCompareOp depthOp,
-            bool depthWrite,
-            auto* out
-        ) {
-            VkPushConstantRange range{ 
-                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                .offset = 0,
-                .size = pushData
-            };
-            VkPipelineLayoutCreateInfo info{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .setLayoutCount = static_cast<uint32_t>(sets.size()),
-                .pSetLayouts = sets.data(),
-                .pushConstantRangeCount = pushData ? 1u : 0u,
-                .pPushConstantRanges = pushData ? &range : nullptr,
-            };
-            VK_ASSERT(vkCreatePipelineLayout(device.device, &info, nullptr, &out->layout));
-            
-            VkShaderModule vert, frag; 
-            VkShaderModuleCreateInfo vertInfo{
-                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .codeSize = vertSpv.size(),
-                .pCode = reinterpret_cast<const uint32_t*>(vertSpv.data()),
-            };
-            VK_ASSERT(vkCreateShaderModule(device.device, &vertInfo, nullptr, &vert));
-    
-            VkShaderModuleCreateInfo fragInfo{
-                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-                .codeSize = fragSpv.size(),
-                .pCode = reinterpret_cast<const uint32_t*>(fragSpv.data()),
-            };
-            VK_ASSERT(vkCreateShaderModule(device.device, &fragInfo, nullptr, &frag));
-            
-            auto stages = std::to_array<VkPipelineShaderStageCreateInfo>({ 
-                { 
-                    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                    .stage = VK_SHADER_STAGE_VERTEX_BIT,
-                    .module = vert,
-                    .pName = "main"
-                },
-                {   
-                    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                    .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                    .module = frag,
-                    .pName = "main"
-                }
-            });
-    
-            auto bindings = std::to_array<VkVertexInputBindingDescription>({
-                { 
-                    .binding = 0,
-                    .stride = sizeof(primitives::Vertex),
-                    .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
-                }
-            });
-            // TODO: add normal / uv attributes with offsetof(primitives::Vertex, ...) once the layout is known
-            auto attributes = std::to_array<VkVertexInputAttributeDescription>({
-                {
-                    .location = 0,
-                    .binding = 0,
-                    .format = VK_FORMAT_R32G32B32_SFLOAT, // position
-                    .offset = 0
-                }
-            });
-    
-            VkPipelineVertexInputStateCreateInfo vertexInput{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-                .vertexBindingDescriptionCount = static_cast<uint32_t>(bindings.size()),
-                .pVertexBindingDescriptions = bindings.data(),
-                .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size()),
-                .pVertexAttributeDescriptions = attributes.data(),
-            };
-    
-            VkPipelineInputAssemblyStateCreateInfo inputAssembly{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-                .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-                .primitiveRestartEnable = VK_FALSE,
-            };
-    
-            // viewport/scissor are dynamic, only the counts matter
-            VkPipelineViewportStateCreateInfo viewportState{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-                .viewportCount = 1,
-                .scissorCount = 1,
-            };
-    
-            VkPipelineRasterizationStateCreateInfo rasterization{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-                .depthClampEnable = VK_FALSE,
-                .rasterizerDiscardEnable = VK_FALSE,
-                .polygonMode = VK_POLYGON_MODE_FILL,
-                .cullMode = VK_CULL_MODE_BACK_BIT,
-                .frontFace = VK_FRONT_FACE_CLOCKWISE,
-                .depthBiasEnable = VK_FALSE,
-                .lineWidth = 1.0f, // must be 1.0 unless wideLines is enabled
-            };
-    
-            VkPipelineMultisampleStateCreateInfo multisample{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-                .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-                .sampleShadingEnable = VK_FALSE,
-            };
-    
-            VkPipelineDepthStencilStateCreateInfo depthStencil{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-                .depthTestEnable = VK_TRUE,
-                .depthWriteEnable = depthWrite ? VK_TRUE : VK_FALSE,
-                .depthCompareOp = depthOp,
-                .depthBoundsTestEnable = VK_FALSE,
-                .stencilTestEnable = VK_FALSE,
-            };
-    
-            VkPipelineColorBlendAttachmentState blendAttachment{
-                .blendEnable = VK_FALSE,
-                .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-            };
-            
-            bool hasColor = colorFormat != VK_FORMAT_UNDEFINED;
-    
-            VkPipelineColorBlendStateCreateInfo blend{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-                .logicOpEnable = VK_FALSE,
-                .attachmentCount = hasColor ? 1u : 0u,
-                .pAttachments = hasColor ? &blendAttachment : nullptr,
-            };
-    
-            auto dynamics = std::to_array<VkDynamicState>({ VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR });
-            VkPipelineDynamicStateCreateInfo dynamicState{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-                .dynamicStateCount = static_cast<uint32_t>(dynamics.size()),
-                .pDynamicStates = dynamics.data(),
-            };
-    
-            // dynamic rendering (Vulkan 1.3): no VkRenderPass
-            VkPipelineRenderingCreateInfo rendering{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-                .viewMask = 0,
-                .colorAttachmentCount = hasColor ? 1u : 0u,
-                .pColorAttachmentFormats = hasColor ? &colorFormat : nullptr,
-                .depthAttachmentFormat = depthFormat,
-                .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
-            };
-    
-            VkGraphicsPipelineCreateInfo pipelineInfo{
-                .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-                .pNext = &rendering,
-                .flags = 0,
-                .stageCount = static_cast<uint32_t>(stages.size()),
-                .pStages = stages.data(),
-                .pVertexInputState = &vertexInput,
-                .pInputAssemblyState = &inputAssembly,
-                .pTessellationState = nullptr,
-                .pViewportState = &viewportState,
-                .pRasterizationState = &rasterization,
-                .pMultisampleState = &multisample,
-                .pDepthStencilState = &depthStencil,
-                .pColorBlendState = &blend,
-                .pDynamicState = &dynamicState,
-                .layout = out->layout,
-                .renderPass = VK_NULL_HANDLE,
-                .subpass = 0,
-                .basePipelineHandle = VK_NULL_HANDLE,
-                .basePipelineIndex = -1,
-            };
-            VK_ASSERT(vkCreateGraphicsPipelines(device.device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &out->pipeline));
-    
-            vkDestroyShaderModule(device.device, vert, nullptr);
-            vkDestroyShaderModule(device.device, frag, nullptr);
-        };
-    
-        createGraphics(0, shaders::depth_vert, shaders::depth_frag, VK_FORMAT_UNDEFINED, kDepthFormat, VK_COMPARE_OP_LESS, true, &pass.depthOnly.depthPass);
-        createGraphics(0, shaders::forward_vert, shaders::forward_frag, kColorFormat, kDepthFormat, VK_COMPARE_OP_EQUAL, false, &pass.forward.forward);    
+        pass.depthTree.generate = resources::GenerateZTreePipeline(device, world, *this);
+        pass.earlyCull.frustumCull = resources::FrustumCullPipeline(device, world, *this);
+        pass.earlyCull.occlusionCull = resources::OcclusionCullPipeline(device, world, *this);
+        pass.lateCull.generateTiles = resources::GenerateTilesPipeline(device, world, *this);
+        pass.lateCull.generateClusters = resources::GenerateClustersPipeline(device, world, *this);
+        pass.lateCull.lightCulling = resources::LightCullingPipeline(device, world, *this);
+        pass.lateCull.meshCulling = resources::MeshCullingPipeline(device, world, *this);
+        pass.depthOnly.depthPass = resources::DepthPipeline(device, world, *this);
+        pass.forward.forward = resources::ForwardPipeline(device, world, *this);
     }
     
     { // create depth sampler
@@ -499,183 +212,85 @@ void engine::Render::create(const Core &core, const Window &window, const Device
         }
 
         { // create buffers
-            auto createBuffer = [&](std::initializer_list<uint32_t> queues, VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationCreateFlags flags, auto* out) {
-                std::vector<uint32_t> families(queues);
-                std::ranges::sort(families);
-                families.erase(std::ranges::unique(families).begin(), families.end());
-
-                VkBufferCreateInfo bufferInfo{
-                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                    .pNext = nullptr,
-                    .flags = 0,
-                    .size = size,
-                    .usage = usage,
-                    .sharingMode = families.size() > 1 ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE,
-                    .queueFamilyIndexCount = static_cast<uint32_t>(families.size()),
-                    .pQueueFamilyIndices = families.data(),
-                };
-        
-                VmaAllocationCreateInfo allocInfo{
-                    .flags = flags,
-                    .usage = VMA_MEMORY_USAGE_AUTO,
-                };
-        
-                
-                VmaAllocationInfo info{};
-                VK_ASSERT(vmaCreateBuffer(device.allocator, &bufferInfo, &allocInfo, &out->buffer, &out->memory, &info));
-
-                if constexpr (requires{ out->mapped; }) {
-                    out->mapped = reinterpret_cast<decltype(out->mapped)>(info.pMappedData);
-                }
-            };
-
-            createBuffer(
-                { device.queue.graphics.family, device.queue.compute.family, device.queue.transfer.family }, 
-                sizeof(primitives::Camera), 
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, 
+            frame.camera.create(
+                device, sizeof(primitives::Camera), 
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                 VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, 
-                &frame.camera
-            );
-            createBuffer(
                 { device.queue.graphics.family, device.queue.compute.family, device.queue.transfer.family },
-                sizeof(VkDrawIndexedIndirectCommand) * kMaxInstances,
+                reinterpret_cast<void**>(&frame.camera.mapped)
+            );
+             
+            frame.instance.manifest.create(
+                device, sizeof(VkDrawIndexedIndirectCommand) * settings.budget.maxInstances, 
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 0, 
-                &frame.instance.manifest
+                { device.queue.graphics.family, device.queue.compute.family, device.queue.transfer.family }
             );
-            createBuffer(
-                { device.queue.graphics.family, device.queue.compute.family },
-                sizeof(uint32_t) * kMaxInstances,
+            
+            frame.instance.early.create(
+                device, sizeof(uint32_t) * settings.budget.maxInstances, 
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 0, 
-                &frame.instance.early
+                { device.queue.graphics.family, device.queue.compute.family }
             );
-            createBuffer(
-                { device.queue.graphics.family, device.queue.compute.family },
-                sizeof(uint32_t) * kMaxInstances,
+            
+            frame.instance.late.create(
+                device, sizeof(uint32_t) * clusterCount * settings.budget.maxMeshesPerCluster, 
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 0, 
-                &frame.instance.late
+                { device.queue.graphics.family, device.queue.compute.family }
             );
-            createBuffer(
-                { device.queue.graphics.family, device.queue.compute.family },
-                sizeof(uint32_t) * kMaxInstances,
+            
+            frame.instance.cluster.create(
+                device, sizeof(uint32_t) * clusterCount, 
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 0, 
-                &frame.instance.cluster
+                { device.queue.graphics.family, device.queue.compute.family }
             );
-            createBuffer(
-                { device.queue.graphics.family, device.queue.compute.family },
-                sizeof(primitives::Light) * kMaxLights,
+            
+            frame.light.manifest.create(
+                device, sizeof(primitives::Light) * settings.budget.maxLights, 
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 0, 
-                &frame.light.manifest
+                { device.queue.graphics.family, device.queue.compute.family }
             );
-            createBuffer(
-                { device.queue.graphics.family, device.queue.compute.family },
-                sizeof(uint32_t) * kMaxLightsPerTile * kMaxTiles,
+            
+            frame.light.tile.create(
+                device, sizeof(uint32_t) * settings.budget.maxLightPerTile * tileCount, 
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 0, 
-                &frame.light.tile
+                { device.queue.graphics.family, device.queue.compute.family }
             );
+            
         }
         
         { // create attachments
-            auto createImage = [&](
-                VkImageAspectFlagBits aspect, // VK_IMAGE_ASPECT_COLOR_BIT
-                VkFormat format,
-                VkSampleCountFlagBits samples,
-                VkImageUsageFlags usage,
-                std::initializer_list<uint32_t> queues,
-                auto* out
-            ) {
-                std::vector<uint32_t> families(queues);
-                std::ranges::sort(families);
-                families.erase(std::ranges::unique(families).begin(), families.end());
-
-                VkImageCreateInfo imageInfo{
-                    .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-                    .pNext = nullptr,
-                    .flags = 0,
-                    .imageType = VK_IMAGE_TYPE_2D,
-                    .format = format,
-                    .extent = { settings.resolution.x, settings.resolution.y, 1 },
-                    .mipLevels = attachmentMipCount,
-                    .arrayLayers = 1,
-                    .samples = samples,
-                    .tiling = VK_IMAGE_TILING_OPTIMAL,
-                    .usage = usage,
-                    .sharingMode = families.size() > 1 ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE,
-                    .queueFamilyIndexCount = static_cast<uint32_t>(families.size()),
-                    .pQueueFamilyIndices = families.data(),
-                    .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                };
-                
-                VmaAllocationCreateInfo allocInfo {
-                    .flags = 0,
-                    .usage = VMA_MEMORY_USAGE_AUTO,
-                };
-
-                VmaAllocationInfo info{};
-                VK_ASSERT(vmaCreateImage(device.allocator, &imageInfo, &allocInfo, &out->image, &out->memory, &info));
-
-                VkImageViewCreateInfo viewInfo{
-                    .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                    .pNext = nullptr,
-                    .flags = 0,
-                    .image = out->image,
-                    .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                    .format = format,
-                    .subresourceRange = { 
-                        .aspectMask = aspect,
-                        .baseMipLevel = 0,
-                        .levelCount = requires{ out->mips; } ? attachmentMipCount : 1,
-                        .baseArrayLayer = 0,
-                        .layerCount = 1
-                    }  
-                };
-
-                VK_ASSERT(vkCreateImageView(device.device, &viewInfo, nullptr, &out->view));
-
-                if constexpr (requires{ out->mips; }) {
-                    for (uint32_t i = 0; i < viewInfo.subresourceRange.levelCount; ++i) {
-                        VkImageViewCreateInfo viewInfo{
-                            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                            .pNext = nullptr,
-                            .flags = 0,
-                            .image = out->image,
-                            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                            .format = format,
-                            .subresourceRange = { 
-                                .aspectMask = aspect,
-                                .baseMipLevel = i,
-                                .levelCount = 1,
-                                .baseArrayLayer = 0,
-                                .layerCount = 1
-                            }
-                        };
-                        
-                        VK_ASSERT(vkCreateImageView(device.device, &viewInfo, nullptr, &out->mips[i]));
-                    }
-                }
-            };
-            
-            createImage(
-                VK_IMAGE_ASPECT_COLOR_BIT,
-                VK_FORMAT_R8G8B8A8_UNORM,
-                VK_SAMPLE_COUNT_1_BIT,
+            frame.attachment.color.create(device,
+                settings.resolution.x, settings.resolution.y, 1, 1, 
+                device.format.attachment.color, VK_SAMPLE_COUNT_1_BIT,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-                { device.queue.graphics.family, device.queue.present.family },
-                &frame.attachment.color
+                0, 
+                { device.queue.graphics.family, device.queue.present.family }
             );
-            createImage( // create sampler
-                VK_IMAGE_ASPECT_DEPTH_BIT,
-                VK_FORMAT_D32_SFLOAT,
-                VK_SAMPLE_COUNT_1_BIT,
+            frame.attachment.color.view = frame.attachment.color.createView(device,
+                device.format.attachment.color, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1
+            );
+
+            frame.attachment.depth.create(device,
+                settings.resolution.x, settings.resolution.y, 1, attachmentMipCount, 
+                device.format.attachment.depth, VK_SAMPLE_COUNT_1_BIT,
                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
-                { device.queue.graphics.family, device.queue.compute.family },
-                &frame.attachment.depth
+                0, 
+                { device.queue.graphics.family, device.queue.present.family }
             );
+            frame.attachment.depth.view = frame.attachment.depth.createView(device,  
+                device.format.attachment.depth, VK_IMAGE_ASPECT_DEPTH_BIT, 0, attachmentMipCount
+            );
+            for (uint32_t i = 0; i < attachmentMipCount; ++i) {
+                frame.attachment.depth.mips[i] = frame.attachment.depth.createView(device, 
+                    device.format.attachment.depth, VK_IMAGE_ASPECT_DEPTH_BIT, i, 1
+                );
+            }
         }
 
         { // create descriptor set
@@ -728,7 +343,7 @@ void engine::Render::create(const Core &core, const Window &window, const Device
                 .imageView = frame.attachment.depth.view,
                 .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
             };
-            VkDescriptorImageInfo depthMipsInfos[kDepthMipCount];
+            VkDescriptorImageInfo depthMipsInfos[maxMipLevels];
             
             for (uint32_t i = 0; i < attachmentMipCount; ++i) {
                 depthMipsInfos[i] = { 
@@ -817,7 +432,7 @@ void engine::Render::create(const Core &core, const Window &window, const Device
     }
 }
 
-void engine::Render::destroy(const Core &core, const Device &device) {
+void engine::Render::destroy(const Device &device) {
     vkDeviceWaitIdle(device.device);
 
     for (auto& frame : frames) {
@@ -835,53 +450,36 @@ void engine::Render::destroy(const Core &core, const Device &device) {
         vkDestroySemaphore(device.device, frame.pass.lateCull.finished, nullptr);
         vkDestroySemaphore(device.device, frame.pass.forward.finished, nullptr);
 
-        vmaDestroyBuffer(device.allocator, frame.camera.buffer, frame.camera.memory);
-        vmaDestroyBuffer(device.allocator, frame.instance.manifest.buffer, frame.instance.manifest.memory);
-        vmaDestroyBuffer(device.allocator, frame.instance.early.buffer, frame.instance.early.memory);
-        vmaDestroyBuffer(device.allocator, frame.instance.late.buffer, frame.instance.late.memory);
-        vmaDestroyBuffer(device.allocator, frame.instance.cluster.buffer, frame.instance.cluster.memory);
-        vmaDestroyBuffer(device.allocator, frame.light.manifest.buffer, frame.light.manifest.memory);
-        vmaDestroyBuffer(device.allocator, frame.light.tile.buffer, frame.light.tile.memory);
+        frame.camera.destroy(device);
+        frame.instance.manifest.destroy(device);
+        frame.instance.early.destroy(device);
+        frame.instance.late.destroy(device);
+        frame.instance.cluster.destroy(device);
+        frame.light.manifest.destroy(device);
+        frame.light.tile.destroy(device);
 
-        for (uint32_t i = 0; i < kDepthMipCount; ++i) {
+        for (uint32_t i = 0; i < maxMipLevels; ++i) {
             vkDestroyImageView(device.device, frame.attachment.depth.mips[i], nullptr);
         }
         vkDestroyImageView(device.device, frame.attachment.depth.view, nullptr);
-        vmaDestroyImage(device.allocator, frame.attachment.depth.image, frame.attachment.depth.memory);
+        frame.attachment.depth.destroy(device);
 
         vkDestroyImageView(device.device, frame.attachment.color.view, nullptr);
-        vmaDestroyImage(device.allocator, frame.attachment.color.image, frame.attachment.color.memory);
+        frame.attachment.color.destroy(device);
         
     }
 
     vkDestroySampler(device.device, attachment.depth.sampler, nullptr);
-
-    vkDestroyPipeline(device.device, pass.depthTree.generate.pipeline, nullptr);
-    vkDestroyPipelineLayout(device.device, pass.depthTree.generate.layout, nullptr);
     
-    vkDestroyPipeline(device.device, pass.earlyCull.frustumCull.pipeline, nullptr);
-    vkDestroyPipelineLayout(device.device, pass.earlyCull.frustumCull.layout, nullptr);
-    
-    vkDestroyPipeline(device.device, pass.earlyCull.occlusionCull.pipeline, nullptr);
-    vkDestroyPipelineLayout(device.device, pass.earlyCull.occlusionCull.layout, nullptr);
-    
-    vkDestroyPipeline(device.device, pass.depthOnly.depthPass.pipeline, nullptr);
-    vkDestroyPipelineLayout(device.device, pass.depthOnly.depthPass.layout, nullptr);
-    
-    vkDestroyPipeline(device.device, pass.lateCull.generateTiles.pipeline, nullptr);
-    vkDestroyPipelineLayout(device.device, pass.lateCull.generateTiles.layout, nullptr);
-    
-    vkDestroyPipeline(device.device, pass.lateCull.generateClusters.pipeline, nullptr);
-    vkDestroyPipelineLayout(device.device,pass.lateCull.generateClusters.layout, nullptr);
-    
-    vkDestroyPipeline(device.device, pass.lateCull.lightCulling.pipeline, nullptr);
-    vkDestroyPipelineLayout(device.device, pass.lateCull.lightCulling.layout, nullptr);
-    
-    vkDestroyPipeline(device.device, pass.lateCull.meshCulling.pipeline, nullptr);
-    vkDestroyPipelineLayout(device.device, pass.lateCull.meshCulling.layout, nullptr);
-    
-    vkDestroyPipeline(device.device, pass.forward.forward.pipeline, nullptr);
-    vkDestroyPipelineLayout(device.device, pass.forward.forward.layout, nullptr);
+    pass.depthTree.generate.destroy(device);
+    pass.earlyCull.frustumCull.destroy(device);
+    pass.earlyCull.occlusionCull.destroy(device);
+    pass.depthOnly.depthPass.destroy(device);
+    pass.lateCull.generateTiles.destroy(device);
+    pass.lateCull.generateClusters.destroy(device);
+    pass.lateCull.lightCulling.destroy(device);
+    pass.lateCull.meshCulling.destroy(device);
+    pass.forward.forward.destroy(device);
 
     vkDestroyDescriptorPool(device.device, descriptor.pool, nullptr);
     vkDestroyDescriptorSetLayout(device.device, descriptor.layout, nullptr);

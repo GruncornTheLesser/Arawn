@@ -1,6 +1,7 @@
 #define VMA_IMPLEMENTATION
 #define ARAWN_INCLUDE_VULKAN
 #include <engine/core.h>
+#include <common/settings.h>
 #include <vector>
 #include <cstring>
 #include <algorithm>
@@ -8,14 +9,14 @@
 
 using namespace arawn;
 
-constinit std::array instanceExtensions = std::to_array<const char*>({ 
+constinit std::array extensions = std::to_array<const char*>({ 
 #ifdef ARAWN_DEBUG
 	VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 #endif
 });
 
 #ifdef ARAWN_DEBUG
-constinit std::array debugLayers = std::to_array<const char*>({
+constinit std::array layers = std::to_array<const char*>({
 	"VK_LAYER_KHRONOS_validation"
 });
 #endif
@@ -24,49 +25,49 @@ constinit std::array debugLayers = std::to_array<const char*>({
 VKAPI_ATTR VkBool32 VKAPI_CALL vkMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* info, void* userData);
 #endif
 
-void engine::Core::create(const Settings& info) {
+void engine::Core::create(const Settings& settings) {
 	if (!glfwInit()) throw std::runtime_error("error: failed to init glfw");
 	
-	ARAWN_LOG(INFO, std::format("{} version = {}.{}.{}.{}",
-		info.title,
-		info.version.variant,
-		info.version.major,
-		info.version.minor,
-		info.version.patch
+	ARAWN_LOG(INFO, std::format("{} - {}.{}.{}.{}",
+		settings.title,
+		settings.version.variant,
+		settings.version.major,
+		settings.version.minor,
+		settings.version.patch
 	));
-	ARAWN_LOG(INFO, std::format("arawn version = {}.{}.{}.{}", 
+	ARAWN_LOG(INFO, std::format("arawn - {}.{}.{}.{}", 
 		VK_API_VERSION_VARIANT(ARAWN_VERSION),
 		VK_API_VERSION_MAJOR(ARAWN_VERSION),
 		VK_API_VERSION_MINOR(ARAWN_VERSION),
-		VK_API_VERSION_PATCH(ARAWN_VERSION))
-	);
-	ARAWN_LOG(INFO, std::format("vulkan version = {}.{}.{}.{}", 
+		VK_API_VERSION_PATCH(ARAWN_VERSION)
+	));
+	ARAWN_LOG(INFO, std::format("vulkan - {}.{}.{}.{}", 
 		VK_API_VERSION_VARIANT(ARAWN_VULKAN_VERSION),
 		VK_API_VERSION_MAJOR(ARAWN_VULKAN_VERSION),
 		VK_API_VERSION_MINOR(ARAWN_VULKAN_VERSION),
-		VK_API_VERSION_PATCH(ARAWN_VULKAN_VERSION))
-	);
+		VK_API_VERSION_PATCH(ARAWN_VULKAN_VERSION)
+	));
 	
 	{ // create instance
-		std::vector<const char*> extensions;
+		std::vector<const char*> exts;
 		
 		uint32_t glfwExtCount;
 		const char** glfwExts = glfwGetRequiredInstanceExtensions(&glfwExtCount);
-		extensions.append_range(std::span{ glfwExts, glfwExts + glfwExtCount });
-		extensions.append_range(instanceExtensions);
+		exts.append_range(std::span{ glfwExts, glfwExts + glfwExtCount });
+		exts.append_range(extensions);
 		
 		std::ranges::sort(extensions, std::strcmp);
-		extensions.erase(std::ranges::unique(extensions, [](const char* lhs, const char* rhs)->bool {
+		exts.erase(std::ranges::unique(exts, [](const char* lhs, const char* rhs)->bool {
 			return std::strcmp(lhs, rhs) == 0;
-		}).end(), extensions.end());
+		}).end(), exts.end());
 		
-		ARAWN_LOG(VERBOSE, std::format("instance extensions={}", extensions));
+		ARAWN_LOG(VERBOSE, std::format("instance extensions={}", exts));
 		
 		VkApplicationInfo appInfo{
 			.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, 
 			.pNext = nullptr, 
-			.pApplicationName = info.title,
-			.applicationVersion = VK_MAKE_API_VERSION(0, info.version.major, info.version.minor, info.version.patch),
+			.pApplicationName = settings.title,
+			.applicationVersion = VK_MAKE_API_VERSION(0, settings.version.major, settings.version.minor, settings.version.patch),
 			.pEngineName = "arawn",
 			.engineVersion = ARAWN_VERSION,
 			.apiVersion = ARAWN_VULKAN_VERSION
@@ -78,11 +79,11 @@ void engine::Core::create(const Settings& info) {
 			.flags = 0,
 			.pApplicationInfo = &appInfo,
 			#ifdef ARAWN_DEBUG
-			.enabledLayerCount = static_cast<uint32_t>(debugLayers.size()),
-			.ppEnabledLayerNames = debugLayers.data(),
+			.enabledLayerCount = static_cast<uint32_t>(layers.size()),
+			.ppEnabledLayerNames = layers.data(),
 			#endif
-			.enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
-			.ppEnabledExtensionNames = extensions.data(),
+			.enabledExtensionCount = static_cast<uint32_t>(exts.size()),
+			.ppEnabledExtensionNames = exts.data(),
 		};
 		
 		VK_ASSERT(vkCreateInstance(&createInfo, nullptr, &instance));

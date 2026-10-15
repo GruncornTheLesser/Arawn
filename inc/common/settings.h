@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-namespace arawn { // settings.h
+namespace arawn::common {
 	enum class DisplayMode { WINDOWED, FULLSCREEN, EXCLUSIVE };
 	enum class BufferingMode { DOUBLE, TRIPLE };
 	enum class VsyncMode { DISABLED, ENABLED };
@@ -40,15 +40,23 @@ namespace arawn { // settings.h
 			bool normal : 1 = true;
 			bool bump : 1 = true;
 			bool opacity : 1 = true;
-			uint32_t capacity = 16 * 1024; // 16 * 64 * 1024 = 256Kb
 		} materials;
 
-		struct { 
-			uint64_t budget = 512 * 1024 * 1024;  // 256Mb
-			uint32_t meshCount = 1024 * 1024;
-			uint32_t instanceCount = 4 * 1024 * 1024; 
+		struct {
+			uint64_t allocation = 512 * 1024 * 1024;
+			uint32_t maxMeshes = 8 * 1024;
+			uint32_t maxMeshesPerCluster = 1024;
+			uint32_t maxInstances = 4 * 1024 * 1024;
+			uint32_t maxLights = 4 * 1024;
+			uint32_t maxLightPerTile = 32;
+			uint32_t maxMaterial = 1024;
+			
 			struct { uint8_t vertices, triangles; } meshlet = { 64, 64 };
-		} geometry;
+			uint32_t tileSize = 32;
+			struct { uint8_t x, y; } clusterResolution = { 8, 2 };
+			
+		} budget;
+
 
 	};
 }

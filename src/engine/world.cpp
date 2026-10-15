@@ -1,126 +1,43 @@
 #define ARAWN_INCLUDE_VULKAN
 #include <engine/world.h>
+#include <engine/device.h>
+#include <common/settings.h>
 #include <assets/mesh.h>
 #include <nodes/instance.h>
 #include <algorithm>
 #include <ranges>
 using namespace arawn;
 
-void engine::World::create(const Device& device, const Settings& info) {
-	std::array requiredFamilies = std::to_array({ 
-		device.queue.compute.family, 
-		device.queue.graphics.family,
-		device.queue.transfer.family, // ??
-	});
-	std::ranges::sort(requiredFamilies);
-	std::span<uint32_t> families = { 
-		requiredFamilies.data(),
-		static_cast<uint32_t>(std::ranges::unique(requiredFamilies).begin() - requiredFamilies.begin())
+void engine::World::create(const Device& device, const Settings& settings) {
+	mesh.pool.create(device, settings.budget.maxMeshes * sizeof(primitives::Mesh), 
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+		0, 
+		{ device.queue.compute.family, device.queue.graphics.family, device.queue.transfer.family }
+	);
+	
+	mesh.arena.create(device, settings.budget.allocation, 
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+		{ device.queue.compute.family, device.queue.graphics.family, device.queue.transfer.family }
+	);
+	VmaVirtualBlockCreateInfo blockInfo{ 
+		.size = settings.budget.allocation
 	};
-	VkSharingMode sharingMode = families.size() == 1 ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
-	
-	{ // mesh buffer
-		VkBufferCreateInfo bufferInfo{
-			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-			.pNext = nullptr,
-			.flags = 0,
-			.size = info.geometry.meshCount * sizeof(primitives::Mesh),
-			.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | 
-				VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
-				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-			.sharingMode = sharingMode,
-			.queueFamilyIndexCount = static_cast<uint32_t>(families.size()),
-			.pQueueFamilyIndices = families.data(),
-		};
-		VmaAllocationCreateInfo allocInfo{
-			.flags = 0,
-			.usage = VMA_MEMORY_USAGE_GPU_ONLY
-		};
-		
-		VK_ASSERT(vmaCreateBuffer(device.allocator, &bufferInfo, &allocInfo, &mesh.buffer, &mesh.memory, nullptr));
-	}
+	VK_ASSERT(vmaCreateVirtualBlock(&blockInfo, &mesh.arena.block));
 
-	{ // mesh arena
-		VkBufferCreateInfo bufferInfo {
-			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-			.pNext = nullptr,
-			.flags = 0,
-			.size = info.geometry.budget,
-			.usage =
-				VK_BUFFER_USAGE_INDEX_BUFFER_BIT | 
-				VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | 
-				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | 
-				VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-				VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			.sharingMode = sharingMode,
-			.queueFamilyIndexCount = static_cast<uint32_t>(families.size()),
-			.pQueueFamilyIndices = families.data(),
-		};
-	
-		VmaAllocationCreateInfo allocInfo {
-			.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-			.usage = VMA_MEMORY_USAGE_AUTO,
-		};
-	
-		VmaVirtualBlockCreateInfo blockInfo{ 
-			.size = info.geometry.budget
-		};
-		
-		VK_ASSERT(vmaCreateBuffer(device.allocator, &bufferInfo, &allocInfo, &mesh.arena.buffer, &mesh.arena.memory, nullptr));
-		VK_ASSERT(vmaCreateVirtualBlock(&blockInfo, &mesh.arena.block));
-	}
+	material.create(device, settings.budget.maxMaterial * sizeof(primitives::Mesh), 
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+		0, 
+		{ device.queue.compute.family, device.queue.graphics.family, device.queue.transfer.family }
+	);
 
-	{ // material buffer
-		VkBufferCreateInfo bufferInfo{
-			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-			.pNext = nullptr,
-			.flags = 0,
-			.size = info.materials.capacity * sizeof(primitives::Mesh),
-			.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | 
-				VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
-				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-			.sharingMode = sharingMode,
-			.queueFamilyIndexCount = static_cast<uint32_t>(families.size()),
-			.pQueueFamilyIndices = families.data(),
-		};
-		VmaAllocationCreateInfo allocInfo{
-			.flags = 0,
-			.usage = VMA_MEMORY_USAGE_GPU_ONLY
-		};
-		
-		VK_ASSERT(vmaCreateBuffer(device.allocator, &bufferInfo, &allocInfo, &material.buffer, &material.memory, nullptr));
-	}
-
-	if (info.texture.enabled) { // texture
-		VkImageCreateInfo imageInfo {
-			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-			.pNext = nullptr,
-			.flags = 0,
-			.imageType = VK_IMAGE_TYPE_2D,
-			.format = VK_FORMAT_R8G8B8A8_UNORM,
-			.extent = {
-				info.texture.capacity.width * info.texture.resolution.width,
-				info.texture.capacity.height * info.texture.resolution.height,
-				1
-			},
-			.mipLevels = info.texture.miplevels,
-			.arrayLayers = 1,
-			.samples = VK_SAMPLE_COUNT_1_BIT,
-			.tiling = VK_IMAGE_TILING_OPTIMAL,
-			.usage = VK_IMAGE_USAGE_SAMPLED_BIT | 
-				VK_IMAGE_USAGE_TRANSFER_SRC_BIT | 
-				VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-			.sharingMode = sharingMode,
-			.queueFamilyIndexCount = static_cast<uint32_t>(families.size()),
-			.pQueueFamilyIndices = families.data(),
-		};
-	
-		VmaAllocationCreateInfo allocInfo = {
-			.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
-		};
-		
-		VK_ASSERT(vmaCreateImage(device.allocator, &imageInfo, &allocInfo, &texture.image, &texture.memory, nullptr));
-	}
+	texture.create(device, 
+		settings.texture.capacity.width * settings.texture.resolution.width, settings.texture.capacity.height * settings.texture.resolution.height,
+		1, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_SAMPLE_COUNT_1_BIT, 
+		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+		VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+		{ device.queue.compute.family, device.queue.graphics.family, device.queue.transfer.family }
+	);
 
 	{ // sampler
 		VkSamplerCreateInfo samplerInfo{
@@ -148,25 +65,11 @@ void engine::World::create(const Device& device, const Settings& info) {
 		VK_ASSERT(vkCreateSampler(device.device, &samplerInfo, nullptr, &texture.sampler));
 	}
 
-	{ // instance buffer
-		VkBufferCreateInfo bufferInfo{
-			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-			.pNext = nullptr,
-			.flags = 0,
-			.size = info.geometry.instanceCount * sizeof(primitives::Instance),
-			.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | 
-				VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
-				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-			.sharingMode = sharingMode,
-			.queueFamilyIndexCount = static_cast<uint32_t>(families.size()),
-			.pQueueFamilyIndices = families.data(),
-		};
-		VmaAllocationCreateInfo allocInfo{
-			.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
-		};
-		
-		VK_ASSERT(vmaCreateBuffer(device.allocator, &bufferInfo, &allocInfo, &instance.buffer, &instance.memory, nullptr));
-	}
+	instance.create(device, settings.budget.maxInstances * sizeof(primitives::Instance), 
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 
+		VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE, 
+		{ device.queue.compute.family, device.queue.graphics.family, device.queue.transfer.family }
+	);
 
 	{ // world descriptor
 		auto bindings = std::to_array<VkDescriptorSetLayoutBinding>({
@@ -220,6 +123,7 @@ void engine::World::create(const Device& device, const Settings& info) {
 				.pImmutableSamplers = nullptr,
 			},
 		});
+		
 		VkDescriptorSetLayoutCreateInfo layoutInfo{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 			.pNext = nullptr,
@@ -245,13 +149,14 @@ void engine::World::create(const Device& device, const Settings& info) {
 void engine::World::destroy(const Device& device) {
 	vkDestroyDescriptorSetLayout(device.device, descriptor.layout, nullptr);	
 	
-	vmaDestroyBuffer(device.allocator, instance.buffer, instance.memory);
+	instance.destroy(device);
 	
 	vkDestroySampler(device.device, texture.sampler, nullptr);
-	vmaDestroyImage(device.allocator, texture.image, texture.memory);
-	vmaDestroyBuffer(device.allocator, material.buffer, material.memory);
+	texture.destroy(device); 
+	material.destroy(device);
 	
-	vmaDestroyBuffer(device.allocator, mesh.buffer, mesh.memory);
+	mesh.pool.destroy(device);
+	
 	vmaDestroyVirtualBlock(mesh.arena.block);
-	vmaDestroyBuffer(device.allocator, mesh.arena.buffer, mesh.arena.memory);	
+	mesh.arena.destroy(device);
 }

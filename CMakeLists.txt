@@ -134,6 +134,7 @@ PRIVATE
 	--embed-dir=${CMAKE_CURRENT_BINARY_DIR}/import
 	"-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/="
 	"-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/="
+	"-Wno-c23-extensions"
 )
 
 target_link_libraries(arawn 

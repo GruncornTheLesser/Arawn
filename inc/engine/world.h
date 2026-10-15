@@ -1,9 +1,9 @@
 #pragma once
-#include "assets/material.h"
 #include <assets/mesh.h>
 #include <assets/texture.h>
 #include <engine/device.h>
-#include <common/pool.h>
+#include <resources/buffer.h>
+#include <resources/image.h>
 
 namespace arawn::engine {
 	struct World {
@@ -11,34 +11,20 @@ namespace arawn::engine {
 		void recreate(const Device& device, const Settings& info);
 		void destroy(const Device& device);
 
-		struct : common::Pool<assets::Mesh> {
-			struct {
-				VK_TYPE(VkBuffer) buffer;
-				VK_TYPE(VmaAllocation) memory;
+		struct {
+			struct : resources::Buffer {
 				VK_TYPE(VmaVirtualBlock) block;
 			} arena; // block allocation of mesh data
 
-			VK_TYPE(VkBuffer) buffer; // ring buffer of current meshes
-			VK_TYPE(VmaAllocation) memory;
+			struct : resources::Buffer { } pool; // mesh manifest
 		} mesh;
 
-		struct : common::Pool<assets::Texture> {  // mega texture
-			VK_TYPE(VkImage) image;
-			VK_TYPE(VmaAllocation) memory;
+		struct : resources::Image {  // mega texture
 			VK_TYPE(VkSampler) sampler;
 		} texture;
-		struct : common::Pool<assets::Material> {
-			VK_TYPE(VkBuffer) buffer;
-			VK_TYPE(VmaAllocation) memory;
-		} material;
-		struct : common::Pool<nodes::Instance> {
-			VK_TYPE(VkBuffer) buffer;
-			VK_TYPE(VmaAllocation) memory;
-		} instance;
-		struct : common::Pool<nodes::Light> { 
-			VK_TYPE(VkBuffer) buffer;
-			VK_TYPE(VmaAllocation) memory;
-		} light;
+		resources::Buffer material;
+		resources::Buffer instance;
+		resources::Buffer light;
 		
 		struct { 
 			VK_TYPE(VkDescriptorSetLayout) layout;

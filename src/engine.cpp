@@ -7,17 +7,15 @@ Engine::Engine(const Settings& info) {
 	core.create(info);
 	window.create(core, info);
 	device.create(core, window, info);
+	swap.create(window, device, info);
 	world.create(device, info);
-	swap.create(core, window, device, info);
-	// TODO: vvv
-	render.create(core, window, device, world, info); 
+	render.create(window, device, world, swap, info); 
 	//present.create(core, window, device, info);
 }
 
 Engine::~Engine() noexcept {
-	// present.destroy(core, device);
-	render.destroy(core, device);
-	swap.destroy(core, device);
+	render.destroy(device);
+	swap.destroy(device);
 	world.destroy(device);
 	device.destroy(core);
 	window.destroy(core);
@@ -33,6 +31,9 @@ Engine(const Engine& engine) noexcept;
 Engine& operator=(const Engine& engine) noexcept;
 */
 
+void Engine::configure(const Settings &value) {
+
+}
 
 bool Engine::closed() const {
 	glfwPollEvents();
@@ -46,4 +47,6 @@ bool Engine::closed() const {
 	return glfwWindowShouldClose(window.window);
 }
 
+void Engine::process() {
 
+}

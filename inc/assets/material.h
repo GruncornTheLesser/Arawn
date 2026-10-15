@@ -1,6 +1,6 @@
 #pragma once
-#include "../common/handle.h"
-#include "texture.h"
+#include <common/fwd.h>
+#include <common/handle.h>
 #include <glm/glm.hpp>
 
 namespace arawn::assets {

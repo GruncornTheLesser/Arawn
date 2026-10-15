@@ -1,9 +1,12 @@
 #define ARAWN_INCLUDE_VULKAN
 #include <engine/window.h>
+#include <engine/core.h>
+#include <common/settings.h>
 #include <algorithm>
 #include <cstring>
 
 using namespace arawn;
+using namespace arawn::common;
 
 /* selects a video mode from the monitor that most closely matches the target resolution and refresh rate*/
 auto selectVideoMode(GLFWmonitor* monitor, int targetWidth, int targetHeight, int targetRefresh)->const GLFWvidmode& {
@@ -64,7 +67,7 @@ auto selectCurrentMonitor(GLFWwindow* window, const char* selection)->GLFWmonito
 	});
 };
 
-/* resets the monito video mode back to the maximum */
+/* resets the monitor video mode back to the maximum */
 auto resetVideoMode(GLFWwindow* window, GLFWmonitor* monitor) {
 	int count;
 	const GLFWvidmode* modes = glfwGetVideoModes(monitor, &count);
@@ -79,28 +82,28 @@ auto resetVideoMode(GLFWwindow* window, GLFWmonitor* monitor) {
 	);
 };
 
-void engine::Window::create(const Core& core, const Settings& info) {
+void engine::Window::create(const Core& core, const Settings& settings) {
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	glfwWindowHint(GLFW_REFRESH_RATE, info.refreshRate);
+	glfwWindowHint(GLFW_REFRESH_RATE, settings.refreshRate);
 	
 	window = nullptr;
 
-	switch(info.display) {
+	switch(settings.display) {
 	case DisplayMode::WINDOWED: {
 		glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
 		glfwWindowHint(GLFW_FLOATING, GLFW_FALSE);
 		
 		window = glfwCreateWindow(
-			info.resolution.x, info.resolution.y,
-			info.title,
+			settings.resolution.x, settings.resolution.y,
+			settings.title,
 			nullptr,
 			nullptr
 		);
 		break;
 	}
 	case DisplayMode::FULLSCREEN: {
-		GLFWmonitor* monitor = selectDefaultMonitor(info.monitor);
+		GLFWmonitor* monitor = selectDefaultMonitor(settings.monitor);
 		const GLFWvidmode& mode = *glfwGetVideoMode(monitor);
 		
 		glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
@@ -108,15 +111,15 @@ void engine::Window::create(const Core& core, const Settings& info) {
 
 		window = glfwCreateWindow(
 			mode.width, mode.height,
-			info.title,
+			settings.title,
 			nullptr,
 			nullptr
 		);
 		break;
 	}
 	case DisplayMode::EXCLUSIVE: {
-		GLFWmonitor* monitor = selectDefaultMonitor(info.monitor);
-		const GLFWvidmode& mode = selectVideoMode(monitor, info.resolution.x, info.resolution.y, info.refreshRate);
+		GLFWmonitor* monitor = selectDefaultMonitor(settings.monitor);
+		const GLFWvidmode& mode = selectVideoMode(monitor, settings.resolution.x, settings.resolution.y, settings.refreshRate);
 		
 		glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
 		glfwWindowHint(GLFW_FLOATING, GLFW_TRUE);
@@ -124,7 +127,7 @@ void engine::Window::create(const Core& core, const Settings& info) {
 
 		window = glfwCreateWindow(
 			mode.width, mode.height,
-			info.title,
+			settings.title,
 			monitor,
 			nullptr
 		);
@@ -141,8 +144,8 @@ void engine::Window::create(const Core& core, const Settings& info) {
 	VK_ASSERT(glfwCreateWindowSurface(core.instance, window, nullptr, &surface));
 }
 
-void engine::Window::recreate(const Core& core, const Settings& info) {
-	switch(info.display) {
+void engine::Window::recreate(const Core& core, const Settings& settings) {
+	switch(settings.display) {
 	case DisplayMode::WINDOWED: {
 		GLFWmonitor* monitor = glfwGetWindowMonitor(window); 
 		if (monitor != nullptr) {
@@ -156,15 +159,15 @@ void engine::Window::recreate(const Core& core, const Settings& info) {
 			window, 
 			nullptr, 
 			100, 100, 
-			info.resolution.x, info.resolution.y,
-			info.refreshRate
+			settings.resolution.x, settings.resolution.y,
+			settings.refreshRate
 		);
 		break;
 	}
 	case DisplayMode::FULLSCREEN: {
 		GLFWmonitor* monitor = glfwGetWindowMonitor(window); 
 		if (monitor != nullptr) resetVideoMode(window, monitor);
-		else monitor = selectCurrentMonitor(window, info.monitor);
+		else monitor = selectCurrentMonitor(window, settings.monitor);
 		
 		glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_FALSE);
 		glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);
@@ -178,16 +181,16 @@ void engine::Window::recreate(const Core& core, const Settings& info) {
 			nullptr,
 			mon.x, mon.y,
 			mode.width, mode.height,
-			info.refreshRate
+			settings.refreshRate
 		);
 
 		break;
 	}
 	case DisplayMode::EXCLUSIVE: {
 		GLFWmonitor* monitor = glfwGetWindowMonitor(window); 
-		if (monitor == nullptr) monitor = selectCurrentMonitor(window, info.monitor);	
+		if (monitor == nullptr) monitor = selectCurrentMonitor(window, settings.monitor);	
 
-		const GLFWvidmode& mode = selectVideoMode(monitor, info.resolution.x, info.resolution.y, info.refreshRate);
+		const GLFWvidmode& mode = selectVideoMode(monitor, settings.resolution.x, settings.resolution.y, settings.refreshRate);
 
 		glfwSetWindowMonitor(
 			window,

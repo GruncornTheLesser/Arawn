@@ -1,18 +1,21 @@
 #define ARAWN_INCLUDE_VULKAN
 #include <engine/device.h>
+#include <engine/core.h>
+#include <engine/window.h>
+#include <common/settings.h>
 #include <vector>
 #include <algorithm>
 #include <ranges>
 #include <cstring>
 
-using namespace arawn;
+using namespace arawn::engine;
 
 constinit std::array deviceExtensions = std::to_array<const char*>({
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 	VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
 });
 
-void engine::Device::create(const Core& core, const Window& window, const Settings& info) {
+void Device::create(const Core& core, const Window& window, const Settings& info) {
 	
 	auto getQueue = [&](Queue& queue) {
 		vkGetDeviceQueue(device, queue.family, queue.index, &queue.queue);
@@ -304,32 +307,62 @@ void engine::Device::create(const Core& core, const Window& window, const Settin
 
 		VK_ASSERT(vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptor.pool));
 	}
+
+	auto selectFormat = [&](std::span<const VkFormat> candidates, VkImageTiling tiling, VkFormatFeatureFlags features) -> VkFormat {
+		for (VkFormat format : candidates) {
+			VkFormatProperties properties;
+			vkGetPhysicalDeviceFormatProperties(gpu, format, &properties);
+
+			if (tiling == VK_IMAGE_TILING_LINEAR) {
+				if ((properties.linearTilingFeatures & features) != features) {
+					continue;
+				}
+			}
+			else if (tiling == VK_IMAGE_TILING_OPTIMAL) {
+				if ((properties.optimalTilingFeatures & features) != features) {
+					continue;
+				}
+			}
+
+			return format;
+		}
+
+		ARAWN_THROW("device does not support required formats.");
+	};
+
+	format.attachment.color = selectFormat(
+		std::to_array<VkFormat>({ VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM }), 
+		VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_TRANSFER_SRC_BIT
+	);
+	format.attachment.depth = selectFormat(
+		std::to_array<VkFormat>({ VK_FORMAT_D32_SFLOAT, VK_FORMAT_D16_UNORM, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, }),
+		VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT
+	);
+	format.attachment.zTree = selectFormat(
+		std::to_array<VkFormat>({ VK_FORMAT_R32_SFLOAT, VK_FORMAT_R16_SFLOAT }),
+		VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT
+	);
+
+	format.material.albedo = selectFormat(
+		std::to_array<VkFormat>({ VK_FORMAT_BC7_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_SRGB }),
+		VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT
+    );
+    format.material.normal = selectFormat(
+		std::to_array<VkFormat>({ VK_FORMAT_BC5_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM }),
+		VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT
+    );
+    format.material.PBR = selectFormat(
+		std::to_array<VkFormat>({ VK_FORMAT_BC7_UNORM_BLOCK,VK_FORMAT_R8G8B8A8_UNORM }),
+		VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT
+    );
+
+	format.vertex.position = VK_FORMAT_R32G32B32_SFLOAT;
+	format.vertex.normal = VK_FORMAT_A2R10G10B10_SNORM_PACK32;
+	format.vertex.tangent = VK_FORMAT_A2R10G10B10_SNORM_PACK32;
+	format.vertex.tangent = VK_FORMAT_R8G8_UNORM;
 }
 
-void engine::Device::recreate(const Core& core, const Window& window, const Settings& info) {
-	// destroy all command buffers
-	throw std::logic_error("not implemented yet");
-
-	vkDestroyCommandPool(device, queue.graphics.pool, nullptr);
-	vkDestroyCommandPool(device, queue.compute.pool, nullptr);
-	vkDestroyCommandPool(device, queue.transfer.pool, nullptr);
-	vkDestroyCommandPool(device, queue.present.pool, nullptr);
-
-	VkDevice oldDevice = device;
-	VmaAllocator oldAllocator = allocator;
-
-	create(core, window, info);
-
-	// TODO:
-	// destroy dependencies
-	// ? possibly transfer dependencies
-	// create dependencies
-
-	vmaDestroyAllocator(allocator);
-	vkDestroyDevice(device, nullptr);
-}
-
-void engine::Device::destroy(const Core& core) {
+void Device::destroy(const Core& core) {
 	vkDestroyDescriptorPool(device, descriptor.pool, nullptr);
 	
 	vmaDestroyAllocator(allocator);

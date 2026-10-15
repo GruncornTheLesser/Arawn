@@ -1,20 +1,18 @@
 #pragma once
-#include "engine/core.h"
-#include "engine/window.h"
-#include "engine/device.h"
-#include "engine/swap.h"
-#include "engine/world.h"
-#include "engine/render.h"
-#include "engine/present.h"
-
-#include "assets/texture.h"
-#include "assets/material.h"
-#include "assets/mesh.h"
-
-#include "nodes/node.h"
-#include "nodes/light.h"
-#include "nodes/instance.h"
-#include "nodes/camera.h"
+#include <common/settings.h>
+#include <engine/core.h>
+#include <engine/window.h>
+#include <engine/device.h>
+#include <engine/swap.h>
+#include <engine/world.h>
+#include <engine/render.h>
+#include <assets/texture.h>
+#include <assets/material.h>
+#include <assets/mesh.h>
+#include <nodes/node.h>
+#include <nodes/camera.h>
+#include <nodes/instance.h>
+#include <nodes/light.h>
 
 namespace arawn {
 	struct Engine {
@@ -27,13 +25,14 @@ namespace arawn {
 		Engine(const Engine& engine) noexcept = delete;
 		Engine& operator=(const Engine& engine) noexcept = delete;
 
-		bool closed() const;
-
-		void update(const Settings& value);
+		void configure(const Settings& value);
 		
-		template<class T> Handle<T> create(const T::CreateInfo& info);
-		template<class T> void destroy(Handle<T> handle);
+		bool closed() const;
+		void process();
 
+		template<class T> Handle<T> create(const T::CreateInfo& info);
+		template<class T> void destroy(Handle<T> hnd);
+		
 	private:
 		Settings settings;
 		engine::Core core;
@@ -42,8 +41,8 @@ namespace arawn {
 		engine::Swap swap;
 		engine::World world;
 		engine::Render render;
-		engine::Present present;
 	};
+
 
 	// NOTE: differentiating between assets vs nodes might be a mistake
 	// it makes it tricky to create dynamic textures/materials/meshes that require updates each frame
@@ -55,8 +54,6 @@ namespace arawn {
 	// each resource creates blocks of data in various locations
 	
 	// textures can remain 
-
-	
 
 
 	template<> [[nodiscard]] Handle<assets::Texture> Engine::create(const assets::Texture::CreateInfo&);

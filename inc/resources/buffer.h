@@ -1,6 +1,6 @@
 #pragma once
-#include "common/fwd.h"
-#include "common/vulkan.h"
+#include <common/fwd.h>
+#include <common/vulkan.h>
 #include <initializer_list>
 
 namespace arawn::resources {

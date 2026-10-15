@@ -1,6 +1,5 @@
 #pragma once
-#include "handle.h"
-#include "assert.h"
+#include <common/handle.h>
 #include <vector>
 #include <deque>
 

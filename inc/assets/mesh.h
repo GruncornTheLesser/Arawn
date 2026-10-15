@@ -1,7 +1,8 @@
 #pragma once
-#include "../common/vulkan.h"
-#include "../primitive/vertex.h"
+#include <common/vulkan.h>
+#include <primitive/vertex.h>
 #include <span>
+
 namespace arawn::assets {
 	struct Mesh {
 		struct CreateInfo {

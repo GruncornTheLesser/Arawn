@@ -1,6 +1,6 @@
 #pragma once
-#include "../common/vulkan.h"
-#include "../common/settings.h"
+#include <common/fwd.h>
+#include <common/vulkan.h>
 
 namespace arawn::engine {
 	struct Core {

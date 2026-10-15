@@ -49,6 +49,28 @@ void Image::create(
     VK_ASSERT(vmaCreateImage(device.allocator, &imageInfo, &allocInfo, &image, &memory, &info));
 }
 
+VkImageView Image::createView(const engine::Device& device, VkFormat format, VkImageAspectFlagBits aspect, uint32_t level, uint32_t count) const {
+    VkImageView view;
+    VkImageViewCreateInfo viewInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .image = image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = format,
+        .subresourceRange = { 
+            .aspectMask = aspect,
+            .baseMipLevel = level,
+            .levelCount = count,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        }  
+    };
+    VK_ASSERT(vkCreateImageView(device.device, &viewInfo, nullptr, &view));
+    return view;
+}
+
+
 void Image::destroy(const engine::Device &device) {
     vmaDestroyImage(device.allocator, image, memory);
 }
