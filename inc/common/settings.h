@@ -50,11 +50,9 @@ namespace arawn::common {
 			uint32_t maxLights = 4 * 1024;
 			uint32_t maxLightPerTile = 32;
 			uint32_t maxMaterial = 1024;
-			
-			struct { uint8_t vertices, triangles; } meshlet = { 64, 64 };
+			struct { uint8_t vertices, triangles; } meshletSize = { 64, 64 };
 			uint32_t tileSize = 32;
 			struct { uint8_t x, y; } clusterResolution = { 8, 2 };
-			
 		} budget;
 
 
