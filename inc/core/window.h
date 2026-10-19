@@ -2,11 +2,13 @@
 #include <common/fwd.h>
 #include <common/vulkan.h>
 
-namespace arawn::engine {
+namespace arawn::core {
 	struct Window {
-		void create(const Core& core, const Settings& info);
-		void recreate(const Core& core, const Settings& info);
-		void destroy(const Core& core);
+		void create(const Instance& instance, const Settings& info);
+		void recreate(const Instance& instance, const Settings& info);
+		void destroy(const Instance& instance);
+
+		operator VK_TYPE(GLFWwindow*)() const;
 
 		VK_TYPE(GLFWwindow*) window;
 		VK_TYPE(VkSurfaceKHR) surface;

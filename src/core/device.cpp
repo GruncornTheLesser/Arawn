@@ -8,7 +8,7 @@
 #include <ranges>
 #include <cstring>
 
-using namespace arawn::engine;
+using namespace arawn::core;
 
 constinit std::array deviceExtensions = std::to_array<const char*>({
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME,

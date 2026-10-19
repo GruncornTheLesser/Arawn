@@ -3,11 +3,13 @@
 #include <common/vulkan.h>
 #include <vector>
 
-namespace arawn::engine {
+namespace arawn::core {
 	struct Swap {
 		void create(const Window& window, const Device& device, const Settings& info);
 		void recreate(const Window& window, const Device& device, const Settings& info);
 		void destroy(const Device& device);
+
+		operator VK_TYPE(VkSwapchainKHR)() const;
 
 		VK_ENUM(VkFormat) format;
 		VK_ENUM(VkColorSpaceKHR) colorspace;

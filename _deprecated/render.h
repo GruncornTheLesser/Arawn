@@ -6,7 +6,7 @@
 #include <resources/pipeline.h>
 #include <vector>
 
-namespace arawn::engine {
+namespace arawn::core {
 	struct Render {
 		static constexpr uint32_t maxMipLevels = 15;
 		

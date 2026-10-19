@@ -2,11 +2,13 @@
 #include <common/fwd.h>
 #include <common/vulkan.h>
 
-namespace arawn::engine {
+namespace arawn::core {
 	struct Device {
-		void create(const Core& core, const Window& window, const Settings& info);
-		void recreate(const Core& core, const Window& window, const Settings& info);
-		void destroy(const Core& core);
+		void create(const Instance& instance, const Window& window, const Settings& info);
+		void recreate(const Instance& instance, const Window& window, const Settings& info);
+		void destroy(const Instance& instance);
+
+		operator VK_TYPE(VkDevice)() const;
 
 		VK_TYPE(VkPhysicalDevice) gpu;
 		VK_TYPE(VkDevice) device;
@@ -24,36 +26,5 @@ namespace arawn::engine {
 		} queue;
 
 		VK_TYPE(VmaAllocator) allocator;
-		
-		struct {
-			VK_TYPE(VkDescriptorPool) pool;
-			struct {
-				VK_TYPE(VkDescriptorSetLayout) world;
-				VK_TYPE(VkDescriptorSetLayout) frame;
-			} layout;
-		} descriptor;
-
-		struct {
-			struct {
-				VK_ENUM(VkFormat) color;
-				VK_ENUM(VkFormat) depth;
-				VK_ENUM(VkFormat) zTree;
-				// VK_ENUM(VkFormat) ssr;
-				// VK_ENUM(VkFormat) ao;
-			} attachment;
-
-			struct {
-				VK_ENUM(VkFormat) albedo;
-				VK_ENUM(VkFormat) normal;
-				VK_ENUM(VkFormat) PBR;
-				VK_ENUM(VkFormat) emissive;
-			} material;
-
-			struct {
-				VK_ENUM(VkFormat) position;
-				VK_ENUM(VkFormat) normal;
-				VK_ENUM(VkFormat) tangent;
-			} vertex;
-		} format;
 	};
 }

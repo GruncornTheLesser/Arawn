@@ -67,3 +67,11 @@
 #define ARAWN_THROW(MESSAGE) do { throw std::runtime_error(ARAWN_LOG_MESSAGE("ERROR", MESSAGE)); } while(0)
 #define VK_ASSERT(STATEMENT) ARAWN_ASSERT(VkResult statement_result = STATEMENT; statement_result == VK_SUCCESS, string_VkResult(statement_result))
 #endif
+
+#ifndef ARAWN_MAX_FRAMES
+#define ARAWN_MAX_FRAMES 3
+#endif
+
+#ifndef ARAWN_MAX_IMAGES
+#define ARAWN_MAX_IMAGES 8
+#endif

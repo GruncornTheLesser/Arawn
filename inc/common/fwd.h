@@ -4,13 +4,20 @@ namespace arawn::common {
 	template<typename T> struct Handle;
 	template<typename T> struct Pool;
 	template<typename T> struct Flag;
-	struct Settings;
 }
 
-namespace arawn::resources {
-	struct Buffer;
-	struct Image;
-	struct Pipeline;
+namespace arawn::attachments {
+	struct Mesh;
+	struct Depth;
+	struct Color;
+}
+
+namespace arawn::pools {
+	struct Mesh;
+	struct Light;
+	struct Camera;
+	struct Texture;
+	struct Material;
 }
 
 namespace arawn::primitives {
@@ -19,17 +26,13 @@ namespace arawn::primitives {
 	struct Camera;
 }
 
-namespace arawn {
-	class Engine;
-}
-
-namespace arawn::engine {
-	struct Core;
+namespace arawn::core {
+	struct Settings;
+	struct Instance;
 	struct Window;
 	struct Device;
 	struct Swap;
-	struct World;
-	struct Render;
+	struct Frame;
 }
 namespace arawn::assets {
 	struct Mesh;
@@ -47,5 +50,4 @@ namespace arawn::nodes {
 namespace arawn {
 	template<class T>
 	using Handle = common::Handle<T>;
-	using Settings = common::Settings;
 }

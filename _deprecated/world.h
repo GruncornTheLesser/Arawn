@@ -5,7 +5,7 @@
 #include <resources/buffer.h>
 #include <resources/image.h>
 
-namespace arawn::engine {
+namespace arawn::core {
 	struct World {
 		void create(const Device& device, const Settings& info);
 		void recreate(const Device& device, const Settings& info);

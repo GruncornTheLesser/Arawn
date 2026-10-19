@@ -1,6 +1,6 @@
 #pragma once
 #include <common/vulkan.h>
-#include <primitive/vertex.h>
+#include <primitives/vertex.h>
 #include <span>
 
 namespace arawn::assets {
