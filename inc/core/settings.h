@@ -1,22 +1,23 @@
 #pragma once
 #include <cstdint>
 
-namespace arawn::common {
+namespace arawn::core {
 	enum class DisplayMode { WINDOWED, FULLSCREEN, EXCLUSIVE };
 	enum class BufferingMode { DOUBLE, TRIPLE };
 	enum class VsyncMode { DISABLED, ENABLED };
 	enum class LowLatencyMode { DISABLED, BALANCED, ENABLED };
-	enum class AntiAliasing { DISABLED, MSAA_2, MSAA_4, FXAA_2, FXAA_4, TAA };
+	enum class AntiAliasing { DISABLED, MSAA_2, MSAA_4, FXAA_2, FXAA_4 };
 	enum class Quality { LOW, MEDIUM, HIGH };
 	
 	struct Settings {
-		const char* title = "application";
+		const char* title = "arawn";
 		struct { uint32_t variant, major, minor, patch; } version;
 		const char* gpu = nullptr;
 		const char* monitor = nullptr;
 		struct { uint32_t x, y; } resolution = { 800, 600 };
 		VsyncMode vsync = VsyncMode::ENABLED;
 		LowLatencyMode latency = LowLatencyMode::BALANCED;
+		AntiAliasing antialiasing = AntiAliasing::MSAA_2;
 		BufferingMode buffering = BufferingMode::DOUBLE;
 		uint32_t refreshRate = 0; // max
 		DisplayMode display = DisplayMode::WINDOWED;
@@ -52,9 +53,7 @@ namespace arawn::common {
 			uint32_t maxMaterial = 1024;
 			struct { uint8_t vertices, triangles; } meshletSize = { 64, 64 };
 			uint32_t tileSize = 32;
-			struct { uint8_t x, y; } clusterResolution = { 8, 2 };
+			struct { uint8_t x, y; } clusters = { 8, 2 };
 		} budget;
-
-
 	};
 }

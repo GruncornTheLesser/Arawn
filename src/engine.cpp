@@ -3,24 +3,18 @@
 
 using namespace arawn;
 
-Engine::Engine(const Settings& info) {
-	core.create(info);
-	window.create(core, info);
-	device.create(core, window, info);
+Engine::Engine(const core::Settings& info) {
+	instance.create(info);
+	window.create(instance, info);
+	device.create(instance, window, info);
 	swap.create(window, device, info);
-	
-	world.create(device, info);
-	render.create(window, device, world, swap, info); 
 }
 
 Engine::~Engine() noexcept {
-	render.destroy(device);
-	world.destroy(device);
-
 	swap.destroy(device);
-	device.destroy(core);
-	window.destroy(core);
-	core.destroy();
+	device.destroy(instance);
+	window.destroy(instance);
+	instance.destroy();
 }
 
 // TODO: implement engine move constructor
@@ -32,7 +26,7 @@ Engine(const Engine& engine) noexcept;
 Engine& operator=(const Engine& engine) noexcept;
 */
 
-void Engine::configure(const Settings &value) {
+void Engine::configure(const core::Settings &value) {
 
 }
 
@@ -42,26 +36,9 @@ bool Engine::closed() const {
 	return glfwWindowShouldClose(window.window);
 }
 
-void Engine::process() {
-	/*
-	auto& frame = render.frames[render.index];
-
-	const uint64_t timeout = 1000000000;
-	VK_ASSERT(vkWaitForFences(device.device, 1, &frame.inFlight, true, timeout));
+void Engine::render() {
+	frame.advance();
 	
-	uint32_t swapIndex;
-	VkResult result = vkAcquireNextImageKHR(device.device, swap.chain, timeout, frame.imageReady, nullptr, &swapIndex);
-
-	if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-		// TODO: recreate
-		ARAWN_LOG(INFO, "surface image out of date, recreating renderer");
-		return;
-	} else if (result != VK_SUBOPTIMAL_KHR) {
-		VK_ASSERT(result);
-	}
-
-	VK_ASSERT(vkResetFences(device.device, 1, &frame.inFlight));
-
 	auto& early   = frame.pass.earlyCull;
     auto& depth   = frame.pass.depthOnly;
     auto& late    = frame.pass.lateCull;

@@ -1,13 +1,13 @@
 #define VMA_IMPLEMENTATION
 #define ARAWN_INCLUDE_VULKAN
-#include <engine/core.h>
-#include <common/settings.h>
+#include <core/instance.h>
+#include <core/settings.h>
 #include <vector>
 #include <cstring>
 #include <algorithm>
 
 
-using namespace arawn;
+using namespace arawn::core;
 
 constinit std::array extensions = std::to_array<const char*>({ 
 #ifdef ARAWN_DEBUG
@@ -25,7 +25,7 @@ constinit std::array layers = std::to_array<const char*>({
 VKAPI_ATTR VkBool32 VKAPI_CALL vkMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* info, void* userData);
 #endif
 
-void engine::Core::create(const Settings& settings) {
+void Instance::create(const Settings& settings) {
 	if (!glfwInit()) throw std::runtime_error("error: failed to init glfw");
 	
 	ARAWN_LOG(INFO, std::format("{} - {}.{}.{}.{}",
@@ -125,7 +125,7 @@ void engine::Core::create(const Settings& settings) {
 	#endif
 }
 
-void engine::Core::destroy() {
+void Instance::destroy() {
 	PFN_vkDestroyDebugUtilsMessengerEXT destroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
 	
 	destroyDebugUtilsMessengerEXT(instance, messenger, nullptr);

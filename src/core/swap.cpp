@@ -1,14 +1,14 @@
 #define ARAWN_INCLUDE_VULKAN
-#include <engine/swap.h>
-#include <engine/device.h>
-#include <engine/window.h>
-#include <common/settings.h>
+#include <core/swap.h>
+#include <core/device.h>
+#include <core/window.h>
+#include <core/settings.h>
 #include <algorithm>
 
 using namespace arawn;
-using namespace arawn::common;
+using namespace arawn::core;
 
-void engine::Swap::create(const Window& window, const Device& device, const Settings& info) {
+void Swap::create(const Window& window, const Device& device, const Settings& info) {
 	std::tie(format, colorspace) = [&]{
 		uint32_t formatCount;
 		VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(device.gpu, window.surface, &formatCount, nullptr));
@@ -120,12 +120,12 @@ void engine::Swap::create(const Window& window, const Device& device, const Sett
 	VK_ASSERT(vkGetSwapchainImagesKHR(device.device, chain, &imageCount, images.data()));
 }
 
-void engine::Swap::recreate(const Window& window, const Device& device, const Settings& info) {
+void Swap::recreate(const Window& window, const Device& device, const Settings& info) {
 	VkSwapchainKHR old = chain;
 	create(window, device, info);
 	vkDestroySwapchainKHR(device.device, old, nullptr);
 }
 
-void engine::Swap::destroy(const Device& device) {
+void Swap::destroy(const Device& device) {
 	vkDestroySwapchainKHR(device.device, chain, nullptr);
 }

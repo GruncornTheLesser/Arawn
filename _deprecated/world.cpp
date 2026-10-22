@@ -9,7 +9,7 @@
 using namespace arawn;
 
 void engine::World::create(const Device& device, const Settings& settings) {
-	mesh.pool.create(device, settings.budget.maxMeshes * sizeof(primitives::Mesh), 
+	mesh.pool.create(device, settings.budget.maxMeshes * sizeof(primitive::Mesh), 
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
 		0, 
 		{ device.queue.compute.family, device.queue.graphics.family, device.queue.transfer.family }
@@ -22,7 +22,7 @@ void engine::World::create(const Device& device, const Settings& settings) {
 	);
 	mesh.arena.block = mesh.arena.createBlock(settings.budget.allocation);
 
-	material.create(device, settings.budget.maxMaterial * sizeof(primitives::Material), 
+	material.create(device, settings.budget.maxMaterial * sizeof(primitive::Material), 
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
 		0, 
 		{ device.queue.compute.family, device.queue.graphics.family, device.queue.transfer.family }
@@ -62,7 +62,7 @@ void engine::World::create(const Device& device, const Settings& settings) {
 		VK_ASSERT(vkCreateSampler(device.device, &samplerInfo, nullptr, &texture.sampler));
 	}
 
-	instance.create(device, settings.budget.maxInstances * sizeof(primitives::Instance), 
+	instance.create(device, settings.budget.maxInstances * sizeof(primitive::Instance), 
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 
 		VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE, 
 		{ device.queue.compute.family, device.queue.graphics.family, device.queue.transfer.family }

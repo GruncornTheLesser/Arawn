@@ -1,8 +1,8 @@
 #define ARAWN_INCLUDE_VULKAN
-#include <engine/device.h>
-#include <engine/core.h>
-#include <engine/window.h>
-#include <common/settings.h>
+#include <core/device.h>
+#include <core/instance.h>
+#include <core/window.h>
+#include <core/settings.h>
 #include <vector>
 #include <algorithm>
 #include <ranges>
@@ -15,7 +15,7 @@ constinit std::array deviceExtensions = std::to_array<const char*>({
 	VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
 });
 
-void Device::create(const Core& core, const Window& window, const Settings& info) {
+void Device::create(const Instance& core, const Window& window, const Settings& info) {
 	
 	auto getQueue = [&](Queue& queue) {
 		vkGetDeviceQueue(device, queue.family, queue.index, &queue.queue);
@@ -290,46 +290,42 @@ void Device::create(const Core& core, const Window& window, const Settings& info
 		VK_ASSERT(vmaCreateAllocator(&allocatorInfo, &allocator));
 	}
 
-	{ // create descriptor pool
-		auto sizes = std::to_array({
-			VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 64 },
-			VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 64 },
-			VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_SAMPLER, 64 },
-		});
-		VkDescriptorPoolCreateInfo poolInfo {
-    		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-    		.pNext = nullptr,
-    		.flags = 0,
-    		.maxSets = 128,
-    		.poolSizeCount = static_cast<uint32_t>(sizes.size()),
-    		.pPoolSizes = sizes.data(),
-		};
+}
 
-		VK_ASSERT(vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptor.pool));
-	}
+void Device::destroy(const Instance& core) {
+	vmaDestroyAllocator(allocator);
 
-	auto selectFormat = [&](std::span<const VkFormat> candidates, VkImageTiling tiling, VkFormatFeatureFlags features) -> VkFormat {
-		for (VkFormat format : candidates) {
-			VkFormatProperties properties;
-			vkGetPhysicalDeviceFormatProperties(gpu, format, &properties);
+	vkDestroyCommandPool(device, queue.graphics.pool, nullptr);
+	vkDestroyCommandPool(device, queue.compute.pool, nullptr);
+	vkDestroyCommandPool(device, queue.transfer.pool, nullptr);
+	vkDestroyCommandPool(device, queue.present.pool, nullptr);
 
-			if (tiling == VK_IMAGE_TILING_LINEAR) {
-				if ((properties.linearTilingFeatures & features) != features) {
-					continue;
-				}
+	vkDestroyDevice(device, nullptr);
+}
+
+VkFormat Device::selectFormat(std::span<const VkFormat> candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+	for (VkFormat format : candidates) {
+		VkFormatProperties properties;
+		vkGetPhysicalDeviceFormatProperties(gpu, format, &properties);
+
+		if (tiling == VK_IMAGE_TILING_LINEAR) {
+			if ((properties.linearTilingFeatures & features) != features) {
+				continue;
 			}
-			else if (tiling == VK_IMAGE_TILING_OPTIMAL) {
-				if ((properties.optimalTilingFeatures & features) != features) {
-					continue;
-				}
+		}
+		else if (tiling == VK_IMAGE_TILING_OPTIMAL) {
+			if ((properties.optimalTilingFeatures & features) != features) {
+				continue;
 			}
-
-			return format;
 		}
 
-		ARAWN_THROW("device does not support required formats.");
-	};
+		return format;
+	}
 
+	ARAWN_THROW("device does not support required formats.");
+}
+
+/*
 	format.attachment.color = selectFormat(
 		std::to_array<VkFormat>({ VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM }), 
 		VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_TRANSFER_SRC_BIT
@@ -360,17 +356,4 @@ void Device::create(const Core& core, const Window& window, const Settings& info
 	format.vertex.normal = VK_FORMAT_A2R10G10B10_SNORM_PACK32;
 	format.vertex.tangent = VK_FORMAT_A2R10G10B10_SNORM_PACK32;
 	format.vertex.tangent = VK_FORMAT_R8G8_UNORM;
-}
-
-void Device::destroy(const Core& core) {
-	vkDestroyDescriptorPool(device, descriptor.pool, nullptr);
-	
-	vmaDestroyAllocator(allocator);
-
-	vkDestroyCommandPool(device, queue.graphics.pool, nullptr);
-	vkDestroyCommandPool(device, queue.compute.pool, nullptr);
-	vkDestroyCommandPool(device, queue.transfer.pool, nullptr);
-	vkDestroyCommandPool(device, queue.present.pool, nullptr);
-
-	vkDestroyDevice(device, nullptr);
-}
+*/

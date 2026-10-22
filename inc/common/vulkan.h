@@ -75,3 +75,7 @@
 #ifndef ARAWN_MAX_IMAGES
 #define ARAWN_MAX_IMAGES 8
 #endif
+
+#ifndef ARAWN_MAX_DEPTH_CHAIN
+#define ARAWN_MAX_DEPTH_CHAIN 15
+#endif

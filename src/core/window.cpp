@@ -1,15 +1,15 @@
 #define ARAWN_INCLUDE_VULKAN
-#include <engine/window.h>
-#include <engine/core.h>
-#include <common/settings.h>
+#include <core/window.h>
+#include <core/instance.h>
+#include <core/settings.h>
 #include <algorithm>
 #include <cstring>
 
 using namespace arawn;
-using namespace arawn::common;
+using namespace arawn::core;
 
 /* selects a video mode from the monitor that most closely matches the target resolution and refresh rate*/
-auto selectVideoMode(GLFWmonitor* monitor, int targetWidth, int targetHeight, int targetRefresh)->const GLFWvidmode& {
+const GLFWvidmode& selectVideoMode(GLFWmonitor* monitor, int targetWidth, int targetHeight, int targetRefresh) {
 	int count;
 	const GLFWvidmode* modes = glfwGetVideoModes(monitor, &count);
 	return *std::ranges::min_element(std::span{ modes, modes + count }, {}, [&](const GLFWvidmode& mode)->uint32_t { 
@@ -22,7 +22,7 @@ auto selectVideoMode(GLFWmonitor* monitor, int targetWidth, int targetHeight, in
 };
 
 /* used on init to get the primary monitor or the monitor passed in by the selection arg */
-auto selectDefaultMonitor(const char* selection) -> GLFWmonitor* {
+GLFWmonitor* selectDefaultMonitor(const char* selection) {
 	int count;
 	GLFWmonitor** monitorData = glfwGetMonitors(&count);
 	std::span monitors{ monitorData, monitorData + count };
@@ -36,7 +36,7 @@ auto selectDefaultMonitor(const char* selection) -> GLFWmonitor* {
 };
 
 /* used on recreate to get the primary monitor closest to the windows current position or the monitor passed in by the selection arg */
-auto selectCurrentMonitor(GLFWwindow* window, const char* selection)->GLFWmonitor* {
+GLFWmonitor* selectCurrentMonitor(GLFWwindow* window, const char* selection) {
 	int count;
 	GLFWmonitor** monitorData = glfwGetMonitors(&count);
 	std::span monitors{ monitorData, monitorData + count };
@@ -68,7 +68,7 @@ auto selectCurrentMonitor(GLFWwindow* window, const char* selection)->GLFWmonito
 };
 
 /* resets the monitor video mode back to the maximum */
-auto resetVideoMode(GLFWwindow* window, GLFWmonitor* monitor) {
+void resetVideoMode(GLFWwindow* window, GLFWmonitor* monitor) {
 	int count;
 	const GLFWvidmode* modes = glfwGetVideoModes(monitor, &count);
 	const GLFWvidmode& mode = modes[count - 1];
@@ -82,7 +82,7 @@ auto resetVideoMode(GLFWwindow* window, GLFWmonitor* monitor) {
 	);
 };
 
-void engine::Window::create(const Core& core, const Settings& settings) {
+void Window::create(const Instance& core, const Settings& settings) {
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 	glfwWindowHint(GLFW_REFRESH_RATE, settings.refreshRate);
@@ -144,7 +144,7 @@ void engine::Window::create(const Core& core, const Settings& settings) {
 	VK_ASSERT(glfwCreateWindowSurface(core.instance, window, nullptr, &surface));
 }
 
-void engine::Window::recreate(const Core& core, const Settings& settings) {
+void Window::recreate(const Instance& core, const Settings& settings) {
 	switch(settings.display) {
 	case DisplayMode::WINDOWED: {
 		GLFWmonitor* monitor = glfwGetWindowMonitor(window); 
@@ -205,7 +205,7 @@ void engine::Window::recreate(const Core& core, const Settings& settings) {
 	}
 }
 
-void engine::Window::destroy(const Core& core) {
+void Window::destroy(const Instance& core) {
 	vkDestroySurfaceKHR(core.instance, surface, nullptr);
 	glfwDestroyWindow(window);
 }

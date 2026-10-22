@@ -1,12 +1,12 @@
 #pragma once
 #include <common/vulkan.h>
-#include <primitives/vertex.h>
+#include <primitive/vertex.h>
 #include <span>
 
 namespace arawn::assets {
 	struct Mesh {
 		struct CreateInfo {
-			std::span<primitives::Vertex> vertices;
+			std::span<primitive::Vertex> vertices;
 			std::span<uint32_t> indices;
 		};
 

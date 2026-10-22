@@ -6,7 +6,7 @@
 
 namespace arawn::common {
     template<typename T>
-	class Pool {
+	struct Pool {
         struct slot_type {
             T data;
             uint16_t version : 12 = 0;
@@ -14,7 +14,10 @@ namespace arawn::common {
         };
 
         using handle_type = Handle<T>;
-        struct framebuffer_type { uint32_t size() const { return 2; } uint32_t index() const { return 1; } }; // placeholder
+        struct framebuffer_type {
+            uint32_t size() const { return 2; }
+            uint32_t index() const { return 1; }
+        };
 
         template<typename ... arg_Ts>
         handle_type create(const framebuffer_type& framebuffer, arg_Ts&& ... args) {
@@ -67,7 +70,6 @@ namespace arawn::common {
             slots.clear();
             free.clear();
         }
-
 
         bool alive(handle_type hnd) const {
             if (hnd.index >= slots.size()) return false;

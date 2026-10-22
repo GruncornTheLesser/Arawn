@@ -214,7 +214,7 @@ void engine::Render::create(const Window& window, const Device& device, const Wo
 
         { // create buffers
             frame.camera.create(
-                device, sizeof(primitives::Camera), 
+                device, sizeof(primitive::Camera), 
                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                 VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, 
                 { device.queue.graphics.family, device.queue.compute.family, device.queue.transfer.family },
@@ -243,14 +243,14 @@ void engine::Render::create(const Window& window, const Device& device, const Wo
             );
             
             frame.instance.cluster.create(
-                device, sizeof(primitives::Cluster) * clusterCount, 
+                device, sizeof(primitive::Cluster) * clusterCount, 
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 0, 
                 { device.queue.graphics.family, device.queue.compute.family }
             );
             
             frame.light.manifest.create(
-                device, sizeof(primitives::Light) * settings.budget.maxLights, 
+                device, sizeof(primitive::Light) * settings.budget.maxLights, 
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 0, 
                 { device.queue.graphics.family, device.queue.compute.family }

@@ -6,24 +6,18 @@ namespace arawn::common {
 	template<typename T> struct Flag;
 }
 
-namespace arawn::attachments {
-	struct Mesh;
-	struct Depth;
-	struct Color;
-}
-
-namespace arawn::pools {
-	struct Mesh;
+namespace arawn::primitive {
+	struct AABB;
+	struct Camera;
+	struct Cluster;
+	struct MeshInstance;
 	struct Light;
-	struct Camera;
-	struct Texture;
 	struct Material;
-}
-
-namespace arawn::primitives {
+	struct Mesh;
 	struct Meshlet;
+	struct Plane;
+	struct Tile;
 	struct Vertex;
-	struct Camera;
 }
 
 namespace arawn::core {
@@ -34,17 +28,57 @@ namespace arawn::core {
 	struct Swap;
 	struct Frame;
 }
-namespace arawn::assets {
+
+namespace arawn::image {
+	struct Color;
+	struct Depth;
+}
+
+namespace arawn::pipeline::cull {
+	struct Frustum;
+	struct Light;
+	struct Mesh;
+	struct Occlusion;
+}
+
+namespace arawn::pipeline::gen {
+	struct Cluster;
+	struct Tile;
+	struct ZTree;
+}
+
+namespace arawn::pipeline {
+	struct DepthOnly;
+	struct Forward;
+}
+
+namespace arawn::node {
+	struct Node;
+	struct Instance;
+	struct Light;
+	struct Camera;
+}
+
+namespace arawn::asset {
 	struct Mesh;
 	struct Texture;
 	struct Material;
 }
 
-namespace arawn::nodes {
-	struct Node;
-	struct Instance;
+namespace arawn::pool {
+	struct Mesh;
 	struct Light;
 	struct Camera;
+	struct Texture;
+	struct Material;
+}
+
+namespace arawn::pass {
+	struct EarlyCull;
+	struct DepthOnly;
+	struct LateCull;
+	struct Forward;
+	struct Present;
 }
 
 namespace arawn {

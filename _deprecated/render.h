@@ -25,7 +25,7 @@ namespace arawn::core {
 			} pass;
 
 			struct : resources::Buffer {
-				primitives::Camera* mapped;
+				primitive::Camera* mapped;
 			} camera;
 			
 			struct { // mesh instances
