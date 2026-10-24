@@ -2,7 +2,7 @@
 #include <pool/node.h>
 #include <core/settings.h>
 #include <core/device.h>
-#include <primitive/node.h>
+#include <node/node.h>
 
 #include <ranges>
 #include <algorithm>
@@ -18,7 +18,7 @@ void Node::create(const core::Device &device, const core::Settings &settings) {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .pNext = nullptr,
         .flags = 0,
-        .size = sizeof(primitive::Node) * settings.budget.maxMaterial,
+        .size = sizeof(node::Node) * settings.budget.maxMaterial,
         .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT ,
         .sharingMode = families.size() == 1 ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT,
         .queueFamilyIndexCount =  static_cast<uint32_t>(families.size()),
@@ -32,22 +32,27 @@ void Node::create(const core::Device &device, const core::Settings &settings) {
 
     VmaAllocationInfo alloc;
     VK_ASSERT(vmaCreateBuffer(device.allocator, &bufferInfo, &allocInfo, &buffer, &memory, &alloc));
-    mapped = reinterpret_cast<primitive::Node*>(alloc.pMappedData);
+    mapped = reinterpret_cast<node::Node*>(alloc.pMappedData);
 }
 
 void Node::destroy(const core::Device &device) {
     vmaDestroyBuffer(device.allocator, buffer, memory);
 }
 
-arawn::Handle<arawn::node::Node> Node::create_node(const node::Node& material) {
-    Handle<arawn::node::Node> hnd = pool.create();
-    primitive::Node& primitive = mapped[hnd.index];
-    primitive = {
-        
-    };
+arawn::Handle<arawn::node::Node> Node::create_node(const node::Node& node) {
+    Handle<node::Node> hnd = Pool::create_resource();
+    mapped[hnd.index] = node;
     return hnd;
 }
 
 void Node::destroy_node(Handle<arawn::node::Node> hnd) {
-    pool.destroy(hnd);
+    Pool::destroy_resource(hnd);
+}
+
+void Node::flush() {
+    Pool::flush();
+}
+
+void Node::flush_all() {
+    Pool::flush_all();
 }

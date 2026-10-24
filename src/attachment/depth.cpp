@@ -63,6 +63,9 @@ void Depth::create(const core::Device &device, const core::Frame &frame, const c
         viewInfo.image = image[i];
         VK_ASSERT(vkCreateImageView(device, &viewInfo, nullptr, &view[i]));
     }
+    if (frame.count != ARAWN_MAX_FRAMES) {
+        image[frame.count] = nullptr;
+    }
 }
 
 void Depth::destroy(const core::Device &device) {

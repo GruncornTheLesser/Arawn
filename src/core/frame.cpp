@@ -28,13 +28,16 @@ void Frame::create(const core::Device& device, const core::Settings &settings) {
     }
 
     if (count != ARAWN_MAX_FRAMES) {
-        inFlight[count - 1] = nullptr;
-        imageReady[count - 1] = nullptr;
+        inFlight[count] = nullptr;
+        imageReady[count] = nullptr;
     }
 }
 
 void Frame::destroy(const core::Device& device) {
-        
+    for (uint32_t i = 0; i < count; ++i) {
+        vkDestroySemaphore(device, imageReady[i], nullptr);
+        vkDestroyFence(device, inFlight[i], nullptr);
+    }
 }
 
 void Frame::advance() {

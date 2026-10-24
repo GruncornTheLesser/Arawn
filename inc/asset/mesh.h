@@ -5,13 +5,7 @@
 
 namespace arawn::assets {
 	struct Mesh {
-		struct CreateInfo {
-			std::span<primitive::Vertex> vertices;
-			std::span<uint32_t> indices;
-		};
-
-		VK_TYPE(VmaVirtualAllocation) vertices;
-		VK_TYPE(VmaVirtualAllocation) indices;
-		VK_TYPE(VmaVirtualAllocation) meshlets;
+		uint64_t vertexOffset, vertexSize;
+		uint64_t indexOffset, indexSize;
 	};
 }

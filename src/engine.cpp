@@ -15,7 +15,7 @@ Engine::Engine(const core::Settings& set) : settings(set) {
 
 	// pools
 	pool.node.create(device, settings);
-	// pool.mesh.create(device, settings);
+	pool.mesh.create(device, settings);
 	pool.light.create(device, settings);
 	// pool.texture.create(device, settings);
 	pool.material.create(device, settings);
@@ -28,15 +28,15 @@ Engine::Engine(const core::Settings& set) : settings(set) {
 	// attachment.cull.light.create(device, frame, settings);
 
 	// pipelines
-	pipeline.cull.frustum.create(device);
-	pipeline.cull.occlusion.create(device);
-	pipeline.cull.light.create(device);
-	pipeline.cull.mesh.create(device);
-	pipeline.gen.ztree.create(device);
-	pipeline.gen.tile.create(device);
-	pipeline.gen.cluster.create(device);
-	pipeline.depthOnly.create(device, attachment.depth);
-	pipeline.forward.create(device, attachment.color, attachment.depth);
+	// pipeline.cull.frustum.create(device);
+	// pipeline.cull.occlusion.create(device);
+	// pipeline.cull.light.create(device);
+	// pipeline.cull.mesh.create(device);
+	// pipeline.gen.ztree.create(device);
+	// pipeline.gen.tile.create(device);
+	// pipeline.gen.cluster.create(device);
+	// pipeline.depthOnly.create(device, attachment.depth);
+	// pipeline.forward.create(device, attachment.color, attachment.depth);
 
 	// passes // TODO: unfinished
 	// pass.earlycull.create(device);
@@ -100,7 +100,7 @@ void Engine::configure(const core::Settings &value) {
 
 	// frame - must
 	//  - resize and create/destroy each framed resource
-
+	
 	// display
 	//  - might be able to implement this lazily
 	//  - rely on acquire frame vulkan error code to recreate swapchain
@@ -122,19 +122,21 @@ bool Engine::closed() const {
 void Engine::render() {
 	frame.advance();
 
-	if (VkResult res = swap.advance(device, frame); res == VK_ERROR_OUT_OF_DATE_KHR) {
-		ARAWN_LOG(INFO, "surface image out of date, recreating renderer");
-		// TODO: recreate
-	} else if (res != VK_SUBOPTIMAL_KHR) {
-		VK_ASSERT(res);
-	}
+	// if (VkResult res = swap.advance(device, frame); res == VK_ERROR_OUT_OF_DATE_KHR) {
+	// 	ARAWN_LOG(INFO, "surface image out of date, recreating renderer");
+	// 	// TODO: recreate
+	// } else if (res != VK_SUBOPTIMAL_KHR) {
+	// 	VK_ASSERT(res);
+	// }
+
+	pool.node.flush();
+	// pool.mesh.upload();
+	pool.light.flush();
+	// pool.texture.upload();
+	pool.material.flush();
+
 
 	/*
-	pool.node.upload(device);
-	pool.mesh.upload(device);
-	pool.light.upload(device);
-	pool.texture.upload(device);
-	pool.material.upload(device);
 
 	pass.earlycull.submit(device, frame);
 	pass.depthonly.submit(device, frame, pass.earlycull);

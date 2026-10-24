@@ -46,7 +46,7 @@ namespace arawn::core {
 		static constexpr uint32_t MaxMaterialDefault = 1 << 16;
 
 		struct {
-			uint64_t allocation = 512 * 1024 * 1024;
+			uint64_t meshArena = 256 * 1024 * 1024;
 			uint32_t maxMeshes = 8 * 1024;
 			uint32_t maxMeshesPerCluster = 1024;
 			uint32_t maxInstances = 4 * 1024 * 1024;

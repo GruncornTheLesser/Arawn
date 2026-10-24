@@ -1,5 +1,6 @@
 #pragma once
 #include <common/fwd.h>
+#include <common/vulkan.h>
 #include <common/handle.h>
 #include <vector>
 #include <deque>
@@ -7,136 +8,67 @@
 
 namespace arawn::common {
     struct Pool {
-        struct slot {
-            uint16_t version : 12;
-            uint16_t active : ARAWN_MAX_FRAMES;
-        };
+        using index_type = ARAWN_INDEX_TYPE;
+        using version_type = ARAWN_VERSION_TYPE;
+        struct slot_type { version_type version; };
+        using iter_type = std::deque<index_type>::const_iterator;
+        using flush_range_type = std::ranges::subrange<iter_type, iter_type>;
 
-        struct flush_range {
-            struct sentinel { };
-
-            struct iterator {
-                using iterator_category = std::input_iterator_tag;
-                using value_type = uint32_t;
-                using difference_type = std::ptrdiff_t;
-                
-                iterator() = default;
-                iterator(Pool* pool);
-                value_type operator*() const;
-
-                iterator& operator++();
-                iterator operator++(int);
-
-                friend bool operator==(const iterator& lhs, sentinel rhs);
-
-            private:
-                Pool* pool;
-                uint32_t cached;
-            };
-            
-            flush_range(Pool* pl);
-
-            iterator begin() const;
-            sentinel end() const;
-
-        private:
-            Pool* pool;
-        };
-
-        Handle<void> create();
-        void destroy(Handle<void> hnd);
-
-        flush_range flush(uint32_t idx);
-        flush_range clear();
-
-        bool alive(Handle<void> hnd) const;
-
-    private:
-        std::vector<slot> slots;
-        std::deque<uint32_t> free;
-    };
-
-    bool operator==(const Pool::flush_range::iterator& lhs, Pool::flush_range::sentinel rhs);
-}
-
-/*
-    template<typename T>
-	struct Pool {
-        struct slot_type {
-            T data;
-            uint16_t version : 12 = 0;
-            uint16_t active : 4 = 0;
-        };
-
-        using handle_type = Handle<T>;
-        struct framebuffer_type {
-            uint32_t size() const { return 2; }
-            uint32_t index() const { return 1; }
-        };
-
-        template<typename ... arg_Ts>
-        handle_type create(const framebuffer_type& framebuffer, arg_Ts&& ... args) {
-            uint32_t index;
-            if (!free.empty() && !slots[free.back()].active) {
-                index = free.back(); 
-                free.pop_back();
+        [[nodiscard]] Handle<void> create_resource() {
+            if (inactive == 0) {
+                uint32_t index = static_cast<uint32_t>(slots.size());
+                slots.push_back({ .version = 0 });
+                return { index, 0 };
             } else {
-                index = static_cast<uint32_t>(slots.size());
-                slots.emplace_back();
+                uint32_t idx = queue.front();
+                queue.pop_front();
+                --inactive;
+                
+                slot_type& slot = slots[idx];
+
+                return { idx, slot.version };
             }
-            slot_type& slot = slots[index];
-            slot.data.create(std::forward<arg_Ts>(args)...);
-            
-            slot.active = (1u << framebuffer.size()) - 1u; // mark active for all frames
-            return handle_type{ index, slot.version };
         }
 
-        void destroy(handle_type hnd) {
+        void destroy_resource(Handle<void> hnd) {
             if (!alive(hnd)) return;
             slot_type& slot = slots[hnd.index];
-            free.push_front(hnd.index);
+            ++slot.version;
+            ++pending[ARAWN_MAX_FRAMES - 1];
+            queue.push_back(hnd.index);
         }
 
-        template<typename ... arg_Ts>
-        void flush(const framebuffer_type& framebuffer, arg_Ts&& ... args) {
-            uint32_t frame_mask = (1 << framebuffer.index());
-            for (uint32_t index : free) {
-                slot_type& slot = slots[index];
-                
-                if ((slot.active & frame_mask) == 0)
-                    break;
+        [[nodiscard]] bool alive(Handle<void> hnd) const {
+            return hnd.index < slots.size() && slots[hnd.index].version == hnd.version;
+        }
+        
+        flush_range_type flush() {
+            uint32_t begin = inactive;
+            uint32_t end = begin + pending[0];
 
-                slot.active &= ~frame_mask;
-                
-                if (slot.active) {
-                    continue;
-                }
-                slot.data.destroy(args...);
+            inactive += pending[0];
+            for (uint32_t i = 0; i < ARAWN_MAX_FRAMES - 1; ++i) {
+                pending[i] = pending[i + 1];
             }
+            pending[ARAWN_MAX_FRAMES - 1] = 0;
+
+            return { queue.begin() + begin, queue.begin() + end };
         }
 
-        template<typename ... arg_Ts>
-        void flush_all(arg_Ts&& ... args) {
-            for (auto& slot : slots) {
-                if (slot.active) {
-                    slot.data.destroy(args...);
-                }
+        flush_range_type flush_all() {
+            uint32_t begin = inactive;
+
+            for (uint32_t i = 0; i < ARAWN_MAX_FRAMES; ++i) {
+                inactive += pending[i];
+                pending[i] = 0;
             }
-            slots.clear();
-            free.clear();
+
+            return { queue.begin() + begin, queue.begin() + inactive };
         }
 
-        bool alive(handle_type hnd) const {
-            if (hnd.index >= slots.size()) return false;
-            const slot_type& slot = slots[hnd.index];
-            return slot.active != 0 && slot.version == hnd.version;
-        }
-
-        T& get(handle_type hnd) { return slots[hnd.index].data; }
-        const T& get(handle_type hnd) const { return slots[hnd.index].data; }
-	private:
-        std::vector<slot_type> slots;
-        std::deque<uint32_t> free;
-	};
-
-*/
+        uint32_t inactive{};
+        uint32_t pending[ARAWN_MAX_FRAMES]{};
+        std::deque<index_type> queue{};
+        std::vector<slot_type> slots{};
+    };
+}

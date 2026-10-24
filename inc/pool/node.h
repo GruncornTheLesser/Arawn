@@ -5,17 +5,18 @@
 #include <common/pool.h>
 
 namespace arawn::pool {
-    struct Node {
+    struct Node : private common::Pool {
         void create(const core::Device& device, const core::Settings& settings);
         void destroy(const core::Device& device);
-
+        
         Handle<node::Node> create_node(const node::Node& createInfo);
         void destroy_node(Handle<node::Node> hnd);
-
-        common::Pool pool;
-
+        
+        void flush();
+        void flush_all();
+        
         VK_TYPE(VkBuffer) buffer;
         VK_TYPE(VmaAllocation) memory;
-        primitive::Node* mapped;
+        node::Node* mapped;
     };
 }

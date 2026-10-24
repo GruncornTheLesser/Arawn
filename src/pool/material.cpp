@@ -3,7 +3,7 @@
 #include <core/settings.h>
 #include <core/device.h>
 #include <asset/material.h>
-#include <primitive/material.h>
+#include <asset/material.h>
 
 #include <ranges>
 #include <algorithm>
@@ -19,7 +19,7 @@ void Material::create(const core::Device &device, const core::Settings &settings
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .pNext = nullptr,
         .flags = 0,
-        .size = sizeof(primitive::Material) * settings.budget.maxMaterial,
+        .size = sizeof(asset::Material) * settings.budget.maxMaterial,
         .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT ,
         .sharingMode = families.size() == 1 ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT,
         .queueFamilyIndexCount =  static_cast<uint32_t>(families.size()),
@@ -33,7 +33,7 @@ void Material::create(const core::Device &device, const core::Settings &settings
 
     VmaAllocationInfo alloc;
     VK_ASSERT(vmaCreateBuffer(device.allocator, &bufferInfo, &allocInfo, &buffer, &memory, &alloc));
-    mapped = reinterpret_cast<primitive::Material*>(alloc.pMappedData);
+    mapped = reinterpret_cast<asset::Material*>(alloc.pMappedData);
 }
 
 void Material::destroy(const core::Device &device) {
@@ -41,19 +41,19 @@ void Material::destroy(const core::Device &device) {
 }
 
 arawn::Handle<arawn::asset::Material> Material::create_material(const asset::Material& material) {
-    Handle<arawn::asset::Material> hnd = pool.create();
-    primitive::Material& primitive = mapped[hnd.index];
-    primitive = {
-        .albedo = material.albedo,
-		.roughness = material.roughness,
-		.metallic = material.metallic,
-		.albedoMap = material.albedoMap.index,
-		.normalMap = material.normalMap.index,
-		.metalRoughMap = material.metalRoughMap.index,
-    };
+    Handle<arawn::asset::Material> hnd = Pool::create_resource();
+    mapped[hnd.index] = material;
     return hnd;
 }
 
 void Material::destroy_material(Handle<arawn::asset::Material> hnd) {
-    pool.destroy(hnd);
+    Pool::destroy_resource(hnd);
+}
+
+void Material::flush() {
+    Pool::flush();
+}
+
+void Material::flush_all() {
+    Pool::flush_all();
 }

@@ -66,7 +66,14 @@ void ZTree::create(const core::Device &device, const core::Frame &frame, const c
             viewInfo.subresourceRange.baseMipLevel = j;
             VK_ASSERT(vkCreateImageView(device, &viewInfo, nullptr, &mips[i][j]));
         }
-
+    }
+    if (imageInfo.mipLevels != ARAWN_MAX_DEPTH_CHAIN) {
+        for (uint32_t i = 0; i < frame.count; ++i) {
+            mips[i][imageInfo.mipLevels] = nullptr;
+        }
+    }
+    if (frame.count != ARAWN_MAX_FRAMES) {
+        image[frame.count] = nullptr;
     }
 }
 

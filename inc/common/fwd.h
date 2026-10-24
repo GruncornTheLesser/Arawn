@@ -12,24 +12,42 @@
 #define ARAWN_MAX_DEPTH_CHAIN 15
 #endif
 
-namespace arawn::common {
-	template<typename T> struct Handle;
-	struct Pool;
-}
+#ifndef ARAWN_INDEX_TYPE
+#define ARAWN_INDEX_TYPE uint32_t
+#endif
+
+#ifndef ARAWN_VERSION_TYPE
+#define ARAWN_VERSION_TYPE uint32_t
+#endif
+
+
+#include <cstdint>
 
 namespace arawn::primitive {
 	struct AABB;
-	struct Camera;
 	struct Cluster;
 	struct MeshInstance;
-	struct Light;
-	struct Material;
-	struct Mesh;
-	struct Meshlet;
-	struct Node;
 	struct Plane;
 	struct Tile;
 	struct Vertex;
+}
+
+namespace arawn::asset {
+	struct Mesh;
+	struct Texture;
+	struct Material;
+}
+
+namespace arawn::node {
+	struct Node;
+	struct Instance;
+	struct Light;
+	struct Camera;
+}
+
+namespace arawn::common {
+	template<typename T> struct Handle;
+	struct Pool;
 }
 
 namespace arawn::core {
@@ -41,13 +59,8 @@ namespace arawn::core {
 	struct Frame;
 }
 
-namespace arawn::asset {
-	struct Mesh;
-	struct Texture;
-	struct Material;
-}
-
 namespace arawn::pool {
+	struct Staging;
 	struct Mesh;
 	struct Light;
 	struct Camera;
@@ -63,13 +76,6 @@ namespace arawn::attachment {
 		struct Light;
 		struct Mesh;
 	}
-}
-
-namespace arawn::node {
-	struct Node;
-	struct Instance;
-	struct Light;
-	struct Camera;
 }
 
 namespace arawn::pipeline::cull {

@@ -8,8 +8,8 @@ namespace arawn::asset {
 		glm::vec3 albedo;
 		float roughness;
 		float metallic;
-		Handle<asset::Texture> albedoMap;
-		Handle<asset::Texture> normalMap;
-		Handle<asset::Texture> metalRoughMap;
+		uint32_t albedoMap;
+		uint32_t normalMap;
+		uint32_t metalRoughMap;
 	};
 }

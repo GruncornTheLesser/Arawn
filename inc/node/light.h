@@ -5,7 +5,7 @@
 namespace arawn::node {
     struct Light {
         glm::vec3 color;
-		Handle<Node> node; // transform index lookup
+		uint32_t node; // transform index lookup
 		float intensity; // fall off curve
 		float range; // range = 0 -> directional light
 		float cone; // inner and outer cone size 16bit floats
