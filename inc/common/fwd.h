@@ -1,9 +1,20 @@
 #pragma once
 
+#ifndef ARAWN_MAX_FRAMES
+#define ARAWN_MAX_FRAMES 3
+#endif
+
+#ifndef ARAWN_MAX_IMAGES
+#define ARAWN_MAX_IMAGES 8
+#endif
+
+#ifndef ARAWN_MAX_DEPTH_CHAIN
+#define ARAWN_MAX_DEPTH_CHAIN 15
+#endif
+
 namespace arawn::common {
 	template<typename T> struct Handle;
-	template<typename T> struct Pool;
-	template<typename T> struct Flag;
+	struct Pool;
 }
 
 namespace arawn::primitive {
@@ -15,6 +26,7 @@ namespace arawn::primitive {
 	struct Material;
 	struct Mesh;
 	struct Meshlet;
+	struct Node;
 	struct Plane;
 	struct Tile;
 	struct Vertex;
@@ -29,9 +41,35 @@ namespace arawn::core {
 	struct Frame;
 }
 
-namespace arawn::image {
+namespace arawn::asset {
+	struct Mesh;
+	struct Texture;
+	struct Material;
+}
+
+namespace arawn::pool {
+	struct Mesh;
+	struct Light;
+	struct Camera;
+	struct Texture;
+	struct Material;
+}
+
+namespace arawn::attachment {
 	struct Color;
 	struct Depth;
+	struct ZTree;
+	namespace cull {
+		struct Light;
+		struct Mesh;
+	}
+}
+
+namespace arawn::node {
+	struct Node;
+	struct Instance;
+	struct Light;
+	struct Camera;
 }
 
 namespace arawn::pipeline::cull {
@@ -50,27 +88,6 @@ namespace arawn::pipeline::gen {
 namespace arawn::pipeline {
 	struct DepthOnly;
 	struct Forward;
-}
-
-namespace arawn::node {
-	struct Node;
-	struct Instance;
-	struct Light;
-	struct Camera;
-}
-
-namespace arawn::asset {
-	struct Mesh;
-	struct Texture;
-	struct Material;
-}
-
-namespace arawn::pool {
-	struct Mesh;
-	struct Light;
-	struct Camera;
-	struct Texture;
-	struct Material;
 }
 
 namespace arawn::pass {

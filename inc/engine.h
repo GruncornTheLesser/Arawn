@@ -1,16 +1,22 @@
 #pragma once
-#include <cstdint>
-#include <array>
-#include <functional>
-#include <stdexcept>
-
-
 #include <core/settings.h>
 #include <core/instance.h>
 #include <core/window.h>
 #include <core/device.h>
 #include <core/swap.h>
 #include <core/frame.h>
+
+#include <pool/node.h>
+#include <pool/mesh.h>
+#include <pool/light.h>
+#include <pool/texture.h>
+#include <pool/material.h>
+
+#include <attachment/depth.h>
+#include <attachment/color.h>
+#include <attachment/ztree.h>
+#include <attachment/cull/mesh.h>
+#include <attachment/cull/light.h>
 
 #include <pipeline/cull/frustum.h>
 #include <pipeline/cull/light.h>
@@ -22,21 +28,11 @@
 #include <pipeline/depth.h>
 #include <pipeline/forward.h>
 
-#include <image/depth.h>
-#include <image/color.h>
-
 #include <pass/earlycull.h>
 #include <pass/depthonly.h>
 #include <pass/latecull.h>
 #include <pass/forward.h>
 #include <pass/present.h>
-
-#include <buffer/cull/light.h>
-#include <buffer/cull/early.h>
-#include <buffer/cull/late.h>
-#include <buffer/cluster.h>
-#include <buffer/tile.h>
-
 
 
 namespace arawn {
@@ -59,8 +55,28 @@ namespace arawn {
 		//domains
 		core::Frame frame;
 		core::Swap swap;
+		
+		// pools
+		struct {
+			pool::Node node;
+			pool::Mesh mesh;
+			pool::Light light;
+			pool::Texture texture;
+			pool::Material material;
+		} pool;
 
 		// attachments
+		struct {
+			attachment::Depth depth;
+			attachment::Color color;
+			attachment::ZTree ztree;
+			struct {
+				attachment::cull::Mesh mesh;
+				attachment::cull::Light light;
+			} cull;
+		} attachment;
+
+		// pipelines
 		struct {
 			struct {
 				pipeline::cull::Frustum frustum;
@@ -76,25 +92,13 @@ namespace arawn {
 			pipeline::DepthOnly depthOnly;
 			pipeline::Forward forward;
 		} pipeline;
-
+		
 		struct {
-			image::Depth depth;
-			image::Color color;
-			struct {
-				buffer::cull::Early early;
-				buffer::cull::Late late;
-				buffer::cull::Late mesh;
-			} cull;
-		} attachments;
-
-		/*
-		struct {
-			pool::Node node;
-			pool::Mesh mesh;
-			pool::Light light;
-			pool::Texture texture;
-			pool::Material material;
-		} pool;
-		*/
+			pass::EarlyCull earlycull;
+			pass::DepthOnly depthonly;
+			pass::LateCull latecull;
+			pass::Forward forward;
+			pass::Present present;
+		} pass;
 	};
 }

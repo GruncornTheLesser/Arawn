@@ -6,8 +6,15 @@
 namespace arawn::pool {
     struct Light {
         void create(const core::Device& device, const core::Settings& settings);
-        void recreate(const core::Device& device, const core::Settings& settings);
         void destroy(const core::Device& device);
 
+        Handle<node::Light> create_light(const node::Light& createInfo);
+        void destroy_light(Handle<node::Light> hnd);
+
+        common::Pool pool;
+
+        VK_TYPE(VkBuffer) buffer;
+        VK_TYPE(VmaAllocation) memory;
+        primitive::Light* mapped;
     };
 }

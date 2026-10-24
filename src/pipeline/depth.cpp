@@ -1,10 +1,12 @@
 #define ARAWN_INCLUDE_VULKAN
-#include <pipeline/generate/ztree.h>
+#include <pipeline/depth.h>
 #include <core/device.h>
+#include <attachment/depth.h>
+#include <attachment/ztree.h>
 #include <primitive/vertex.h>
 
 
-using namespace arawn;
+using namespace arawn::pipeline;
 
 
 alignas(uint32_t) const unsigned char vertSpv[] = {
@@ -15,8 +17,8 @@ alignas(uint32_t) const unsigned char fragSpv[] = {
 #embed "shaders/depth.frag.spv"
 };
 
-void pipeline::gen::ZTree::create(const core::Device &device) {
-    auto sets = std::to_array<VkDescriptorSetLayout>({ nullptr });
+void DepthOnly::create(const core::Device &device, const attachment::Depth& depth) {
+    auto sets = std::to_array<VkDescriptorSetLayout>({ nullptr });// TODO:
 
     VkPushConstantRange range{ 
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -29,7 +31,7 @@ void pipeline::gen::ZTree::create(const core::Device &device) {
         .flags = 0,
         .setLayoutCount = static_cast<uint32_t>(sets.size()),
         .pSetLayouts = sets.data(),
-        .pushConstantRangeCount = 1u,
+        .pushConstantRangeCount = 0, // 1u,
         .pPushConstantRanges = &range,
     };
     VK_ASSERT(vkCreatePipelineLayout(device.device, &info, nullptr, &layout));
@@ -154,7 +156,7 @@ void pipeline::gen::ZTree::create(const core::Device &device) {
         .viewMask = 0,
         .colorAttachmentCount = 0,
         .pColorAttachmentFormats = nullptr,
-        .depthAttachmentFormat = device.format.depth,
+        .depthAttachmentFormat = depth.format,
         .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
     };
     
@@ -184,4 +186,9 @@ void pipeline::gen::ZTree::create(const core::Device &device) {
     vkDestroyShaderModule(device.device, vert, nullptr);
     vkDestroyShaderModule(device.device, frag, nullptr);
 
+}
+
+void DepthOnly::destroy(const core::Device &device) {
+    vkDestroyPipeline(device, pipeline, nullptr);
+    vkDestroyPipelineLayout(device, layout, nullptr);
 }

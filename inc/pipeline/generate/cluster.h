@@ -8,7 +8,6 @@ namespace arawn::pipeline::gen {
         struct PushData { };
         
         void create(const core::Device& device);
-        void recreate(const core::Device& device);
         void destroy(const core::Device& device);
 
         

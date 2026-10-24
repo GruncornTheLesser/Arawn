@@ -5,9 +5,8 @@
 
 namespace arawn::core {
     struct Frame {
-		void create(const Settings& setting);
-        bool query(const Settings& settings);
-		void recreate(const Settings& setting);
+		void create(const core::Device& device, const Settings& setting);
+        void destroy(const core::Device& device);
         
         void advance();
 
@@ -15,7 +14,6 @@ namespace arawn::core {
         uint32_t index;
 
         VK_TYPE(VkFence) inFlight[ARAWN_MAX_FRAMES];
-        VK_TYPE(VkFence) imageReady[ARAWN_MAX_FRAMES];
-        VK_TYPE(VkFence) frameReady[ARAWN_MAX_FRAMES];
+        VK_TYPE(VkSemaphore) imageReady[ARAWN_MAX_FRAMES];
     };
 }

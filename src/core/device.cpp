@@ -16,7 +16,6 @@ constinit std::array deviceExtensions = std::to_array<const char*>({
 });
 
 void Device::create(const Instance& core, const Window& window, const Settings& info) {
-	
 	auto getQueue = [&](Queue& queue) {
 		vkGetDeviceQueue(device, queue.family, queue.index, &queue.queue);
 
@@ -141,7 +140,6 @@ void Device::create(const Instance& core, const Window& window, const Settings& 
 			return properties.deviceName;
 		}()));
 	}
-	
 	
 	std::vector<VkQueueFamilyProperties> families;
 	std::vector<VkDeviceQueueCreateInfo> queueInfos;
@@ -289,7 +287,6 @@ void Device::create(const Instance& core, const Window& window, const Settings& 
 		};
 		VK_ASSERT(vmaCreateAllocator(&allocatorInfo, &allocator));
 	}
-
 }
 
 void Device::destroy(const Instance& core) {
@@ -303,7 +300,11 @@ void Device::destroy(const Instance& core) {
 	vkDestroyDevice(device, nullptr);
 }
 
-VkFormat Device::selectFormat(std::span<const VkFormat> candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+Device::operator VkDevice() const {
+	return device;
+} 
+
+VkFormat Device::selectFormat(std::span<const VkFormat> candidates, VkImageTiling tiling, VkFormatFeatureFlags features) const {
 	for (VkFormat format : candidates) {
 		VkFormatProperties properties;
 		vkGetPhysicalDeviceFormatProperties(gpu, format, &properties);

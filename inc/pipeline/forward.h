@@ -7,8 +7,7 @@ namespace arawn::pipeline {
     struct Forward {
         struct PushData { };
         
-        void create(const core::Device& device);
-        void recreate(const core::Device& device);
+        void create(const core::Device& device, const attachment::Color& color, const attachment::Depth& depth);
         void destroy(const core::Device& device);
 
         

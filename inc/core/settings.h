@@ -43,14 +43,16 @@ namespace arawn::core {
 			bool opacity : 1 = true;
 		} materials;
 
+		static constexpr uint32_t MaxMaterialDefault = 1 << 16;
+
 		struct {
 			uint64_t allocation = 512 * 1024 * 1024;
 			uint32_t maxMeshes = 8 * 1024;
 			uint32_t maxMeshesPerCluster = 1024;
 			uint32_t maxInstances = 4 * 1024 * 1024;
-			uint32_t maxLights = 4 * 1024;
-			uint32_t maxLightPerTile = 32;
-			uint32_t maxMaterial = 1024;
+			uint32_t maxLights = 64 * 1024; // 
+			uint32_t maxLightPerTile = 64; // 
+			uint32_t maxMaterial = 64 * 1024;
 			struct { uint8_t vertices, triangles; } meshletSize = { 64, 64 };
 			uint32_t tileSize = 32;
 			struct { uint8_t x, y; } clusters = { 8, 2 };

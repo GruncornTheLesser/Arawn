@@ -2,13 +2,13 @@
 #include <pipeline/cull/mesh.h>
 #include <core/device.h>
 
-using namespace arawn;
+using namespace arawn::pipeline;
 
 alignas(uint32_t) const unsigned char compSpv[] = {
 #embed "shaders/cull/mesh.comp.spv"
 };
 
-void pipeline::cull::Mesh::create(const core::Device &device) {
+void cull::Mesh::create(const core::Device &device) {
     VkPushConstantRange range{
         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
         .offset = 0,
@@ -25,7 +25,7 @@ void pipeline::cull::Mesh::create(const core::Device &device) {
         .flags = 0,
         .setLayoutCount = static_cast<uint32_t>(sets.size()),
         .pSetLayouts = sets.data(),
-        .pushConstantRangeCount = 1,
+        .pushConstantRangeCount = 0,  // TODO:
         .pPushConstantRanges = &range,
     };
     VK_ASSERT(vkCreatePipelineLayout(device, &info, nullptr, &layout));
@@ -60,4 +60,9 @@ void pipeline::cull::Mesh::create(const core::Device &device) {
 
     VK_ASSERT(vkCreateComputePipelines(device.device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline));
     vkDestroyShaderModule(device.device, comp, nullptr);
+}
+
+void cull::Mesh::destroy(const core::Device &device) {
+    vkDestroyPipeline(device, pipeline, nullptr);
+    vkDestroyPipelineLayout(device, layout, nullptr);
 }

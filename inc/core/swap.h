@@ -6,8 +6,9 @@
 namespace arawn::core {
 	struct Swap {
 		void create(const Window& window, const Device& device, const Settings& info);
-		void recreate(const Window& window, const Device& device, const Settings& info);
 		void destroy(const Device& device);
+		
+		VK_ENUM(VkResult) advance(const Device& device, const core::Frame& frame);
 
 		operator VK_TYPE(VkSwapchainKHR)() const;
 

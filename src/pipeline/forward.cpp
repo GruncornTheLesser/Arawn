@@ -1,9 +1,11 @@
 #define ARAWN_INCLUDE_VULKAN
 #include <pipeline/forward.h>
 #include <core/device.h>
+#include <attachment/color.h>
+#include <attachment/depth.h>
 #include <primitive/vertex.h>
 
-using namespace arawn;
+using namespace arawn::pipeline;
 
 alignas(uint32_t) const unsigned char fragSpv[] = {
 #embed "shaders/forward.frag.spv"
@@ -13,7 +15,7 @@ alignas(uint32_t) const unsigned char vertSpv[] = {
 #embed "shaders/forward.vert.spv"
 };
 
-void pipeline::Forward::create(const core::Device &device) {
+void Forward::create(const core::Device &device, const attachment::Color& color, const attachment::Depth& depth) {
     auto sets = std::to_array<VkDescriptorSetLayout>({ nullptr });
 
     VkPushConstantRange range{ 
@@ -156,8 +158,8 @@ void pipeline::Forward::create(const core::Device &device) {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
         .viewMask = 0,
         .colorAttachmentCount = 1,
-        .pColorAttachmentFormats = &device.format.color,
-        .depthAttachmentFormat = device.format.depth,
+        .pColorAttachmentFormats = &color.format,
+        .depthAttachmentFormat = depth.format,
         .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
     };
     
@@ -186,4 +188,9 @@ void pipeline::Forward::create(const core::Device &device) {
 
     vkDestroyShaderModule(device.device, vert, nullptr);
     vkDestroyShaderModule(device.device, frag, nullptr);
+}
+
+void Forward::destroy(const core::Device &device) {
+    vkDestroyPipeline(device, pipeline, nullptr);
+    vkDestroyPipelineLayout(device, layout, nullptr);
 }

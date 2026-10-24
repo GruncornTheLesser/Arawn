@@ -3,6 +3,7 @@
 #include <core/device.h>
 #include <core/window.h>
 #include <core/settings.h>
+#include <core/frame.h>
 #include <algorithm>
 
 using namespace arawn;
@@ -120,12 +121,22 @@ void Swap::create(const Window& window, const Device& device, const Settings& in
 	VK_ASSERT(vkGetSwapchainImagesKHR(device.device, chain, &imageCount, images.data()));
 }
 
+/*
 void Swap::recreate(const Window& window, const Device& device, const Settings& info) {
 	VkSwapchainKHR old = chain;
 	create(window, device, info);
 	vkDestroySwapchainKHR(device.device, old, nullptr);
 }
+*/
 
 void Swap::destroy(const Device& device) {
 	vkDestroySwapchainKHR(device.device, chain, nullptr);
+}
+
+VkResult Swap::advance(const Device &device, const core::Frame& frame) {
+	const uint64_t timeout = 1000000000;
+	VK_ASSERT(vkWaitForFences(device.device, 1, &frame.inFlight[frame.index], true, timeout));
+	
+	uint32_t swapIndex;
+	return vkAcquireNextImageKHR(device.device, chain, timeout, frame.imageReady[frame.index], nullptr, &swapIndex);
 }

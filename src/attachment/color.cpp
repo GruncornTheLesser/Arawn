@@ -1,17 +1,22 @@
 #define ARAWN_INCLUDE_VULKAN
-#include <image/color.h>
+#include <attachment/color.h>
 #include <core/settings.h>
 #include <core/frame.h>
 #include <core/device.h>
 #include <algorithm>
 #include <vector>
 
-using namespace arawn::image;
+using namespace arawn::attachment;
 
 void Color::create(const core::Device &device, const core::Frame &frame, const core::Settings &settings) {
     std::vector<uint32_t> families = { device.queue.graphics.family, device.queue.present.family };
     std::ranges::sort(families);
     families.erase(std::ranges::unique(families).begin(), families.end());
+    
+    format = device.selectFormat(
+        std::to_array({ VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM }), 
+		VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
+    );
     
     {
         VkImageCreateInfo imageInfo{
@@ -19,7 +24,7 @@ void Color::create(const core::Device &device, const core::Frame &frame, const c
             .pNext = nullptr,
             .flags = 0,
             .imageType = VK_IMAGE_TYPE_2D,
-            .format = device.format.depth,
+            .format = format,
             .extent = { settings.resolution.x, settings.resolution.y, 1 },
             .mipLevels = 1,
             .arrayLayers = 1,
@@ -41,5 +46,11 @@ void Color::create(const core::Device &device, const core::Frame &frame, const c
         for (uint32_t i = 0; i < frame.count; ++i) {
             VK_ASSERT(vmaCreateImage(device.allocator, &imageInfo, &allocInfo, &image[i], &memory[i], &info));
         }
+    }
+}
+
+void Color::destroy(const core::Device &device) {
+    for (uint32_t i = 0; i < ARAWN_MAX_IMAGES && image[i] != nullptr; ++i) {
+        vmaDestroyImage(device.allocator, image[i], memory[i]);
     }
 }

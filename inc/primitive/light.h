@@ -3,16 +3,12 @@
 
 
 namespace arawn::primitive {
-    struct Light { // 64 bytes
-		uint32_t type;
-		uint32_t node;
+    struct Light { // 32 bytes
 		glm::vec3 color;
-		float intensity;
-		glm::vec3 position;
-		float range;
-		glm::vec3 direction;
-		float innerCone;
-		float outerCone;
-		uint32_t shadowMap;
+		uint32_t node; // transform index lookup
+		float intensity; // fall off curve
+		float range; // range = 0 -> directional light
+		float cone; // inner and outer cone size 16bit floats
+		uint32_t shadow; // shadow map
 	};
 }

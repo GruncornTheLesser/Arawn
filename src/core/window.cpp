@@ -144,6 +144,7 @@ void Window::create(const Instance& core, const Settings& settings) {
 	VK_ASSERT(glfwCreateWindowSurface(core.instance, window, nullptr, &surface));
 }
 
+/*
 void Window::recreate(const Instance& core, const Settings& settings) {
 	switch(settings.display) {
 	case DisplayMode::WINDOWED: {
@@ -204,7 +205,7 @@ void Window::recreate(const Instance& core, const Settings& settings) {
 	}
 	}
 }
-
+*/
 void Window::destroy(const Instance& core) {
 	vkDestroySurfaceKHR(core.instance, surface, nullptr);
 	glfwDestroyWindow(window);

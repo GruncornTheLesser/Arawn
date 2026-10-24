@@ -1,10 +1,65 @@
 #pragma once
+#include <common/fwd.h>
 #include <common/handle.h>
 #include <vector>
 #include <deque>
 
 
 namespace arawn::common {
+    struct Pool {
+        struct slot {
+            uint16_t version : 12;
+            uint16_t active : ARAWN_MAX_FRAMES;
+        };
+
+        struct flush_range {
+            struct sentinel { };
+
+            struct iterator {
+                using iterator_category = std::input_iterator_tag;
+                using value_type = uint32_t;
+                using difference_type = std::ptrdiff_t;
+                
+                iterator() = default;
+                iterator(Pool* pool);
+                value_type operator*() const;
+
+                iterator& operator++();
+                iterator operator++(int);
+
+                friend bool operator==(const iterator& lhs, sentinel rhs);
+
+            private:
+                Pool* pool;
+                uint32_t cached;
+            };
+            
+            flush_range(Pool* pl);
+
+            iterator begin() const;
+            sentinel end() const;
+
+        private:
+            Pool* pool;
+        };
+
+        Handle<void> create();
+        void destroy(Handle<void> hnd);
+
+        flush_range flush(uint32_t idx);
+        flush_range clear();
+
+        bool alive(Handle<void> hnd) const;
+
+    private:
+        std::vector<slot> slots;
+        std::deque<uint32_t> free;
+    };
+
+    bool operator==(const Pool::flush_range::iterator& lhs, Pool::flush_range::sentinel rhs);
+}
+
+/*
     template<typename T>
 	struct Pool {
         struct slot_type {
@@ -39,9 +94,9 @@ namespace arawn::common {
         void destroy(handle_type hnd) {
             if (!alive(hnd)) return;
             slot_type& slot = slots[hnd.index];
-            slot.version += 1;
             free.push_front(hnd.index);
         }
+
         template<typename ... arg_Ts>
         void flush(const framebuffer_type& framebuffer, arg_Ts&& ... args) {
             uint32_t frame_mask = (1 << framebuffer.index());
@@ -83,4 +138,5 @@ namespace arawn::common {
         std::vector<slot_type> slots;
         std::deque<uint32_t> free;
 	};
-}
+
+*/
